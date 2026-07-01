@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canonicalizeHisPayload,
+  buildTrustRegistryPolicy,
   createPortabilityPacket,
   createSyncBackPlan,
   executeSyncBackPlan,
@@ -131,6 +132,18 @@ describe("Patient Data Portability Layer", () => {
     expect(prescription.type).toBe("PrescriptionCredential");
     expect((await verifyCredential({ jwt: certificate.jwt })).verified).toBe(true);
     expect((await verifyCredential({ jwt: prescription.jwt })).verified).toBe(true);
+
+    const policy = buildTrustRegistryPolicy({
+      entries: [{ did: issuer.did, trustLevel: "verified", isActive: true }],
+      mode: "required",
+    });
+    expect((await verifyCredential({ jwt: certificate.jwt, trustPolicy: policy })).verified).toBe(true);
+    expect((await verifyCredential({ jwt: certificate.jwt, trustPolicy: buildTrustRegistryPolicy({ entries: [], mode: "required" }) })).verified).toBe(false);
+
+    const statusListIndex = String(certificate.credential.credentialStatus.statusListIndex);
+    const revoked = await verifyCredential({ jwt: certificate.jwt, revokedStatusIndexes: [statusListIndex] });
+    expect(revoked.verified).toBe(false);
+    expect(revoked.errors).toContain("Credential status list index is revoked.");
   });
 
   it("plans idempotent sync-back to legacy targets and issues a receipt VC", async () => {
@@ -162,6 +175,7 @@ describe("Patient Data Portability Layer", () => {
     expect(execution.status).toBe("accepted");
     expect(execution.targetReference).toBe("MedicationRequest/rx-demo-001");
     expect(execution.consistency.matched).toBe(true);
+    expect(execution.reconciliation?.status).toBe("not_required");
 
     const receipt = await issueSyncReceiptVc({
       issuer,
@@ -172,5 +186,19 @@ describe("Patient Data Portability Layer", () => {
     });
     expect(receipt.type).toBe("SyncReceiptCredential");
     expect((await verifyCredential({ jwt: receipt.jwt })).verified).toBe(true);
+
+    const hl7Target = RECOMMENDED_SYNC_TARGETS.find((item) => item.kind === "hl7v2")!;
+    const hl7Plan = createSyncBackPlan({
+      target: hl7Target,
+      operation: "append",
+      resource: { resourceType: "Observation", id: "lab-demo-001", code: { text: "HbA1c" }, valueQuantity: { value: 7.8, unit: "%" } },
+      sourceEventId: "event-002",
+      patientBusinessKey: "HN-10045",
+      reason: "Lab result accepted",
+      actorId: "doctor-demo",
+    });
+    const hl7Execution = executeSyncBackPlan(hl7Plan, { actorId: "doctor-demo" });
+    expect(hl7Execution.reconciliation?.status).toBe("scheduled");
+    expect(hl7Execution.reconciliation?.runMode).toBe("ack_replay");
   });
 });

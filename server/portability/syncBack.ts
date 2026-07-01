@@ -6,6 +6,7 @@ import type {
   SyncBackExecutionResult,
   SyncBackPlan,
   SyncBackRequest,
+  SyncReconciliationJob,
 } from "./types";
 import { compactId, isoNow, sha256 } from "./utils";
 
@@ -136,6 +137,7 @@ export function createSyncReceipt(plan: SyncBackPlan, result: {
   message?: string;
   executedAt?: string;
   consistency?: SyncBackExecutionResult["consistency"];
+  reconciliation?: SyncReconciliationJob;
 }): JsonRecord {
   return {
     resourceType: "TrustcareSyncReceipt",
@@ -151,7 +153,64 @@ export function createSyncReceipt(plan: SyncBackPlan, result: {
     targetReference: result.targetReference,
     message: result.message,
     consistency: result.consistency,
+    reconciliation: result.reconciliation,
     issuedAt: result.executedAt ?? isoNow(),
+  };
+}
+
+export function createSyncReconciliationJob(plan: SyncBackPlan, execution: SyncBackExecutionResult): SyncReconciliationJob {
+  const requiresReconciliation =
+    !execution.accepted ||
+    !execution.consistency.matched ||
+    execution.status === "queued_for_review" ||
+    plan.preconditions.some((item) => item.type === "reconciliation");
+  const manualReview = execution.status === "queued_for_review" || plan.targetKind === "manual_queue";
+  const dueAt = new Date(new Date(execution.executedAt).getTime() + (manualReview ? 4 * 60 * 60_000 : 15 * 60_000)).toISOString();
+
+  return {
+    id: compactId("sync-reconcile", { planId: plan.id, executionId: execution.id, consistencyKey: plan.consistencyKey }),
+    planId: plan.id,
+    executionId: execution.id,
+    targetId: plan.targetId,
+    targetKind: plan.targetKind,
+    status: requiresReconciliation ? (manualReview ? "manual_review" : "scheduled") : "not_required",
+    reason: requiresReconciliation
+      ? reconciliationReason(plan, execution)
+      : "Accepted transactional write matched readback checksum.",
+    runMode: manualReview ? "manual_review" : plan.targetKind === "hl7v2" || plan.targetKind === "csv_batch" ? "ack_replay" : "read_back",
+    dueAt: requiresReconciliation ? dueAt : undefined,
+    attempts: 0,
+    checks: [
+      { type: "idempotency", expected: plan.idempotencyKey },
+      { type: "consistency", expected: plan.consistencyKey },
+      { type: "target_reference", expected: execution.targetReference },
+      { type: "target_version", expected: execution.targetVersion },
+      { type: "payload_hash", expected: sha256(plan.outboundPayload) },
+    ],
+  };
+}
+
+export function syncAdapterManifest(targets: LegacySyncTarget[] = RECOMMENDED_SYNC_TARGETS): JsonRecord {
+  return {
+    version: "2026.07.production-hardening",
+    generatedAt: isoNow(),
+    adapters: targets.map((target) => ({
+      id: target.id,
+      name: target.name,
+      kind: target.kind,
+      writeMode: target.writeMode,
+      supportedResources: target.supportedResources,
+      supportsTransactions: target.supportsTransactions,
+      supportsVersionCheck: target.supportsVersionCheck,
+      idempotencyStrategy: target.idempotencyStrategy,
+      requiredControls: [
+        "idempotency-key",
+        "audit-event",
+        "sync-receipt-vc",
+        target.supportsVersionCheck ? "optimistic-version" : "post-write-reconciliation",
+        target.supportsTransactions ? "transaction-rollback" : "compensating-update",
+      ],
+    })),
   };
 }
 
@@ -316,7 +375,7 @@ function buildExecutionResult(plan: SyncBackPlan, input: {
       }
     : undefined;
   const targetChecksum = readBack ? sha256(readBack) : undefined;
-  return {
+  const result: SyncBackExecutionResult = {
     id: compactId("sync-exec", { planId: plan.id, targetReference: input.targetReference, executedAt: input.executedAt }),
     planId: plan.id,
     targetId: plan.targetId,
@@ -337,6 +396,16 @@ function buildExecutionResult(plan: SyncBackPlan, input: {
       matched: input.accepted && Boolean(targetChecksum),
     },
   };
+  result.reconciliation = createSyncReconciliationJob(plan, result);
+  return result;
+}
+
+function reconciliationReason(plan: SyncBackPlan, execution: SyncBackExecutionResult): string {
+  if (execution.status === "queued_for_review") return "Manual clinical review required before applying sync-back to target.";
+  if (!execution.accepted) return "Target adapter rejected the payload; operator must reconcile source and target state.";
+  if (!execution.consistency.matched) return "Readback checksum is missing or mismatched.";
+  if (plan.preconditions.some((item) => item.type === "reconciliation")) return "Target cannot guarantee transactions; schedule post-write readback.";
+  return "Reconciliation scheduled by policy.";
 }
 
 function acceptedAckCode(plan: SyncBackPlan): string {

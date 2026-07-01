@@ -388,6 +388,44 @@ export const integrationEventLogs = mysqlTable("integration_event_logs", {
 
 export type IntegrationEventLog = typeof integrationEventLogs.$inferSelect;
 
+export const credentialStatusEvents = mysqlTable("credential_status_events", {
+  id: int("id").autoincrement().primaryKey(),
+  credentialId: varchar("credentialId", { length: 255 }).notNull(),
+  statusListIndex: varchar("statusListIndex", { length: 64 }),
+  statusPurpose: mysqlEnum("statusPurpose", ["revocation", "suspension"]).default("revocation").notNull(),
+  status: mysqlEnum("status", ["active", "revoked", "suspended"]).default("active").notNull(),
+  reason: text("reason"),
+  actorId: int("actorId"),
+  eventHash: varchar("eventHash", { length: 128 }).notNull(),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CredentialStatusEvent = typeof credentialStatusEvents.$inferSelect;
+export type InsertCredentialStatusEvent = typeof credentialStatusEvents.$inferInsert;
+
+export const syncReconciliationJobs = mysqlTable("sync_reconciliation_jobs", {
+  id: int("id").autoincrement().primaryKey(),
+  jobId: varchar("jobId", { length: 255 }).notNull().unique(),
+  planId: varchar("planId", { length: 255 }).notNull(),
+  executionId: varchar("executionId", { length: 255 }).notNull(),
+  targetId: varchar("targetId", { length: 255 }).notNull(),
+  targetKind: varchar("targetKind", { length: 50 }).notNull(),
+  status: mysqlEnum("status", ["not_required", "scheduled", "manual_review", "running", "passed", "failed", "cancelled"]).default("scheduled").notNull(),
+  runMode: mysqlEnum("runMode", ["read_back", "ack_replay", "manual_review"]).notNull(),
+  reason: text("reason"),
+  checks: json("checks"),
+  attempts: int("attempts").default(0).notNull(),
+  dueAt: timestamp("dueAt"),
+  completedAt: timestamp("completedAt"),
+  result: json("result"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SyncReconciliationJobRow = typeof syncReconciliationJobs.$inferSelect;
+export type InsertSyncReconciliationJob = typeof syncReconciliationJobs.$inferInsert;
+
 // ============================================================
 // TRUST REGISTRY
 // ============================================================

@@ -29,6 +29,13 @@
       "when": 1782895800000,
       "tag": "0003_patient_portability_vc_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1782899400000,
+      "tag": "0004_production_portability_hardening",
+      "breakpoints": true
     }
   ]
 }
