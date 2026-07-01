@@ -195,3 +195,19 @@
 - [x] Add menu items: "สร้างคำขอออก VC" (Maker), "ตรวจสอบคำขอ" (Checker)
 - [x] Update routes in App.tsx for new pages
 - [x] Write tests for Maker/Checker workflow
+
+## v3.0 - PR #4 Integration: DB-bound VC/VP Portability Issuance Flow
+- [x] Merge PR #4 (codex/trustcare-seed-vc-vp-flow) into main
+- [x] Apply migration 0005: Extended document types (24 VC types)
+- [x] Apply migration 0006: issued_presentations + vc_vp_seed_batches tables
+- [x] Apply migration 0007: Maker/Checker roles + credential_issuance_requests table
+- [x] Apply migration 0008: Document taxonomy (category, subcategory, storageKey, searchTags)
+- [x] Add user_roles table (multi-role support)
+- [x] Add credential_requests table (legacy compatibility)
+- [x] Extend notification type enum (maker/checker events)
+- [x] Fix TypeScript errors from merge conflicts (CheckerQueue, MakerQueue, routers.ts)
+- [x] Verify pnpm check (0 errors), pnpm test (all pass), pnpm build (success)
+- [x] Create docs/ARCHITECTURE.md (comprehensive architecture documentation)
+- [x] Create docs/CONTRIBUTING.md (development guidelines + conflict prevention)
+- [x] Push all changes to GitHub (AEC-Infraconnect-2562/trustcare-hospital-network)
+- [x] Delete remote branch codex/trustcare-seed-vc-vp-flow
