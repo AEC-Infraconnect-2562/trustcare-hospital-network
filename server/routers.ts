@@ -9,16 +9,21 @@ import { nanoid } from "nanoid";
 import { notifyOwner } from "./_core/notification";
 import {
   canonicalizeHisPayload,
+  buildTrustRegistryPolicy,
   createPortabilityPacket,
   createSyncBackPlan,
   executeSyncBackPlan,
   issueMedicalCertificateVc,
   issuePrescriptionVc,
   issueSyncReceiptVc,
+  localIssuerJwks,
+  productionReadinessChecks,
   RECOMMENDED_SYNC_TARGETS,
+  syncAdapterManifest,
   verifyCredential,
   verifyPresentation,
 } from "./portability";
+import { sha256 } from "./portability/utils";
 
 // Admin-only guard
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -725,11 +730,14 @@ export const appRouter = router({
       entityName: z.string().min(1),
       entityNameEn: z.string().optional(),
       did: z.string().optional(),
+      publicKeyJwk: z.any().optional(),
+      x509Certificate: z.string().optional(),
       country: z.string().optional(),
       jurisdiction: z.string().optional(),
       credentialTypes: z.any().optional(),
       contactEmail: z.string().optional(),
       contactUrl: z.string().optional(),
+      metadata: z.any().optional(),
     })).mutation(async ({ input }) => {
       const id = await db.createTrustRegistryEntry(input as any);
       await db.createAuditEvent({ action: "trust_registry.created", resourceType: "trust_registry", resourceId: String(id), details: { entityName: input.entityName } });
@@ -740,7 +748,11 @@ export const appRouter = router({
       trustLevel: z.enum(["verified", "self_declared", "pending", "revoked"]).optional(),
       isActive: z.boolean().optional(),
       did: z.string().optional(),
+      publicKeyJwk: z.any().optional(),
+      x509Certificate: z.string().optional(),
       contactEmail: z.string().optional(),
+      credentialTypes: z.any().optional(),
+      metadata: z.any().optional(),
     })).mutation(async ({ input }) => {
       const { id, ...data } = input;
       await db.updateTrustRegistryEntry(id, data as any);
@@ -1037,6 +1049,19 @@ export const appRouter = router({
   // PATIENT DATA PORTABILITY LAYER
   // ============================================================
   portability: router({
+    jwks: publicProcedure.query(async () => {
+      return localIssuerJwks(defaultIssuerProfile().did);
+    }),
+
+    productionReadiness: protectedProcedure.query(async () => {
+      const policy = await buildPortabilityTrustPolicy({ mode: "advisory" });
+      return {
+        trust: productionReadinessChecks(policy),
+        syncAdapters: syncAdapterManifest(),
+        localJwks: await localIssuerJwks(defaultIssuerProfile().did),
+      };
+    }),
+
     canonicalizeHis: protectedProcedure.input(z.object({
       sourceFormat: z.enum(["db_view", "csv", "hl7v2", "rest_api", "fhir_native", "document"]),
       payload: z.any(),
@@ -1216,13 +1241,40 @@ export const appRouter = router({
       kind: z.enum(["credential", "presentation"]).default("presentation"),
       trustedIssuers: z.array(z.string()).optional(),
       revokedCredentialIds: z.array(z.string()).optional(),
+      revokedStatusIndexes: z.array(z.string()).optional(),
+      allowedCredentialTypes: z.array(z.enum([
+        "PatientIdentityCredential",
+        "ConsentReceiptCredential",
+        "PatientSummaryCredential",
+        "AllergyAlertCredential",
+        "MedicationSummaryCredential",
+        "ReferralCredential",
+        "CoverageEligibilityCredential",
+        "MedicalCertificateCredential",
+        "PrescriptionCredential",
+        "ClaimPackageCredential",
+        "SyncReceiptCredential",
+      ])).optional(),
+      trustRegistryMode: z.enum(["off", "advisory", "required"]).default("advisory"),
       audience: z.string().optional(),
     })).mutation(async ({ input }) => {
+      const trustPolicy = input.trustRegistryMode === "off"
+        ? undefined
+        : await buildPortabilityTrustPolicy({
+          mode: input.trustRegistryMode,
+          trustedIssuers: input.trustedIssuers,
+          revokedCredentialIds: input.revokedCredentialIds,
+          revokedStatusIndexes: input.revokedStatusIndexes,
+          allowedCredentialTypes: input.allowedCredentialTypes as any,
+        });
       if (input.kind === "credential") {
         return verifyCredential({
           jwt: input.jwt,
           trustedIssuers: input.trustedIssuers,
           revokedCredentialIds: input.revokedCredentialIds,
+          revokedStatusIndexes: input.revokedStatusIndexes,
+          allowedCredentialTypes: input.allowedCredentialTypes as any,
+          trustPolicy,
           audience: input.audience,
         });
       }
@@ -1230,12 +1282,65 @@ export const appRouter = router({
         jwt: input.jwt,
         trustedIssuers: input.trustedIssuers,
         revokedCredentialIds: input.revokedCredentialIds,
+        revokedStatusIndexes: input.revokedStatusIndexes,
+        allowedCredentialTypes: input.allowedCredentialTypes as any,
+        trustPolicy,
         audience: input.audience,
       });
     }),
 
     syncTargets: protectedProcedure.query(() => {
       return RECOMMENDED_SYNC_TARGETS;
+    }),
+
+    syncAdapterManifest: protectedProcedure.query(() => {
+      return syncAdapterManifest();
+    }),
+
+    credentialStatusEvents: protectedProcedure.input(z.object({
+      credentialId: z.string().optional(),
+      status: z.string().optional(),
+      limit: z.number().optional(),
+    })).query(async ({ input }) => {
+      return db.listCredentialStatusEvents(input);
+    }),
+
+    recordCredentialStatus: protectedProcedure.input(z.object({
+      credentialId: z.string().min(1),
+      statusListIndex: z.string().optional(),
+      statusPurpose: z.enum(["revocation", "suspension"]).default("revocation"),
+      status: z.enum(["active", "revoked", "suspended"]),
+      reason: z.string().optional(),
+      metadata: z.any().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const eventHash = sha256({ ...input, actorId: ctx.user.id, recordedAt: new Date().toISOString() });
+      const id = await db.createCredentialStatusEvent({
+        credentialId: input.credentialId,
+        statusListIndex: input.statusListIndex,
+        statusPurpose: input.statusPurpose,
+        status: input.status,
+        reason: input.reason,
+        actorId: ctx.user.id,
+        eventHash,
+        metadata: input.metadata,
+      } as any);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "portability.credential_status.recorded",
+        resourceType: "credential_status_event",
+        resourceId: String(id ?? input.credentialId),
+        details: { credentialId: input.credentialId, status: input.status, statusListIndex: input.statusListIndex, eventHash },
+      });
+      return { id, eventHash };
+    }),
+
+    reconciliationJobs: protectedProcedure.input(z.object({
+      status: z.string().optional(),
+      targetId: z.string().optional(),
+      limit: z.number().optional(),
+    })).query(async ({ input }) => {
+      return db.listSyncReconciliationJobs(input);
     }),
 
     planSyncBack: protectedProcedure.input(z.object({
@@ -1329,6 +1434,32 @@ export const appRouter = router({
         execution,
         audience: input.audience,
       });
+      if (execution.reconciliation && execution.reconciliation.status !== "not_required") {
+        await db.createSyncReconciliationJob({
+          jobId: execution.reconciliation.id,
+          planId: execution.reconciliation.planId,
+          executionId: execution.reconciliation.executionId,
+          targetId: execution.reconciliation.targetId,
+          targetKind: execution.reconciliation.targetKind,
+          status: execution.reconciliation.status,
+          runMode: execution.reconciliation.runMode,
+          reason: execution.reconciliation.reason,
+          checks: execution.reconciliation.checks,
+          attempts: execution.reconciliation.attempts,
+          dueAt: execution.reconciliation.dueAt ? new Date(execution.reconciliation.dueAt) : undefined,
+        } as any);
+      }
+      await db.createIntegrationEvent({
+        adapterId: 0,
+        eventType: "portability.sync_back.executed",
+        direction: "outbound",
+        resourceType: String(input.plan.outboundPayload?.body?.resourceType ?? input.plan.outboundPayload?.row?.resource_type ?? "SyncBackPlan"),
+        resourceId: input.plan.id,
+        status: execution.accepted ? "success" : "error",
+        payload: { execution, syncReceiptCredentialId: syncReceiptCredential.id },
+        correlationId: input.plan.idempotencyKey,
+        processedAt: new Date(execution.executedAt),
+      } as any);
       await db.createAuditEvent({
         actorId: ctx.user.id,
         actorRole: (ctx.user as any).systemRole,
@@ -1340,6 +1471,7 @@ export const appRouter = router({
           status: execution.status,
           targetId: execution.targetId,
           targetReference: execution.targetReference,
+          reconciliationJobId: execution.reconciliation?.id,
           credentialDigest: syncReceiptCredential.digest,
         },
       });
@@ -1392,6 +1524,29 @@ function defaultIssuerProfile() {
 
 function defaultHolderDid(userId: number) {
   return `did:key:trustcare-patient-${userId}`;
+}
+
+async function buildPortabilityTrustPolicy(input: {
+  mode: "off" | "advisory" | "required";
+  trustedIssuers?: string[];
+  revokedCredentialIds?: string[];
+  revokedStatusIndexes?: string[];
+  allowedCredentialTypes?: any[];
+}) {
+  const [entries, revokedCredentialIds, revokedStatus] = await Promise.all([
+    db.listTrustRegistry({ isActive: true }),
+    db.listRevokedCredentialIds(),
+    db.listRevokedCredentialStatus(),
+  ]);
+  const policy = buildTrustRegistryPolicy({
+    entries: entries as any[],
+    mode: input.mode,
+    revokedCredentialIds: [...(input.revokedCredentialIds ?? []), ...revokedCredentialIds, ...revokedStatus.credentialIds],
+    revokedStatusIndexes: [...(input.revokedStatusIndexes ?? []), ...revokedStatus.statusListIndexes],
+    allowedCredentialTypes: input.allowedCredentialTypes as any,
+  });
+  policy.trustedIssuers = Array.from(new Set([...(input.trustedIssuers ?? []), ...policy.trustedIssuers]));
+  return policy;
 }
 
 function syncReceiptSubjectId(plan: any, fallback: string) {

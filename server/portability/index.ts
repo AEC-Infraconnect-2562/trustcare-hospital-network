@@ -4,6 +4,7 @@ export * from "./vc";
 export * from "./policy";
 export * from "./syncBack";
 export * from "./clinicalDocuments";
+export * from "./trust";
 
 import { buildMedicalCertificateFhir, buildPrescriptionMedicationRequests } from "./clinicalDocuments";
 import { canonicalizeHisPayload } from "./fhir";
@@ -240,6 +241,7 @@ export async function issueSyncReceiptVc(input: {
       idempotencyKey: input.plan.idempotencyKey,
       consistencyKey: input.plan.consistencyKey,
       executedAt: input.execution.executedAt,
+      reconciliation: input.execution.reconciliation,
       receipt,
     },
     evidence: [

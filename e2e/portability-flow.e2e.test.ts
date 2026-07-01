@@ -63,6 +63,9 @@ describe("portability E2E contract", () => {
     const verifiedPacket = await caller.portability.verify({ jwt: packet.presentation.jwt, kind: "presentation" });
     expect(verifiedPacket.verified).toBe(true);
 
+    const readiness = await caller.portability.productionReadiness();
+    expect(readiness.syncAdapters.adapters.length).toBeGreaterThan(0);
+
     const certificate = await caller.portability.issueMedicalCertificate({
       holderDid: "did:key:e2e-patient",
       patient: { id: "patient-e2e", name: "Somchai Jaidee" },
@@ -105,6 +108,7 @@ describe("portability E2E contract", () => {
     });
 
     expect(syncReceipt.execution.status).toBe("accepted");
+    expect(syncReceipt.execution.reconciliation?.status).toBe("not_required");
     expect(syncReceipt.syncReceiptCredential.type).toBe("SyncReceiptCredential");
     expect((await caller.portability.verify({ jwt: syncReceipt.syncReceiptCredential.jwt, kind: "credential" })).verified).toBe(true);
   });
