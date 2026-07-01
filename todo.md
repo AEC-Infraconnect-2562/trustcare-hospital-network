@@ -251,3 +251,17 @@
 - [x] Vitest tests for schema registry (12 tests passing)
 - [x] Enforce schema validation in issuance flow (issuer.issueCredential)
 - [x] Push to GitHub
+
+## v3.5 - PR #6: Harden Smart Health Links Transport Trust Layer
+- [x] Review PR #6 (25 files, +2778/-237 lines)
+- [x] Merge PR #6 into main (commit 11a4470 → df119b9)
+- [x] Apply migration 0011: SHL transport VC trust layer (smart_health_links columns, shl_files, shl_manifest_versions tables, shl_access_logs columns)
+- [x] TypeScript compilation: 0 errors
+- [x] Tests: 152 passing (13 test files)
+- [x] New features integrated:
+  - SHL transport: manifest URL, passcode (scrypt), JWE encrypted FHIR Bundle, access log, expiry/max access/revocation
+  - VC/VP trust layer: ShlManifestCredential + holder VP bound to each SHL
+  - Realistic HIS simulator scenarios (referral, cross-border, e-claim, medical tourist, discharge, patient summary, self-share)
+  - UI /shl rebuilt + public /shl-viewer (JWE decrypt, trust evidence display)
+  - docs/SHL_CONTEXT_VERSIONING.md added
+- [x] Push to GitHub
