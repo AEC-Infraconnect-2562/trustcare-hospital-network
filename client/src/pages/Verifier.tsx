@@ -1,11 +1,13 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import QRScanner from "@/components/QRScanner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, CheckCircle2, ClipboardCheck, FileText, Pill, RotateCcw, ScanLine, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertTriangle, Camera, CheckCircle2, ClipboardCheck, FileText, Pill, RotateCcw, ScanLine, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type TrustLevel = "green" | "yellow" | "red";
@@ -18,12 +20,19 @@ const trustBadgeConfig = {
 
 export default function Verifier() {
   const [vpInput, setVpInput] = useState("");
+  const [scanMode, setScanMode] = useState<"paste" | "camera">("paste");
+
   const verify = trpc.verifier.verify.useMutation({
     onSuccess: (data) => toast[data.verified ? "success" : "error"](data.verified ? "ตรวจสอบสำเร็จ" : "ตรวจสอบไม่ผ่าน"),
     onError: (error) => toast.error(error.message),
   });
 
-  const result = verify.data as any;
+  const verifyQr = trpc.verifier.verifyQrScan.useMutation({
+    onSuccess: (data) => toast[data.verified ? "success" : "error"](data.verified ? "ตรวจสอบสำเร็จ" : "ตรวจสอบไม่ผ่าน"),
+    onError: (error) => toast.error(error.message),
+  });
+
+  const result = (scanMode === "camera" ? verifyQr.data : verify.data) as any;
   const trustLevel = (result?.trustLevel ?? "red") as TrustLevel;
   const credentials = useMemo(() => {
     if (!result) return [];
@@ -36,16 +45,24 @@ export default function Verifier() {
   const allergies = flatten(subjects.map((subject: any) => subject.critical?.allergies ?? subject.clinical?.allergies ?? []));
   const medications = flatten(subjects.map((subject: any) => subject.critical?.medications ?? subject.clinical?.medications ?? []));
 
+  const handleScanSuccess = useCallback((decodedText: string) => {
+    verifyQr.mutate({ qrData: decodedText, source: "camera" });
+  }, [verifyQr]);
+
+  const handleScanError = useCallback((error: string) => {
+    toast.error(error);
+  }, []);
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">ตรวจสอบใบรับรอง</h1>
-            <p className="text-muted-foreground text-sm mt-1">Verify JSON VP or JWT VC/VP using the backend trust pipeline.</p>
+            <p className="text-muted-foreground text-sm mt-1">Verify VC/VP by scanning QR code or pasting JSON/JWT directly.</p>
           </div>
           {result && (
-            <Button variant="outline" onClick={() => { verify.reset(); setVpInput(""); }} className="gap-2">
+            <Button variant="outline" onClick={() => { verify.reset(); verifyQr.reset(); setVpInput(""); }} className="gap-2">
               <RotateCcw className="h-4 w-4" />ตรวจใหม่
             </Button>
           )}
@@ -53,24 +70,70 @@ export default function Verifier() {
 
         {!result ? (
           <Card className="max-w-2xl mx-auto">
-            <CardContent className="p-8 flex flex-col items-center gap-6">
-              <div className="h-28 w-28 rounded-2xl bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/20">
-                <ScanLine className={`h-12 w-12 text-muted-foreground/50 ${verify.isPending ? "animate-pulse" : ""}`} />
-              </div>
-              <Textarea
-                placeholder="Paste JSON VP, JWT VP, or JWT VC"
-                className="min-h-[180px] font-mono text-xs"
-                value={vpInput}
-                onChange={(event) => setVpInput(event.target.value)}
-              />
-              <Button onClick={() => verify.mutate({ vpUrl: vpInput })} disabled={!vpInput || verify.isPending} className="w-full gap-2">
-                <ClipboardCheck className="h-4 w-4" />
-                {verify.isPending ? "กำลังตรวจสอบ..." : "เริ่มตรวจสอบ"}
-              </Button>
+            <CardContent className="p-6">
+              <Tabs value={scanMode} onValueChange={(v) => setScanMode(v as "paste" | "camera")} className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-6">
+                  <TabsTrigger value="paste" className="gap-2">
+                    <ClipboardCheck className="h-4 w-4" />
+                    วาง Token/JSON
+                  </TabsTrigger>
+                  <TabsTrigger value="camera" className="gap-2">
+                    <Camera className="h-4 w-4" />
+                    สแกน QR Code
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="paste" className="space-y-4">
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="h-20 w-20 rounded-2xl bg-muted flex items-center justify-center border-2 border-dashed border-muted-foreground/20">
+                      <ScanLine className={`h-10 w-10 text-muted-foreground/50 ${verify.isPending ? "animate-pulse" : ""}`} />
+                    </div>
+                    <Textarea
+                      placeholder="Paste JSON VP, JWT VP, or JWT VC here..."
+                      className="min-h-[180px] font-mono text-xs"
+                      value={vpInput}
+                      onChange={(event) => setVpInput(event.target.value)}
+                    />
+                    <Button onClick={() => verify.mutate({ vpUrl: vpInput })} disabled={!vpInput || verify.isPending} className="w-full gap-2">
+                      <ClipboardCheck className="h-4 w-4" />
+                      {verify.isPending ? "กำลังตรวจสอบ..." : "เริ่มตรวจสอบ"}
+                    </Button>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="camera" className="space-y-4">
+                  <div className="flex flex-col items-center gap-2">
+                    <p className="text-sm text-muted-foreground text-center mb-2">
+                      เปิดกล้องเพื่อสแกน QR Code จาก Patient Wallet หรือเอกสาร VC/VP
+                    </p>
+                    <QRScanner
+                      onScanSuccess={handleScanSuccess}
+                      onScanError={handleScanError}
+                      fps={10}
+                      aspectRatio={1.0}
+                    />
+                    {verifyQr.isPending && (
+                      <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
+                        <ScanLine className="h-4 w-4 animate-pulse" />
+                        กำลังตรวจสอบข้อมูลจาก QR Code...
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-4 max-w-4xl">
+            {/* Source indicator */}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {scanMode === "camera" ? (
+                <><Camera className="h-3.5 w-3.5" /><span>ตรวจสอบจากการสแกน QR Code</span></>
+              ) : (
+                <><ClipboardCheck className="h-3.5 w-3.5" /><span>ตรวจสอบจาก Token/JSON ที่วาง</span></>
+              )}
+            </div>
+
             <TrustBadge level={trustLevel} warnings={result.warnings} errors={result.errors} />
 
             <Card>

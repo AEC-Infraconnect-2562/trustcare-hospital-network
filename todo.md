@@ -211,3 +211,15 @@
 - [x] Create docs/CONTRIBUTING.md (development guidelines + conflict prevention)
 - [x] Push all changes to GitHub (AEC-Infraconnect-2562/trustcare-hospital-network)
 - [x] Delete remote branch codex/trustcare-seed-vc-vp-flow
+
+## v3.1 - Camera QR Scanner for VC/VP Verification
+- [x] Install html5-qrcode library
+- [x] Create reusable QRScanner component (camera access, start/stop, decode callback)
+- [x] Integrate QR Scanner into Verifier page with scan mode toggle (Tabs: paste vs camera)
+- [x] Add backend tRPC procedure `verifier.verifyQrScan` (URL extraction, base64 decode, format detection)
+- [x] Display verification result (trust badge, credential details, clinical data)
+- [x] Handle error states (camera denied, invalid QR, expired credential)
+- [x] Write vitest tests for QR verification flow (server/qrScanner.test.ts - 14 tests)
+- [x] Update docs/ARCHITECTURE.md with QR Scanner documentation (Section 2.4.1, 12.4)
+- [x] Update docs/CONTRIBUTING.md with QR Scanner testing requirements
+- [x] Push to GitHub and save checkpoint

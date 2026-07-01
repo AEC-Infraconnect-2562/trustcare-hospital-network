@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 3.0 (Post PR #4 — DB-bound VC/VP Portability Issuance Flow)
+**Version:** 3.1 (QR Scanner for VC/VP Verification)
 **Last updated:** 2026-07-01
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -154,7 +154,6 @@ portability.issuePrescription → issuePrescriptionVc() → issued_credentials
 ```
 Verifier receives JWT → portability.verify (single VC)
                        → portability.verifyJsonPresentation (VP bundle)
-                       
 Checks performed:
   1. JWT signature verification (HMAC or asymmetric)
   2. Trusted issuer check (Trust Registry)
@@ -163,6 +162,41 @@ Checks performed:
   5. Required credential type check
   6. Clinical priority findings extraction
 ```
+
+### 2.4.1 QR Code Scanner Verification (v3.1)
+
+The Verifier Portal supports two input methods via a tabbed interface:
+
+| Input Method | Description | Backend Endpoint |
+|---|---|---|
+| **Paste Token/JSON** | Manual paste of JWT or JSON VP | `verifier.verify` |
+| **Camera QR Scan** | WebRTC camera scans QR code | `verifier.verifyQrScan` |
+
+The QR Scanner pipeline handles multiple QR payload formats:
+
+```
+QR Code Scanned
+  │
+  ├─ URL format (https://...?token=xxx) → extract token param
+  ├─ Base64-encoded payload → decode to JWT/JSON
+  ├─ Raw JSON VP (starts with '{') → parse & verify
+  └─ Raw JWT (starts with 'eyJ') → verify as VP or VC
+  │
+  ▼
+Same verification pipeline as manual verify
+  │
+  ▼
+Audit event logged: verifier.qr_scan.{camera|file_upload}
+```
+
+**Component:** `client/src/components/QRScanner.tsx` (reusable, uses `html5-qrcode` library)
+
+**Key features:**
+- Real-time camera preview with start/stop controls
+- Supports rear and front cameras (mobile)
+- Auto-verification on successful scan
+- Audit trail distinguishes camera vs file-upload source
+- Graceful fallback for browsers without camera access
 
 ### 2.5 VP (Verifiable Presentation) Creation
 
@@ -667,7 +701,10 @@ trustcare-hospital-network/
 │   └── storage.ts                 ← S3 storage helpers
 ├── client/
 │   ├── src/pages/                 ← 26 page components
-│   ├── src/components/            ← Reusable UI components
+│   ├── src/components/
+│   │   ├── QRScanner.tsx          ← Camera QR scanner (html5-qrcode)
+│   │   ├── DashboardLayout.tsx    ← Sidebar layout with role switcher
+│   │   └── ui/                    ← shadcn/ui components
 │   └── src/lib/trpc.ts            ← tRPC client binding
 ├── shared/
 │   ├── const.ts                   ← Shared constants
@@ -693,13 +730,30 @@ trustcare-hospital-network/
 10. Update `getCardDisplayName()` and `cardTypeForCredential()` in `server/routers.ts`
 
 ### 12.2 Running Tests
-
 ```bash
-pnpm test          # Unit tests (vitest)
+pnpm test          # Unit tests (vitest) — includes qrScanner.test.ts
 pnpm test:e2e      # End-to-end tests
 pnpm build         # Production build
 npx tsc --noEmit   # TypeScript check
 ```
+
+### 12.4 QR Scanner Component Usage
+
+The `QRScanner` component (`client/src/components/QRScanner.tsx`) is reusable across any page that needs QR scanning:
+
+```tsx
+import QRScanner from "@/components/QRScanner";
+
+<QRScanner
+  onScanSuccess={(decodedText) => { /* handle decoded QR data */ }}
+  onScanError={(error) => { /* handle camera/decode errors */ }}
+  fps={10}          // Scan frequency (frames per second)
+  aspectRatio={1.0} // Camera preview aspect ratio
+/>
+```
+
+**Dependencies:** `html5-qrcode` (installed via pnpm)
+**Browser requirements:** WebRTC camera access (HTTPS required in production)
 
 ### 12.3 Reseeding the Database
 

@@ -25,6 +25,8 @@ Before opening a Pull Request, ensure:
   - New credential types are introduced
   - Router structure changes
   - Portability module is modified
+  - New reusable components are added (e.g., QRScanner)
+  - Verification flow changes
 
 ---
 
@@ -109,6 +111,8 @@ When modifying the authorization matrix:
 | VC issuance logic | Portability test with mock data |
 | UI component | Manual verification via screenshot |
 | Auth flow | `auth.logout.test.ts` pattern |
+| QR/Scanner feature | `server/qrScanner.test.ts` pattern (data parsing + format detection) |
+| Verifier changes | Ensure both `verify` and `verifyQrScan` endpoints are tested |
 
 ---
 

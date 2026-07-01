@@ -537,6 +537,103 @@ export const appRouter = router({
         errors: [presented ? "Unsupported presentation format. Use JSON VP or JWT VC/VP." : "No token or presentation was supplied."],
       };
     }),
+    verifyQrScan: publicProcedure.input(z.object({
+      qrData: z.string().min(1, "QR data is required"),
+      source: z.enum(["camera", "file_upload"]).default("camera"),
+    })).mutation(async ({ input }) => {
+      const { qrData, source } = input;
+      let parsed: string = qrData;
+
+      // If QR contains a URL (e.g., https://trustcare.../verify?token=...), extract the token
+      if (qrData.startsWith("http")) {
+        try {
+          const url = new URL(qrData);
+          parsed = url.searchParams.get("token") || url.searchParams.get("vp") || url.searchParams.get("vc") || qrData;
+        } catch {
+          // Not a valid URL, use raw data
+        }
+      }
+
+      // Attempt to decode base64-encoded QR payloads
+      if (!parsed.startsWith("{") && !parsed.startsWith("eyJ")) {
+        try {
+          const decoded = Buffer.from(parsed, "base64").toString("utf-8");
+          if (decoded.startsWith("{") || decoded.startsWith("eyJ")) {
+            parsed = decoded;
+          }
+        } catch {
+          // Not base64, use as-is
+        }
+      }
+
+      // Verify using the same logic as the main verify endpoint
+      let result: any;
+      if (parsed.trim().startsWith("{")) {
+        try {
+          const presentation = JSON.parse(parsed);
+          const verResult = verifyJsonPresentation({ presentation });
+          result = {
+            trustLevel: verResult.trustLevel,
+            verified: verResult.verified,
+            issuer: "TrustCare JSON VP",
+            holderDid: verResult.holderDid,
+            credentials: presentation.verifiableCredential ?? [],
+            highPriority: verResult.highPriority,
+            warnings: verResult.warnings,
+            errors: verResult.errors,
+          };
+        } catch (e: any) {
+          result = {
+            trustLevel: "red" as const,
+            verified: false,
+            issuer: "TrustCare Verifier",
+            warnings: [],
+            errors: [`Invalid JSON in QR code: ${e.message}`],
+          };
+        }
+      } else if (parsed.startsWith("eyJ")) {
+        const vpResult = await verifyPresentation({ jwt: parsed });
+        if (vpResult.verified || vpResult.credentials.length > 0) {
+          result = {
+            trustLevel: vpResult.trustLevel,
+            verified: vpResult.verified,
+            issuer: vpResult.credentials[0]?.issuer?.name ?? vpResult.credentials[0]?.issuer?.id ?? "Unknown issuer",
+            holderDid: vpResult.holderDid,
+            credentials: vpResult.credentials,
+            warnings: vpResult.warnings,
+            errors: vpResult.errors,
+          };
+        } else {
+          const credResult = await verifyCredential({ jwt: parsed });
+          result = {
+            trustLevel: credResult.trustLevel,
+            verified: credResult.verified,
+            issuer: credResult.issuer,
+            credential: credResult.credential,
+            warnings: credResult.warnings,
+            errors: credResult.errors,
+          };
+        }
+      } else {
+        result = {
+          trustLevel: "red" as const,
+          verified: false,
+          issuer: "TrustCare Verifier",
+          warnings: [],
+          errors: ["QR code does not contain a valid VC/VP format (JSON or JWT)."],
+        };
+      }
+
+      // Audit trail for QR scan verification
+      await db.createAuditEvent({
+        action: `verifier.qr_scan.${source}`,
+        resourceType: "verifiable_presentation",
+        resourceId: `qr-${source}-${Date.now()}`,
+        details: { trustLevel: result.trustLevel, verified: result.verified, source, qrDataLength: qrData.length },
+      });
+
+      return { ...result, scanSource: source };
+    }),
   }),
 
   // ============================================================
