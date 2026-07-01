@@ -29,13 +29,23 @@ import {
   generateTrustcareDemoSeed,
   hospitalDidWeb,
   auditTrustcareVcVpSeedDatabase,
+  buildManifestResponse,
+  buildShlinkPayload,
+  buildSimulatedHisPayload,
+  createPresentation,
+  defaultScopesForContext,
+  encryptShlFile,
+  generateNumericPasscode,
   issueMedicalCertificateVc,
   issueCredential,
   issuePrescriptionVc,
   issueSyncReceiptVc,
   localIssuerJwks,
+  manifestFileDigest,
   patientDidKey,
+  purposeForContext,
   productionReadinessChecks,
+  randomBase64UrlBytes,
   reseedTrustcareVcVpDatabase,
   reviewCsvForCanonicalMapping,
   RECOMMENDED_SYNC_TARGETS,
@@ -44,9 +54,13 @@ import {
   syncAdapterManifest,
   verifyCredential,
   verifyJsonPresentation,
+  verifyPasscode,
   verifyPresentation,
+  hashPasscode,
+  scenarioForShlPurpose,
 } from "./portability";
 import { sha256 } from "./portability/utils";
+import { resolveShlManifestAccessPacket, ShlAccessError } from "./shlAccess";
 
 const credentialTypeValues = [
   "patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization",
@@ -54,6 +68,10 @@ const credentialTypeValues = [
   "claim_package", "claim_receipt", "travel_document_verification", "shl_manifest", "pharmacy_dispense", "appointment",
   "visa_support_letter", "quotation", "guarantee_letter", "mpi_link_certificate", "sync_receipt",
 ] as const;
+
+const shlPurposeValues = ["referral", "patient_summary", "discharge", "cross_border", "medical_tourist", "insurance", "self_share"] as const;
+
+const portabilityContextValues = ["treatment", "cross_branch_referral", "cross_border", "e_claim", "medical_tourist", "emergency", "self_share"] as const;
 
 const trustcareCredentialTypeValues = [
   "PatientIdentityCredential", "ConsentReceiptCredential", "PatientSummaryCredential", "AllergyAlertCredential",
@@ -1164,56 +1182,169 @@ export const appRouter = router({
   // SMART HEALTH LINKS (SHL)
   // ============================================================
   shl: router({
-    list: protectedProcedure.input(z.object({ patientId: z.number() })).query(async ({ input }) => {
-      return db.listSmartHealthLinks(input.patientId);
+    patientOptions: protectedProcedure.query(async ({ ctx }) => {
+      const access = await shlActorAccess(ctx);
+      if (access.activeRole === "patient") {
+        return [{
+          id: ctx.user.id,
+          name: (ctx.user as any).name,
+          email: (ctx.user as any).email,
+          systemRole: "patient",
+          hospitalId: (ctx.user as any).hospitalId,
+        }];
+      }
+      return db.listUsers({
+        systemRole: "patient",
+        hospitalId: access.hospitalScoped ? (ctx.user as any).hospitalId : undefined,
+      });
+    }),
+    simulatorScenarios: protectedProcedure.query(() => {
+      return [
+        { id: "patient_summary", purpose: "patient_summary", context: "treatment", label: "Patient summary", description: "IPS-style summary with medications, observations, and source document references." },
+        { id: "cross_branch_referral", purpose: "referral", context: "cross_branch_referral", label: "Cross-branch referral", description: "Referral packet with recent labs and imaging references." },
+        { id: "cross_border", purpose: "cross_border", context: "cross_border", label: "Cross-border care", description: "International summary and translated referral material." },
+        { id: "e_claim", purpose: "insurance", context: "e_claim", label: "E-claim packet", description: "Coverage, claim package, invoice summary, and clinical evidence." },
+        { id: "medical_tourist", purpose: "medical_tourist", context: "medical_tourist", label: "Medical tourist intake", description: "Travel document, quotation, guarantee letter, and visa support evidence." },
+        { id: "discharge", purpose: "discharge", context: "treatment", label: "Discharge handoff", description: "Discharge summary, medication reconciliation, and follow-up plan." },
+        { id: "self_share", purpose: "self_share", context: "self_share", label: "Patient self-share", description: "Patient-controlled wallet snapshot with consent receipt." },
+      ];
+    }),
+    list: protectedProcedure.input(z.object({
+      patientId: z.number().optional(),
+      hospitalId: z.number().optional(),
+      status: z.enum(["pending_review", "active", "expired", "revoked", "disabled", "max_accessed"]).optional(),
+      purpose: z.enum(shlPurposeValues).optional(),
+    }).optional()).query(async ({ ctx, input }) => {
+      const access = await shlActorAccess(ctx);
+      if (access.activeRole === "patient") {
+        if (input?.patientId && input.patientId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Patients can list only their own Smart Health Links." });
+        }
+        return db.listSmartHealthLinks({ patientId: ctx.user.id, status: input?.status, purpose: input?.purpose });
+      }
+      return db.listSmartHealthLinks({
+        patientId: input?.patientId,
+        hospitalId: input?.hospitalId ?? (access.hospitalScoped ? (ctx.user as any).hospitalId : undefined),
+        status: input?.status,
+        purpose: input?.purpose,
+      });
+    }),
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+      const shl = await db.getShlById(input.id);
+      if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
+      await assertCanViewShl(ctx, shl);
+      const [files, versions, accessLogs] = await Promise.all([
+        db.listShlFiles(shl.id, shl.currentManifestVersion ?? 1),
+        db.listShlManifestVersions(shl.id),
+        db.listShlAccessLogs(shl.id),
+      ]);
+      return { ...shl, files, versions, accessLogs };
     }),
     create: protectedProcedure.input(z.object({
-      patientId: z.number(),
-      hospitalId: z.number(),
-      purpose: z.enum(["referral", "patient_summary", "discharge", "cross_border", "medical_tourist", "insurance", "self_share"]),
+      patientId: z.number().optional(),
+      hospitalId: z.number().optional(),
+      purpose: z.enum(shlPurposeValues),
+      context: z.enum(portabilityContextValues).optional(),
+      label: z.string().max(80).optional(),
       scope: z.any().optional(),
-      maxAccessCount: z.number().optional(),
-      expiresInDays: z.number().optional(),
+      recipientPolicy: z.any().optional(),
+      credentialIds: z.array(z.string()).optional(),
+      fhirBundle: z.any().optional(),
+      simulatorScenario: z.string().optional(),
+      consentCredentialId: z.string().optional(),
+      passcodeRequired: z.boolean().optional(),
+      passcode: z.string().min(4).max(32).optional(),
+      maxAccessCount: z.number().min(1).max(100).optional(),
+      expiresInDays: z.number().min(1).max(365).optional(),
+      longTerm: z.boolean().optional(),
+      forceCheckerReview: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const expiresAt = input.expiresInDays ? new Date(Date.now() + input.expiresInDays * 86400000) : undefined;
-      const shlData: any = {
-        patientId: input.patientId,
-        issuedBy: ctx.user.id,
-        hospitalId: input.hospitalId,
-        purpose: input.purpose,
-        scope: input.scope,
-        maxAccessCount: input.maxAccessCount,
-        expiresAt,
-        manifestHash: nanoid(32),
-        shlUrl: `https://shl.trustcare.network/${nanoid(16)}`,
-        qrPayload: `shlink:/${nanoid(64)}`,
-      };
-      const id = await db.createSmartHealthLink(shlData);
-      await db.createAuditEvent({ actorId: ctx.user.id, action: "shl.created", resourceType: "smart_health_link", resourceId: String(id), details: { purpose: input.purpose } });
-      return { id, shlUrl: shlData.shlUrl, qrPayload: shlData.qrPayload };
+      return createSmartHealthLinkPackage(ctx, input);
     }),
-    revoke: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      await db.revokeShl(input.id);
-      await db.createAuditEvent({ actorId: ctx.user.id, action: "shl.revoked", resourceType: "smart_health_link", resourceId: String(input.id) });
+    revoke: protectedProcedure.input(z.object({ id: z.number(), reason: z.string().optional() })).mutation(async ({ ctx, input }) => {
+      const shl = await db.getShlById(input.id);
+      if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
+      await assertCanManageShl(ctx, shl);
+      await db.revokeShl(input.id, input.reason ?? "User requested revocation");
+      await db.revokeShlManifestVersions(input.id, input.reason ?? "SHL revoked");
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        hospitalId: shl.hospitalId,
+        action: "shl.revoked",
+        resourceType: "smart_health_link",
+        resourceId: String(input.id),
+        details: { reason: input.reason, manifestCredentialId: shl.manifestCredentialId, presentationId: shl.presentationId },
+      });
       return { success: true };
     }),
-    accessLogs: protectedProcedure.input(z.object({ shlId: z.number() })).query(async ({ input }) => {
+    accessLogs: protectedProcedure.input(z.object({ shlId: z.number() })).query(async ({ ctx, input }) => {
+      const shl = await db.getShlById(input.shlId);
+      if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
+      await assertCanViewShl(ctx, shl);
       return db.listShlAccessLogs(input.shlId);
+    }),
+    versions: protectedProcedure.input(z.object({ shlId: z.number() })).query(async ({ ctx, input }) => {
+      const shl = await db.getShlById(input.shlId);
+      if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
+      await assertCanViewShl(ctx, shl);
+      return db.listShlManifestVersions(input.shlId);
+    }),
+    rotatePasscode: protectedProcedure.input(z.object({
+      id: z.number(),
+      passcode: z.string().min(4).max(32).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const shl = await db.getShlById(input.id);
+      if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
+      await assertCanManageShl(ctx, shl);
+      const passcode = input.passcode ?? generateNumericPasscode();
+      const hashed = hashPasscode(passcode);
+      await db.updateSmartHealthLink(input.id, {
+        passcodeRequired: true,
+        passcodeSalt: hashed.salt,
+        passcodeHash: hashed.hash,
+        passcodeFailedAttempts: 0,
+      } as any);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        hospitalId: shl.hospitalId,
+        action: "shl.passcode.rotated",
+        resourceType: "smart_health_link",
+        resourceId: String(input.id),
+      });
+      return { success: true, passcode };
+    }),
+    manifest: publicProcedure.input(z.object({
+      manifestToken: z.string().min(16),
+      recipient: z.string().min(1),
+      passcode: z.string().optional(),
+      embeddedLengthMax: z.number().min(0).max(5_000_000).optional(),
+      accessorName: z.string().optional(),
+      accessorOrg: z.string().optional(),
+      accessorCountry: z.string().max(3).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const shl = await db.getShlByManifestToken(input.manifestToken);
+      if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
+      return resolveShlManifestAccess(ctx, shl, input);
     }),
     access: publicProcedure.input(z.object({
       shlId: z.number(),
+      passcode: z.string().optional(),
+      recipient: z.string().optional(),
       accessorName: z.string().optional(),
       accessorOrg: z.string().optional(),
       accessorCountry: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
       const shl = await db.getShlById(input.shlId);
       if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
-      if (shl.status !== "active") throw new TRPCError({ code: "FORBIDDEN", message: "SHL is no longer active" });
-      if (shl.expiresAt && new Date(shl.expiresAt) < new Date()) throw new TRPCError({ code: "FORBIDDEN", message: "SHL has expired" });
-      if (shl.maxAccessCount && shl.currentAccessCount >= shl.maxAccessCount) throw new TRPCError({ code: "FORBIDDEN", message: "SHL access limit reached" });
-      await db.incrementShlAccessCount(input.shlId);
-      await db.createShlAccessLog({ shlId: input.shlId, accessorName: input.accessorName, accessorOrg: input.accessorOrg, accessorCountry: input.accessorCountry, ipAddress: ctx.req?.ip });
-      return { scope: shl.scope, manifestHash: shl.manifestHash };
+      return resolveShlManifestAccess(ctx, shl, {
+        recipient: input.recipient ?? input.accessorOrg ?? input.accessorName ?? "Unknown recipient",
+        passcode: input.passcode,
+        accessorName: input.accessorName,
+        accessorOrg: input.accessorOrg,
+        accessorCountry: input.accessorCountry,
+      });
     }),
   }),
 
@@ -2191,6 +2322,23 @@ async function issueCredentialFromRequest(input: {
       credentialId,
       now: issuedAt,
     });
+  } else if (request.type === "shl_manifest" && documentData.manifestClaims) {
+    credential = await issueCredential({
+      type: "ShlManifestCredential",
+      issuer,
+      subjectId: String(request.subjectId),
+      subjectDid: holderDid,
+      claims: documentData.manifestClaims,
+      evidence: [
+        { type: "MakerCheckerRequest", digest: sha256(request), resourceId: request.requestId },
+        { type: "SHLManifestHash", digest: documentData.manifestHash, resourceId: documentData.manifestUrl },
+        { type: "FHIRBundleHash", digest: documentData.sourceBundleHash },
+      ],
+      validDays: validityDaysForCredentialType("shl_manifest"),
+      audience: input.audience ?? documentData.manifestUrl,
+      credentialId,
+      now: issuedAt,
+    });
   } else {
     credential = await issueCredential({
       type: trustcareVcTypeForDbType(request.type),
@@ -2290,6 +2438,73 @@ async function issueCredentialFromRequest(input: {
     issuedCredentialId: credential.id,
     issuedCredentialRowId: rowId,
   } as any);
+  if (request.type === "shl_manifest" && documentData.smartHealthLinkId) {
+    const shl = await db.getShlById(Number(documentData.smartHealthLinkId));
+    if (shl) {
+      const selectedCredentialIds = Array.isArray(documentData.selectedCredentialIds) ? documentData.selectedCredentialIds : [];
+      const selectedCredentialRows = (await db.listIssuedCredentials({ subjectId: request.subjectId, status: "active" }))
+        .filter((row: any) => row.credentialId !== credential.id)
+        .filter((row: any) => !selectedCredentialIds.length || selectedCredentialIds.includes(row.credentialId) || selectedCredentialIds.includes(String(row.id)))
+        .slice(0, 12);
+      const context = String(documentData.manifestClaims?.context ?? shl.context ?? "self_share") as PortabilityContextValue;
+      const presentation = await createPresentation({
+        holderDid,
+        credentials: [credential, ...selectedCredentialRows.filter((row: any) => row.sdJwtVc).map(issuedCredentialRowToIssuedVc)],
+        purpose: purposeForContext(context),
+        audience: documentData.manifestUrl ?? input.audience,
+        validMinutes: 24 * 60,
+      });
+      await db.createIssuedPresentation({
+        presentationId: presentation.id,
+        patientId: request.subjectId,
+        holderDid,
+        context,
+        purpose: presentation.purpose,
+        audience: documentData.manifestUrl ?? input.audience,
+        presentationJwt: presentation.jwt,
+        credentialIds: presentation.credentialIds,
+        credentialRowIds: [rowId, ...selectedCredentialRows.map((row: any) => row.id)],
+        verifier: "smart-health-link-viewer",
+        status: "active",
+        expiresAt: new Date(presentation.expiresAt),
+        metadata: {
+          shlId: shl.id,
+          manifestHash: documentData.manifestHash,
+          sourceBundleHash: documentData.sourceBundleHash,
+          checkerIssued: true,
+        },
+      } as any);
+      await db.updateSmartHealthLink(shl.id, {
+        status: "active",
+        manifestCredentialId: credential.id,
+        presentationId: presentation.id,
+      } as any);
+      await db.supersedeShlManifestVersions(shl.id);
+      await db.createShlManifestVersion({
+        shlId: shl.id,
+        manifestVersion: shl.currentManifestVersion ?? 1,
+        contextHash: shl.contextHash ?? sha256(documentData.manifestClaims ?? shl),
+        scopeHash: sha256(documentData.manifestClaims?.requestedScopes ?? shl.scope ?? []),
+        sourceBundleHash: documentData.sourceBundleHash,
+        manifestHash: documentData.manifestHash ?? shl.manifestHash,
+        manifestCredentialId: credential.id,
+        presentationId: presentation.id,
+        status: "current",
+        changeReason: "Checker approved SHL manifest",
+        createdBy: input.checkerId,
+        metadata: { requestId: request.requestId, checkerId: input.checkerId },
+      } as any);
+      await db.createAuditEvent({
+        actorId: input.checkerId,
+        actorRole: input.checkerRole,
+        hospitalId: request.issuerHospitalId,
+        action: "shl.activated_after_checker_approval",
+        resourceType: "smart_health_link",
+        resourceId: String(shl.id),
+        details: { manifestCredentialId: credential.id, presentationId: presentation.id },
+      });
+    }
+  }
   await db.createAuditEvent({
     actorId: input.checkerId,
     actorRole: input.checkerRole,
@@ -2448,6 +2663,556 @@ function defaultIssuerProfile() {
 
 function defaultHolderDid(userId: number) {
   return patientDidKey(`trustcare-patient-${userId}`);
+}
+
+type ShlPurpose = (typeof shlPurposeValues)[number];
+type PortabilityContextValue = (typeof portabilityContextValues)[number];
+
+async function shlActorAccess(ctx: any) {
+  const user = ctx.user as any;
+  const additionalRoles = sanitizeAdditionalRolesForSystemRole(
+    user.systemRole,
+    (await db.getUserAdditionalRoles(user.id)).map((role: any) => role.role),
+  );
+  const activeRole = normalizeActiveRole(user.systemRole, ctx.req.cookies?.["trustcare_active_role"], additionalRoles);
+  return {
+    additionalRoles,
+    activeRole,
+    hospitalScoped: activeRole !== "system_admin" && Boolean(user.hospitalId),
+  };
+}
+
+async function assertCanViewShl(ctx: any, shl: any) {
+  const access = await shlActorAccess(ctx);
+  if (access.activeRole === "patient") {
+    if (Number(shl.patientId) !== Number(ctx.user.id)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Patients can view only their own Smart Health Links." });
+    }
+    return;
+  }
+  if (access.activeRole === "system_admin") return;
+  if (access.hospitalScoped && Number(shl.hospitalId) === Number((ctx.user as any).hospitalId)) return;
+  throw new TRPCError({ code: "FORBIDDEN", message: "Smart Health Link is outside your hospital scope." });
+}
+
+async function assertCanManageShl(ctx: any, shl: any) {
+  const access = await shlActorAccess(ctx);
+  if (access.activeRole === "patient") {
+    if (Number(shl.patientId) === Number(ctx.user.id)) return;
+    throw new TRPCError({ code: "FORBIDDEN", message: "Patients can manage only their own Smart Health Links." });
+  }
+  if (access.activeRole === "system_admin") return;
+  if (access.hospitalScoped && Number(shl.hospitalId) === Number((ctx.user as any).hospitalId)) return;
+  throw new TRPCError({ code: "FORBIDDEN", message: "Smart Health Link is outside your hospital scope." });
+}
+
+function contextForShlPurpose(purpose: ShlPurpose): PortabilityContextValue {
+  const map: Record<ShlPurpose, PortabilityContextValue> = {
+    referral: "cross_branch_referral",
+    patient_summary: "treatment",
+    discharge: "treatment",
+    cross_border: "cross_border",
+    medical_tourist: "medical_tourist",
+    insurance: "e_claim",
+    self_share: "self_share",
+  };
+  return map[purpose];
+}
+
+function defaultShlPolicy(purpose: ShlPurpose) {
+  const map: Record<ShlPurpose, { expiresInDays: number; maxAccessCount: number; passcodeRequired: boolean }> = {
+    referral: { expiresInDays: 14, maxAccessCount: 5, passcodeRequired: true },
+    patient_summary: { expiresInDays: 14, maxAccessCount: 10, passcodeRequired: true },
+    discharge: { expiresInDays: 30, maxAccessCount: 8, passcodeRequired: true },
+    cross_border: { expiresInDays: 30, maxAccessCount: 5, passcodeRequired: true },
+    medical_tourist: { expiresInDays: 45, maxAccessCount: 8, passcodeRequired: true },
+    insurance: { expiresInDays: 30, maxAccessCount: 4, passcodeRequired: true },
+    self_share: { expiresInDays: 7, maxAccessCount: 3, passcodeRequired: true },
+  };
+  return map[purpose];
+}
+
+function appBaseUrl(req: any) {
+  const configured = process.env.TRUSTCARE_PUBLIC_BASE_URL;
+  if (configured) return configured.replace(/\/$/, "");
+  const proto = req.headers["x-forwarded-proto"] ?? req.protocol ?? "http";
+  const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost:3000";
+  return `${proto}://${host}`.replace(/\/$/, "");
+}
+
+function shlManifestUrl(req: any, manifestToken: string) {
+  return `${appBaseUrl(req)}/api/shl/manifest/${manifestToken}`;
+}
+
+function shlViewerBaseUrl(req: any) {
+  return `${appBaseUrl(req)}/shl-viewer`;
+}
+
+function issuerProfileForHospital(hospital: any) {
+  return {
+    id: String(hospital?.id ?? defaultIssuerProfile().id),
+    name: String(hospital?.nameEn ?? hospital?.name ?? defaultIssuerProfile().name),
+    did: String(hospital?.did ?? (hospital?.code ? hospitalDidWeb(hospital.code) : defaultIssuerProfile().did)),
+    country: "TH",
+    trustDomain: "trustcare-network",
+  };
+}
+
+function issuedCredentialRowToIssuedVc(row: any) {
+  return {
+    id: row.credentialId,
+    type: trustcareVcTypeForDbType(row.type),
+    format: "jwt-vc" as const,
+    jwt: row.sdJwtVc ?? "",
+    credential: row.credentialData ?? {},
+    digest: sha256(row.sdJwtVc ?? row.credentialData ?? row.credentialId),
+    expiresAt: row.expiresAt ? new Date(row.expiresAt).toISOString() : undefined,
+  };
+}
+
+async function buildCanonicalPayloadForShl(input: {
+  patient: any;
+  hospital: any;
+  purpose: ShlPurpose;
+  context: PortabilityContextValue;
+  credentials: any[];
+  fhirBundle?: any;
+  simulatorScenario?: string;
+}) {
+  if (input.fhirBundle?.resourceType) {
+    return canonicalizeHisPayload({
+      sourceFormat: "fhir_native",
+      payload: input.fhirBundle,
+      sourceSystem: `${input.hospital?.code ?? "TRUSTCARE"}-FHIR`,
+      sourceOrganizationId: String(input.hospital?.code ?? input.hospital?.id ?? "TRUSTCARE"),
+      sourceOrganizationName: String(input.hospital?.nameEn ?? input.hospital?.name ?? "Trustcare Hospital Network"),
+      mapperVersion: "trustcare-shl-fhir-native-v1",
+    });
+  }
+  const payload = buildSimulatedHisPayload({
+    patient: input.patient,
+    hospital: input.hospital,
+    purpose: input.purpose,
+    context: input.context,
+    credentials: input.credentials,
+  });
+  const scenario = input.simulatorScenario ?? scenarioForShlPurpose(input.purpose, input.context);
+  return canonicalizeHisPayload({
+    sourceFormat: "db_view",
+    payload: {
+      ...payload,
+      sourceMetadata: { ...(payload.sourceMetadata as any), selectedScenario: scenario },
+    },
+    sourceSystem: `${input.hospital?.code ?? "TRUSTCARE"}-SHL-SIM`,
+    sourceOrganizationId: String(input.hospital?.code ?? input.hospital?.id ?? "TRUSTCARE"),
+    sourceOrganizationName: String(input.hospital?.nameEn ?? input.hospital?.name ?? "Trustcare Hospital Network"),
+    mapperVersion: `trustcare-shl-realistic-simulator-${scenario}-v1`,
+  });
+}
+
+async function createShlTrustArtifacts(input: {
+  shl: any;
+  patient: any;
+  hospital: any;
+  issuerUserId: number;
+  issuerRole: string;
+  holderDid: string;
+  manifestClaims: any;
+  manifestHash: string;
+  sourceBundleHash: string;
+  context: PortabilityContextValue;
+  manifestUrl: string;
+  selectedCredentialRows: any[];
+  issuedAt?: Date;
+}) {
+  const issuedAt = input.issuedAt ?? new Date();
+  const issuer = issuerProfileForHospital(input.hospital);
+  const credential = await issueCredential({
+    type: "ShlManifestCredential",
+    issuer,
+    subjectId: String(input.patient.id),
+    subjectDid: input.holderDid,
+    claims: input.manifestClaims,
+    evidence: [
+      { type: "SHLManifestHash", digest: input.manifestHash, resourceId: input.manifestUrl },
+      { type: "FHIRBundleHash", digest: input.sourceBundleHash },
+      { type: "SHLContextHash", digest: input.shl.contextHash },
+    ],
+    validDays: validityDaysForCredentialType("shl_manifest"),
+    audience: input.manifestUrl,
+    credentialId: `urn:trustcare:vc:shl:${sha256({ shlId: input.shl.id, manifestHash: input.manifestHash }).slice(0, 32)}`,
+    now: issuedAt,
+  });
+  const templateId = await resolveTemplateForRequest({
+    issuerHospitalId: input.hospital.id,
+    type: "shl_manifest",
+  } as any);
+  const storage = documentStorageMetadata({
+    documentType: "shl_manifest",
+    hospitalCode: input.hospital?.code ?? String(input.hospital?.id ?? "trustcare"),
+    patientKey: String(input.patient.id),
+    credentialId: credential.id,
+  });
+  const rowId = await db.createIssuedCredential({
+    credentialId: credential.id,
+    templateId,
+    issuerId: input.issuerUserId,
+    issuerHospitalId: input.hospital.id,
+    subjectId: input.patient.id,
+    type: "shl_manifest",
+    status: "active",
+    credentialData: credential.credential,
+    sdJwtVc: credential.jwt,
+    documentCategory: storage.category,
+    documentSubcategory: storage.subcategory,
+    storageKey: storage.storagePath,
+    searchTags: storage.indexTags,
+    issuedAt,
+    expiresAt: credential.expiresAt ? new Date(credential.expiresAt) : undefined,
+    fhirResourceId: `DocumentReference/shl-${input.shl.id}`,
+    schemaVersion: "1.0.0",
+  } as any);
+  await db.createWalletCard({
+    patientId: input.patient.id,
+    credentialId: rowId!,
+    cardType: "shl_manifest" as any,
+    displayName: "SHL Manifest",
+    displayNameEn: "Smart Health Link Manifest",
+    issuerHospitalName: issuer.name,
+    documentCategory: storage.category,
+  });
+  const outboundCredentials = [
+    credential,
+    ...input.selectedCredentialRows
+      .filter((row) => row.sdJwtVc && row.credentialId !== credential.id)
+      .map(issuedCredentialRowToIssuedVc),
+  ];
+  const presentation = await createPresentation({
+    holderDid: input.holderDid,
+    credentials: outboundCredentials,
+    purpose: purposeForContext(input.context),
+    audience: input.manifestUrl,
+    validMinutes: 24 * 60,
+  });
+  await db.createIssuedPresentation({
+    presentationId: presentation.id,
+    patientId: input.patient.id,
+    holderDid: input.holderDid,
+    context: input.context,
+    purpose: presentation.purpose,
+    audience: input.manifestUrl,
+    presentationJwt: presentation.jwt,
+    credentialIds: presentation.credentialIds,
+    credentialRowIds: [rowId, ...input.selectedCredentialRows.map((row) => row.id)],
+    verifier: "smart-health-link-viewer",
+    status: "active",
+    expiresAt: new Date(presentation.expiresAt),
+    metadata: {
+      shlId: input.shl.id,
+      manifestHash: input.manifestHash,
+      sourceBundleHash: input.sourceBundleHash,
+      trustLayer: "vc-vp-around-shl",
+    },
+  } as any);
+  return { credential, credentialRowId: rowId, presentation };
+}
+
+async function createSmartHealthLinkPackage(ctx: any, input: {
+  patientId?: number;
+  hospitalId?: number;
+  purpose: ShlPurpose;
+  context?: PortabilityContextValue;
+  label?: string;
+  scope?: any;
+  recipientPolicy?: any;
+  credentialIds?: string[];
+  fhirBundle?: any;
+  simulatorScenario?: string;
+  consentCredentialId?: string;
+  passcodeRequired?: boolean;
+  passcode?: string;
+  maxAccessCount?: number;
+  expiresInDays?: number;
+  longTerm?: boolean;
+  forceCheckerReview?: boolean;
+}) {
+  const access = await shlActorAccess(ctx);
+  const purpose = input.purpose;
+  const context = input.context ?? contextForShlPurpose(purpose);
+  const policy = defaultShlPolicy(purpose);
+  const patientId = access.activeRole === "patient" ? ctx.user.id : input.patientId;
+  if (!patientId) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "patientId is required for staff-created Smart Health Links." });
+  }
+  if (access.activeRole === "patient" && !["self_share", "patient_summary"].includes(purpose)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Patients can create only self-share or patient summary Smart Health Links." });
+  }
+  if (access.activeRole !== "patient") {
+    requireMaker(ctx.user, "shl_manifest");
+  }
+
+  const patient = await db.getUserById(patientId);
+  if (!patient) throw new TRPCError({ code: "NOT_FOUND", message: "Patient not found" });
+  const hospitalId = input.hospitalId ?? (ctx.user as any).hospitalId ?? patient.hospitalId ?? 1;
+  const hospital = await db.getHospitalById(hospitalId);
+  if (!hospital) throw new TRPCError({ code: "NOT_FOUND", message: "Hospital not found" });
+  if (access.hospitalScoped && Number((ctx.user as any).hospitalId) !== Number(hospitalId)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Cannot create SHL outside your hospital scope." });
+  }
+
+  const selectedCredentialRows = (await db.listIssuedCredentials({ subjectId: patientId, status: "active" }))
+    .filter((row: any) => !input.credentialIds?.length || input.credentialIds.includes(row.credentialId) || input.credentialIds.includes(String(row.id)))
+    .slice(0, 12);
+  const canonical = await buildCanonicalPayloadForShl({
+    patient,
+    hospital,
+    purpose,
+    context,
+    credentials: selectedCredentialRows,
+    fhirBundle: input.fhirBundle,
+    simulatorScenario: input.simulatorScenario,
+  });
+  const requestedScopes = Array.isArray(input.scope) ? input.scope : defaultScopesForContext(context);
+  const sourceBundleHash = canonical.summary.bundleHash;
+  const expiresAt = new Date(Date.now() + (input.expiresInDays ?? policy.expiresInDays) * 86_400_000);
+  const passcodeRequired = input.passcodeRequired ?? policy.passcodeRequired;
+  const passcode = passcodeRequired ? (input.passcode ?? generateNumericPasscode()) : undefined;
+  const hashedPasscode = passcode ? hashPasscode(passcode) : undefined;
+  const manifestToken = randomBase64UrlBytes(32);
+  const encryptionKey = randomBase64UrlBytes(32);
+  const manifestUrl = shlManifestUrl(ctx.req, manifestToken);
+  const link = buildShlinkPayload({
+    manifestUrl,
+    key: encryptionKey,
+    expiresAt,
+    passcodeRequired,
+    longTerm: input.longTerm ?? false,
+    singleFile: false,
+    label: input.label ?? `Trustcare ${purpose.replace(/_/g, " ")}`,
+    viewerBaseUrl: shlViewerBaseUrl(ctx.req),
+  });
+  const encrypted = await encryptShlFile({
+    key: encryptionKey,
+    contentType: "application/fhir+json",
+    payload: canonical.bundle,
+  });
+  const manifestFiles = [{
+    fileId: `fhir-bundle-${sourceBundleHash.slice(0, 16)}`,
+    contentType: "application/fhir+json" as const,
+    embeddedJwe: encrypted.jwe,
+    contentHash: encrypted.contentHash,
+    plaintextHash: encrypted.plaintextHash,
+    version: 1,
+  }];
+  const manifestHash = manifestFileDigest(manifestFiles);
+  const contextHash = sha256({
+    purpose,
+    context,
+    requestedScopes,
+    sourceBundleHash,
+    manifestHash,
+    recipientPolicy: input.recipientPolicy,
+    consentCredentialId: input.consentCredentialId,
+    expiresAt: expiresAt.toISOString(),
+    maxAccessCount: input.maxAccessCount ?? policy.maxAccessCount,
+  });
+  const directIssue = access.activeRole === "patient" || ["system_admin", "hospital_admin"].includes(access.activeRole);
+  const status = directIssue && !input.forceCheckerReview ? "active" : "pending_review";
+  const shlId = await db.createSmartHealthLink({
+    patientId,
+    issuedBy: ctx.user.id,
+    hospitalId,
+    purpose,
+    context,
+    label: input.label ?? `Trustcare ${purpose.replace(/_/g, " ")}`,
+    scope: requestedScopes,
+    manifestHash,
+    manifestToken,
+    manifestUrl,
+    encryptionKey: `sha256:${sha256(encryptionKey)}`,
+    shlUrl: link.qrPayload,
+    qrPayload: link.qrPayload,
+    viewerUrl: link.viewerUrl,
+    status: status as any,
+    maxAccessCount: input.maxAccessCount ?? policy.maxAccessCount,
+    passcodeRequired,
+    passcodeSalt: hashedPasscode?.salt,
+    passcodeHash: hashedPasscode?.hash,
+    passcodeMaxAttempts: 5,
+    longTerm: input.longTerm ?? false,
+    singleFile: false,
+    recipientPolicy: input.recipientPolicy ?? { allowedRecipientTypes: recipientTypesForPurpose(purpose) },
+    consentCredentialId: input.consentCredentialId,
+    sourceBundleHash,
+    policyDecision: { mode: access.activeRole === "patient" ? "holder_self_share" : "maker_checker", scopes: requestedScopes },
+    currentManifestVersion: 1,
+    contextHash,
+    autoUpdatePolicy: "manual_review",
+    expiresAt,
+  } as any);
+  await db.createShlFile({
+    shlId: shlId!,
+    manifestVersion: 1,
+    fileId: manifestFiles[0].fileId,
+    version: 1,
+    contentType: "application/fhir+json",
+    embeddedJwe: encrypted.jwe,
+    contentHash: encrypted.contentHash,
+    plaintextHash: encrypted.plaintextHash,
+    encryptedSizeBytes: encrypted.encryptedSizeBytes,
+    metadata: { sourceBundleHash, scenario: input.simulatorScenario ?? scenarioForShlPurpose(purpose, context), resourceCounts: canonical.summary.resourceCounts },
+  } as any);
+  const manifestClaims = {
+    smartHealthLinkId: shlId,
+    manifestUrl,
+    manifestHash,
+    sourceBundleHash,
+    purpose,
+    context,
+    requestedScopes,
+    patient: { id: patient.id, name: patient.name },
+    hospital: { id: hospital.id, code: hospital.code, name: hospital.name, did: hospital.did ?? hospitalDidWeb(hospital.code) },
+    transport: { scheme: "shlink", encrypted: true, passcodeRequired, contentTypes: ["application/fhir+json"] },
+    limits: { maxAccessCount: input.maxAccessCount ?? policy.maxAccessCount, expiresAt: expiresAt.toISOString() },
+    canonicalSummary: canonical.summary,
+  };
+  const shl = await db.getShlById(shlId!);
+  let trustArtifacts: Awaited<ReturnType<typeof createShlTrustArtifacts>> | undefined;
+  if (status === "active" && shl) {
+    trustArtifacts = await createShlTrustArtifacts({
+      shl: { ...shl, contextHash },
+      patient,
+      hospital,
+      issuerUserId: ctx.user.id,
+      issuerRole: (ctx.user as any).systemRole ?? ctx.user.role,
+      holderDid: defaultHolderDid(patientId),
+      manifestClaims,
+      manifestHash,
+      sourceBundleHash,
+      context,
+      manifestUrl,
+      selectedCredentialRows,
+    });
+    await db.updateSmartHealthLink(shlId!, {
+      manifestCredentialId: trustArtifacts.credential.id,
+      presentationId: trustArtifacts.presentation.id,
+      status: "active",
+    } as any);
+  } else {
+    const request = await submitMakerCredentialRequest({
+      maker: ctx.user,
+      issuerHospitalId: hospitalId,
+      subjectId: patientId,
+      type: "shl_manifest",
+      holderDid: defaultHolderDid(patientId),
+      issuerDid: hospital.did ?? hospitalDidWeb(hospital.code),
+      documentData: {
+        smartHealthLinkId: shlId,
+        manifestVersion: 1,
+        manifestClaims,
+        manifestUrl,
+        manifestHash,
+        sourceBundleHash,
+        selectedCredentialIds: selectedCredentialRows.map((row: any) => row.credentialId),
+        patient: { id: patient.id, name: patient.name },
+        organization: { id: hospital.id, name: hospital.name, code: hospital.code },
+        fhir: { bundle: canonical.bundle, summary: canonical.summary, issues: canonical.issues },
+      },
+      canonicalReview: {
+        status: "pending_checker_review",
+        requiredBeforeIssue: true,
+        issues: canonical.issues,
+        sourceBundleHash,
+      },
+    });
+    await db.createAuditEvent({
+      actorId: ctx.user.id,
+      actorRole: (ctx.user as any).systemRole,
+      hospitalId,
+      action: "shl.checker_review_requested",
+      resourceType: "smart_health_link",
+      resourceId: String(shlId),
+      details: { requestId: request.requestId, purpose, context },
+    });
+  }
+  await db.createShlManifestVersion({
+    shlId: shlId!,
+    manifestVersion: 1,
+    contextHash,
+    scopeHash: sha256(requestedScopes),
+    sourceBundleHash,
+    manifestHash,
+    manifestCredentialId: trustArtifacts?.credential.id,
+    presentationId: trustArtifacts?.presentation.id,
+    status: "current",
+    createdBy: ctx.user.id,
+    metadata: { purpose, context, scenario: input.simulatorScenario ?? scenarioForShlPurpose(purpose, context), status },
+  } as any);
+  await db.createAuditEvent({
+    actorId: ctx.user.id,
+    actorRole: (ctx.user as any).systemRole,
+    hospitalId,
+    action: "shl.created",
+    resourceType: "smart_health_link",
+    resourceId: String(shlId),
+    details: { purpose, context, status, manifestHash, sourceBundleHash, vcId: trustArtifacts?.credential.id, vpId: trustArtifacts?.presentation.id },
+  });
+  return {
+    id: shlId,
+    status,
+    nextStep: status === "pending_review" ? "checker_review_required" : "ready_to_share",
+    shlUrl: link.qrPayload,
+    qrPayload: link.qrPayload,
+    viewerUrl: link.viewerUrl,
+    manifestUrl,
+    manifestToken,
+    passcode,
+    passcodeRequired,
+    expiresAt: expiresAt.toISOString(),
+    maxAccessCount: input.maxAccessCount ?? policy.maxAccessCount,
+    manifestHash,
+    sourceBundleHash,
+    manifestCredentialId: trustArtifacts?.credential.id,
+    presentationId: trustArtifacts?.presentation.id,
+    fhirSummary: canonical.summary,
+    simulatorScenario: input.simulatorScenario ?? scenarioForShlPurpose(purpose, context),
+  };
+}
+
+function recipientTypesForPurpose(purpose: ShlPurpose) {
+  if (purpose === "insurance") return ["payer", "claim_processor"];
+  if (purpose === "medical_tourist" || purpose === "cross_border") return ["foreign_hospital", "international_patient_center"];
+  if (purpose === "referral") return ["receiving_hospital", "clinician"];
+  if (purpose === "self_share") return ["patient_selected_recipient"];
+  return ["clinician", "hospital"];
+}
+
+async function resolveShlManifestAccess(ctx: any, shl: any, input: {
+  recipient: string;
+  passcode?: string;
+  embeddedLengthMax?: number;
+  accessorName?: string;
+  accessorOrg?: string;
+  accessorCountry?: string;
+}) {
+  try {
+    return await resolveShlManifestAccessPacket({
+      shl,
+      recipient: input.recipient,
+      passcode: input.passcode,
+      embeddedLengthMax: input.embeddedLengthMax,
+      accessorName: input.accessorName,
+      accessorOrg: input.accessorOrg,
+      accessorCountry: input.accessorCountry,
+      userAgent: ctx.req.headers["user-agent"],
+      ipAddress: ctx.req.ip,
+    });
+  } catch (error) {
+    if (error instanceof ShlAccessError) {
+      throw new TRPCError({ code: error.trpcCode, message: error.message });
+    }
+    throw error;
+  }
 }
 
 function evaluateAdapterHealth(adapter: {

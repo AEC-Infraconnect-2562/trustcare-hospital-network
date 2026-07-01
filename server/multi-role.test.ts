@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 // Test the menu visibility logic with multi-role support
 // ============================================================
 
-type SystemRole = "system_admin" | "hospital_admin" | "doctor" | "nurse" | "integration_engineer" | "patient";
+type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
 
 interface MenuItemDef {
   id: string;

@@ -16,6 +16,27 @@ export const DEMO_USERS = [
   { openId: "demo-patient-003", name: "นายวิชัย ใส่ใจสุขภาพ", email: "wichai@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalId: null, thaiId: "1100500345678", phone: "089-345-6789" },
 ];
 
+function demoCredentialEntitlements(openId: string, systemRole: string) {
+  if (systemRole === "patient") return { makerTypes: [], checkerTypes: [] };
+  if (systemRole === "system_admin" || systemRole === "hospital_admin") return { makerTypes: ["*"], checkerTypes: ["*"] };
+  if (openId.includes("nurse")) {
+    return {
+      makerTypes: ["patient_identity", "consent_receipt", "patient_summary", "medical_certificate", "prescription", "referral_vc", "discharge_summary", "shl_manifest"],
+      checkerTypes: [],
+    };
+  }
+  if (openId.includes("doctor")) {
+    return {
+      makerTypes: ["patient_summary", "medical_certificate", "prescription", "referral_vc", "shl_manifest"],
+      checkerTypes: ["patient_summary", "medical_certificate", "prescription", "referral_vc", "discharge_summary", "lab_result", "diagnostic_report", "shl_manifest"],
+    };
+  }
+  if (systemRole === "integration_engineer") {
+    return { makerTypes: ["sync_receipt", "shl_manifest"], checkerTypes: [] };
+  }
+  return { makerTypes: [], checkerTypes: [] };
+}
+
 // Demo hospitals
 const DEMO_HOSPITALS = [
   { id: 1, name: "โรงพยาบาล Trustcare กรุงเทพฯ", code: "TC-BKK", province: "กรุงเทพมหานคร", address: "123 ถ.สุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110", phone: "02-123-4567", email: "info@bkk.trustcare.th", status: "active" as const },
@@ -66,6 +87,7 @@ export async function seedDatabase() {
       hospitalId: u.hospitalId,
       thaiId: u.thaiId,
       phone: u.phone,
+      credentialEntitlements: demoCredentialEntitlements(u.openId, u.systemRole),
       loginMethod: "demo",
       isActive: true,
       lastSignedIn: new Date(),
@@ -78,6 +100,7 @@ export async function seedDatabase() {
         hospitalId: u.hospitalId,
         thaiId: u.thaiId,
         phone: u.phone,
+        credentialEntitlements: demoCredentialEntitlements(u.openId, u.systemRole),
         isActive: true,
       },
     });

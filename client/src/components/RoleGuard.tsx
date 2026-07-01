@@ -9,7 +9,7 @@ import { normalizeActiveRole, sanitizeAdditionalRolesForSystemRole } from "@shar
 // ─── Route Access Configuration ────────────────────────────────────────────
 // Maps each protected route to the roles that can access it.
 // This mirrors the allMenuItems in DashboardLayout.tsx.
-type SystemRole = "system_admin" | "hospital_admin" | "doctor" | "nurse" | "integration_engineer" | "patient";
+type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
 
 interface RouteAccess {
   path: string;
@@ -20,12 +20,12 @@ interface RouteAccess {
 
 const routeAccessConfig: RouteAccess[] = [
   // Overview
-  { path: "/dashboard", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient"] },
+  { path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"] },
   { path: "/executive", roles: ["system_admin", "hospital_admin"] },
   // Patient Services
   { path: "/wallet", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"] },
   { path: "/consent", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"] },
-  { path: "/shl", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"] },
+  { path: "/shl", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
   // Clinical Services
   { path: "/referral", roles: ["system_admin", "hospital_admin", "doctor", "nurse"] },
   { path: "/cross-border", roles: ["system_admin", "hospital_admin", "doctor"] },
@@ -40,7 +40,7 @@ const routeAccessConfig: RouteAccess[] = [
   { path: "/claim-center", roles: ["system_admin", "hospital_admin", "doctor", "nurse"] },
   // Interoperability
   { path: "/integration", roles: ["system_admin", "hospital_admin", "integration_engineer"] },
-  { path: "/portability", roles: ["system_admin", "hospital_admin", "doctor", "integration_engineer"] },
+  { path: "/portability", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "integration_engineer"] },
   { path: "/fhir-mapping", roles: ["system_admin", "hospital_admin", "integration_engineer"] },
   { path: "/terminology", roles: ["system_admin", "hospital_admin", "integration_engineer"] },
   // Administration
@@ -89,7 +89,7 @@ export default function RoleGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading || !user) return;
     // Skip guard for public routes
-    if (location === "/" || location === "/404") {
+    if (location === "/" || location === "/404" || location === "/shl-viewer") {
       setDenied(false);
       return;
     }

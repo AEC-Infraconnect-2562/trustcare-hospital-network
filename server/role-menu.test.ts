@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 // We test the menu filtering logic directly by replicating the DashboardLayout logic
-type SystemRole = "system_admin" | "hospital_admin" | "doctor" | "nurse" | "integration_engineer" | "patient";
+type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
 
 interface MenuItemDef {
   id: string;

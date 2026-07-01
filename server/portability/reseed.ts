@@ -9,6 +9,9 @@ import {
   issuedPresentations,
   mappingVersions,
   patientIdentifiers,
+  shlFiles,
+  shlManifestVersions,
+  smartHealthLinks,
   trustRegistry,
   userRoles,
   users,
@@ -21,6 +24,8 @@ import { hospitalDidWeb, patientDidKey } from "./did";
 import { canonicalizeHisPayload } from "./fhir";
 import { DOCUMENT_TYPE_LABELS, documentStorageMetadata, standardLabelCatalog, THAI_GOVERNMENT_DOCUMENT_FONT_POLICY } from "./labels";
 import { purposeForContext } from "./policy";
+import { buildManifestResponse, buildShlinkPayload, encryptShlFile, generateNumericPasscode, hashPasscode, manifestFileDigest, randomBase64UrlBytes } from "./shl";
+import { buildSimulatedHisPayload, scenarioForShlPurpose } from "./shlSimulator";
 import { createSyncBackPlan, executeSyncBackPlan, RECOMMENDED_SYNC_TARGETS } from "./syncBack";
 import type { ConsentPurpose, IssuedVc, IssuerProfile, JsonRecord, PortabilityContext, TrustcareCredentialType } from "./types";
 import { consentReceiptClaims, createPresentation, issueCredential, medicalCertificateClaims, patientSummaryClaims, prescriptionClaims } from "./vc";
@@ -72,6 +77,11 @@ export async function reseedTrustcareVcVpDatabase(input: {
     } as any).where(like(issuedCredentials.credentialId, `${SEED_PREFIX}:vc:%`));
     await db.update(issuedPresentations).set({ status: "revoked" } as any)
       .where(like(issuedPresentations.presentationId, `${SEED_PREFIX}:vp:%`));
+    await db.update(smartHealthLinks).set({
+      status: "revoked",
+      revokedAt: new Date(),
+      disabledReason: `Superseded by reseed batch ${batchId}`,
+    } as any).where(like(smartHealthLinks.manifestToken, `${SEED_PREFIX}:shl:%`));
   }
 
   const hospitalRows = new Map<string, number>();
@@ -90,6 +100,7 @@ export async function reseedTrustcareVcVpDatabase(input: {
       systemRole: "hospital_admin",
       role: "admin",
       hospitalId,
+      credentialEntitlements: { makerTypes: ["*"], checkerTypes: ["*"] },
     });
     issuerRows.set(String(hospital.code), issuerId);
     await seedStaffForHospital(hospital, hospitalId);
@@ -191,6 +202,16 @@ export async function reseedTrustcareVcVpDatabase(input: {
     presentations.push({ id: presentation.id, holderDid: presentation.holderDid, credentialCount: selected.length, scenario: scenario.id });
   }
 
+  const shlPackages = await seedSmartHealthLinkPackages({
+    seed,
+    batchId,
+    patientRows,
+    hospitalRows,
+    issuerRows,
+    templateRows,
+    credentialRows,
+  });
+
   await db.update(vcVpSeedBatches).set({
     status: "completed",
     completedAt: new Date(),
@@ -202,6 +223,7 @@ export async function reseedTrustcareVcVpDatabase(input: {
         patients: patientRows.size,
         credentials: credentialRows.size,
         presentations: presentations.length,
+        smartHealthLinks: shlPackages.length,
       },
       batchId,
       standardLabels: standardLabelCatalog(),
@@ -221,6 +243,7 @@ export async function reseedTrustcareVcVpDatabase(input: {
       inputHash,
       credentials: credentialRows.size,
       presentations: presentations.length,
+      smartHealthLinks: shlPackages.length,
       resetExistingSeed: input.resetExistingSeed ?? true,
     },
   } as any);
@@ -236,13 +259,258 @@ export async function reseedTrustcareVcVpDatabase(input: {
       credentials: credentialRows.size,
       walletCards: credentialRows.size,
       presentations: presentations.length,
+      smartHealthLinks: shlPackages.length,
     },
     sample: {
       hospitalDid: hospitalDidWeb("TCC"),
       patientDid: patientDidKey("TCC:P001:CP-TH-2026-000001"),
       presentationId: presentations[0]?.id,
+      smartHealthLinkId: shlPackages[0]?.id,
     },
   };
+}
+
+async function seedSmartHealthLinkPackages(input: {
+  seed: JsonRecord;
+  batchId: string;
+  patientRows: Map<string, number>;
+  hospitalRows: Map<string, number>;
+  issuerRows: Map<string, number>;
+  templateRows: Map<string, number>;
+  credentialRows: Map<string, { rowId: number; vc: IssuedVc; document: JsonRecord; patient: JsonRecord }>;
+}) {
+  const db = (await getDb())!;
+  const created: JsonRecord[] = [];
+  for (const scenario of input.seed.vpScenarios as JsonRecord[]) {
+    const patient = (input.seed.patients as JsonRecord[]).find((item) => item.holderDid === scenario.holderDid);
+    if (!patient) continue;
+    const hospital = (input.seed.hospitals as JsonRecord[]).find((item) => item.code === patient.hospitalCode);
+    if (!hospital) continue;
+    const selected = ((scenario.credentialRefs as string[]) ?? [])
+      .map((id) => input.credentialRows.get(id))
+      .filter((item): item is { rowId: number; vc: IssuedVc; document: JsonRecord; patient: JsonRecord } => Boolean(item));
+    if (selected.length === 0) continue;
+
+    const hospitalId = input.hospitalRows.get(String(patient.hospitalCode))!;
+    const patientId = input.patientRows.get(patientKey(patient))!;
+    const issuerId = input.issuerRows.get(String(patient.hospitalCode))!;
+    const context = String(scenario.context) as PortabilityContext;
+    const purpose = purposeForSeedContext(context);
+    const simulatorPayload = buildSimulatedHisPayload({
+      patient: { id: patientId, name: patient.nameTh ?? patient.nameEn, hn: patient.hn, birthDate: patient.birthDate, gender: patient.gender },
+      hospital,
+      purpose,
+      context,
+      credentials: selected.map((item) => ({ ...item.document, credentialId: item.vc.id, sdJwtVc: item.vc.jwt })),
+      now: SEED_ISSUED_AT,
+    });
+    const canonical = canonicalizeHisPayload({
+      sourceFormat: "db_view",
+      payload: simulatorPayload,
+      sourceSystem: `${patient.hospitalCode}-SHL-SIM`,
+      sourceOrganizationId: String(patient.hcode ?? patient.hospitalCode),
+      sourceOrganizationName: String(patient.hospitalNameEn ?? hospital.nameEn ?? hospital.name),
+      mapperVersion: `trustcare-shl-seed-${scenarioForShlPurpose(purpose, context)}-v1`,
+      receivedAt: SEED_ISSUED_AT.toISOString(),
+    });
+    const key = randomBase64UrlBytes(32);
+    const passcode = generateNumericPasscode();
+    const passcodeHash = hashPasscode(passcode);
+    const manifestToken = `${SEED_PREFIX}:shl:${sha256({ batchId: input.batchId, scenario: scenario.id, patient: patient.seedId }).slice(0, 24)}`;
+    const manifestUrl = `https://trustcare.network/api/shl/manifest/${encodeURIComponent(manifestToken)}`;
+    const shlink = buildShlinkPayload({
+      manifestUrl,
+      key,
+      expiresAt: new Date(SEED_ISSUED_AT.getTime() + 30 * 86_400_000),
+      passcodeRequired: true,
+      label: String(scenario.name ?? scenario.id),
+      viewerBaseUrl: "https://trustcare.network/shl-viewer",
+    });
+    const encrypted = await encryptShlFile({
+      key,
+      contentType: "application/fhir+json",
+      payload: canonical.bundle,
+    });
+    const files = [{
+      fileId: `seed-fhir-${canonical.summary.bundleHash.slice(0, 16)}`,
+      contentType: "application/fhir+json" as const,
+      embeddedJwe: encrypted.jwe,
+      contentHash: encrypted.contentHash,
+      plaintextHash: encrypted.plaintextHash,
+      version: 1,
+    }];
+    const manifestHash = manifestFileDigest(files);
+    const contextHash = sha256({
+      context,
+      purpose,
+      bundleHash: canonical.summary.bundleHash,
+      manifestHash,
+      credentialIds: selected.map((item) => item.vc.id),
+    });
+    const shlInsert = await db.insert(smartHealthLinks).values({
+      patientId,
+      issuedBy: issuerId,
+      hospitalId,
+      purpose: purpose as any,
+      context,
+      label: String(scenario.name ?? scenario.id),
+      scope: selected.map((item) => item.document.credentialType),
+      manifestHash,
+      manifestToken,
+      manifestUrl,
+      encryptionKey: `sha256:${sha256(key)}`,
+      shlUrl: shlink.qrPayload,
+      qrPayload: shlink.qrPayload,
+      viewerUrl: shlink.viewerUrl,
+      status: "active",
+      maxAccessCount: 10,
+      passcodeRequired: true,
+      passcodeSalt: passcodeHash.salt,
+      passcodeHash: passcodeHash.hash,
+      passcodeMaxAttempts: 5,
+      recipientPolicy: { seedScenario: scenario.id, allowedRecipientTypes: recipientTypesForSeedPurpose(purpose) },
+      sourceBundleHash: canonical.summary.bundleHash,
+      policyDecision: { mode: "seed_realistic_simulator", context, purpose },
+      currentManifestVersion: 1,
+      contextHash,
+      autoUpdatePolicy: "manual_review",
+      expiresAt: new Date(SEED_ISSUED_AT.getTime() + 30 * 86_400_000),
+    } as any);
+    const shlId = shlInsert[0].insertId;
+    await db.insert(shlFiles).values({
+      shlId,
+      manifestVersion: 1,
+      fileId: files[0].fileId,
+      version: 1,
+      contentType: files[0].contentType,
+      embeddedJwe: files[0].embeddedJwe,
+      contentHash: files[0].contentHash,
+      plaintextHash: files[0].plaintextHash,
+      encryptedSizeBytes: encrypted.encryptedSizeBytes,
+      metadata: { batchId: input.batchId, scenario: scenario.id, resourceCounts: canonical.summary.resourceCounts },
+    } as any);
+
+    const document: JsonRecord = {
+      id: `seed-shl-doc-${String(scenario.id)}-${String(patient.seedId)}`,
+      credentialType: "shl_manifest",
+      hospitalCode: patient.hospitalCode,
+      humanDocument: {
+        brand: "TrustCare",
+        templateId: "shl_manifest_seed_v1",
+        renderData: { shlId, manifestHash, passcode, scenario: scenario.id },
+      },
+    };
+    const manifestVc = await issueCredential({
+      type: "ShlManifestCredential",
+      issuer: issuerProfile({ ...document, issuerDid: hospitalDidWeb(String(hospital.code)) }, hospitalId),
+      subjectId: String(patientId),
+      subjectDid: String(patient.holderDid),
+      claims: {
+        smartHealthLinkId: shlId,
+        manifestUrl,
+        manifestHash,
+        sourceBundleHash: canonical.summary.bundleHash,
+        purpose,
+        context,
+        patient: { id: patientId, hn: patient.hn, name: patient.nameTh ?? patient.nameEn },
+        hospital: { id: hospitalId, code: hospital.code, name: hospital.nameEn ?? hospital.name, did: hospitalDidWeb(String(hospital.code)) },
+        transport: { scheme: "shlink", encrypted: true, passcodeRequired: true, contentTypes: ["application/fhir+json"] },
+        canonicalSummary: canonical.summary,
+      },
+      evidence: [
+        { type: "SHLManifestHash", digest: manifestHash, resourceId: manifestUrl },
+        { type: "FHIRBundleHash", digest: canonical.summary.bundleHash },
+        { type: "SeedScenario", digest: sha256(scenario), resourceId: String(scenario.id) },
+      ],
+      validDays: 365,
+      audience: manifestUrl,
+      credentialId: `${SEED_PREFIX}:vc:shl_manifest:${String(scenario.id)}:${String(patient.seedId).toLowerCase()}`,
+      now: SEED_ISSUED_AT,
+    });
+    const templateId = input.templateRows.get(`${patient.hospitalCode}:shl_manifest`)!;
+    const rowId = await upsertIssuedCredential({
+      vc: manifestVc,
+      document,
+      patient,
+      templateId,
+      issuerId,
+      hospitalId,
+      subjectId: patientId,
+      batchId: input.batchId,
+    });
+    await upsertWalletCard({ patientId, credentialRowId: rowId, document });
+    const presentation = await createPresentation({
+      holderDid: String(patient.holderDid),
+      credentials: [manifestVc, ...selected.map((item) => item.vc)],
+      purpose: purposeForContext(context),
+      audience: manifestUrl,
+      validMinutes: 30 * 24 * 60,
+      now: SEED_ISSUED_AT,
+      presentationId: `${SEED_PREFIX}:vp:shl:${String(scenario.id)}:${String(patient.seedId).toLowerCase()}`,
+    });
+    await db.insert(issuedPresentations).values({
+      presentationId: presentation.id,
+      patientId,
+      holderDid: presentation.holderDid,
+      context,
+      purpose: presentation.purpose,
+      audience: presentation.audience,
+      presentationJwt: presentation.jwt,
+      credentialIds: presentation.credentialIds,
+      credentialRowIds: [rowId, ...selected.map((item) => item.rowId)],
+      verifier: "smart-health-link-viewer",
+      status: "active",
+      expiresAt: new Date(presentation.expiresAt),
+      metadata: { batchId: input.batchId, shlId, scenario },
+    } as any).onDuplicateKeyUpdate({
+      set: {
+        patientId,
+        holderDid: presentation.holderDid,
+        presentationJwt: presentation.jwt,
+        credentialIds: presentation.credentialIds,
+        credentialRowIds: [rowId, ...selected.map((item) => item.rowId)],
+        status: "active",
+        expiresAt: new Date(presentation.expiresAt),
+        metadata: { batchId: input.batchId, shlId, scenario },
+      } as any,
+    });
+    await db.update(smartHealthLinks).set({
+      manifestCredentialId: manifestVc.id,
+      presentationId: presentation.id,
+    } as any).where(eq(smartHealthLinks.id, shlId));
+    await db.insert(shlManifestVersions).values({
+      shlId,
+      manifestVersion: 1,
+      contextHash,
+      scopeHash: sha256(selected.map((item) => item.document.credentialType)),
+      sourceBundleHash: canonical.summary.bundleHash,
+      manifestHash,
+      manifestCredentialId: manifestVc.id,
+      presentationId: presentation.id,
+      status: "current",
+      createdBy: issuerId,
+      metadata: { batchId: input.batchId, scenario: scenario.id, passcodeHint: "seed passcode is stored in humanDocument renderData for demos" },
+    } as any);
+    created.push({ id: shlId, scenario: scenario.id, patientId, manifestCredentialId: manifestVc.id, presentationId: presentation.id });
+  }
+  return created;
+}
+
+function purposeForSeedContext(context: PortabilityContext): string {
+  if (context === "cross_branch_referral") return "referral";
+  if (context === "cross_border") return "cross_border";
+  if (context === "e_claim") return "insurance";
+  if (context === "medical_tourist") return "medical_tourist";
+  if (context === "self_share") return "self_share";
+  return "patient_summary";
+}
+
+function recipientTypesForSeedPurpose(purpose: string): string[] {
+  if (purpose === "insurance") return ["payer", "claim_processor"];
+  if (purpose === "medical_tourist" || purpose === "cross_border") return ["foreign_hospital", "international_patient_center"];
+  if (purpose === "referral") return ["receiving_hospital", "clinician"];
+  if (purpose === "self_share") return ["patient_selected_recipient"];
+  return ["clinician", "hospital"];
 }
 
 export async function auditTrustcareVcVpSeedDatabase(input: {
@@ -447,7 +715,7 @@ async function seedStaffForHospital(hospital: JsonRecord, hospitalId: number): P
     systemRole: "maker",
     hospitalId,
     credentialEntitlements: {
-      makerTypes: ["prescription", "medical_certificate", "allergy_alert", "medication_summary"],
+      makerTypes: ["prescription", "medical_certificate", "allergy_alert", "medication_summary", "shl_manifest"],
       checkerTypes: [],
     },
   });
@@ -458,7 +726,7 @@ async function seedStaffForHospital(hospital: JsonRecord, hospitalId: number): P
     systemRole: "maker",
     hospitalId,
     credentialEntitlements: {
-      makerTypes: ["patient_identity", "patient_summary", "consent_receipt", "mpi_link_certificate"],
+      makerTypes: ["patient_identity", "patient_summary", "consent_receipt", "mpi_link_certificate", "shl_manifest"],
       checkerTypes: [],
     },
   });
@@ -470,7 +738,7 @@ async function seedStaffForHospital(hospital: JsonRecord, hospitalId: number): P
     hospitalId,
     credentialEntitlements: {
       makerTypes: [],
-      checkerTypes: ["prescription", "medical_certificate", "allergy_alert", "medication_summary", "patient_summary"],
+      checkerTypes: ["prescription", "medical_certificate", "allergy_alert", "medication_summary", "patient_summary", "shl_manifest"],
     },
   });
   await upsertSeedUser({
@@ -481,7 +749,7 @@ async function seedStaffForHospital(hospital: JsonRecord, hospitalId: number): P
     hospitalId,
     credentialEntitlements: {
       makerTypes: [],
-      checkerTypes: ["patient_identity", "consent_receipt", "mpi_link_certificate", "travel_document_verification", "insurance_eligibility"],
+      checkerTypes: ["patient_identity", "consent_receipt", "mpi_link_certificate", "travel_document_verification", "insurance_eligibility", "shl_manifest"],
     },
   });
 }
@@ -495,6 +763,7 @@ async function upsertPatient(patient: JsonRecord, hospitalId: number): Promise<n
     hospitalId,
     phone: `08${String(10000000 + Number(sha256(patient.hn).slice(0, 6)) % 89999999).slice(0, 8)}`,
     preferredLanguage: String(patient.nationality) === "THA" ? "th" : "en",
+    credentialEntitlements: { makerTypes: [], checkerTypes: [] },
   });
 }
 

@@ -1,4 +1,4 @@
-export type SystemRole = "system_admin" | "hospital_admin" | "doctor" | "nurse" | "integration_engineer" | "patient";
+export type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
 
 export interface MenuItem {
   id: string;
@@ -30,7 +30,7 @@ export const menuItems: MenuItem[] = [
     labelEn: "Dashboard",
     icon: "LayoutDashboard",
     path: "/dashboard",
-    roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient"],
+    roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"],
     group: "overview",
     groupLabel: "ภาพรวม",
     groupLabelEn: "Overview",
@@ -77,7 +77,7 @@ export const menuItems: MenuItem[] = [
     labelEn: "Smart Health Links",
     icon: "Link2",
     path: "/shl",
-    roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"],
+    roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"],
     group: "patient_services",
     groupLabel: "บริการผู้ป่วย",
     groupLabelEn: "Patient Services",

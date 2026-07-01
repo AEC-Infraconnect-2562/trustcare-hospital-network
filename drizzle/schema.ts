@@ -581,21 +581,84 @@ export const smartHealthLinks = mysqlTable("smart_health_links", {
   issuedBy: int("issuedBy").notNull(),
   hospitalId: int("hospitalId").notNull(),
   purpose: mysqlEnum("purpose", ["referral", "patient_summary", "discharge", "cross_border", "medical_tourist", "insurance", "self_share"]).notNull(),
+  context: varchar("context", { length: 64 }),
+  label: varchar("label", { length: 80 }),
   scope: json("scope"),
   manifestHash: varchar("manifestHash", { length: 255 }),
+  manifestToken: varchar("manifestToken", { length: 128 }),
+  manifestUrl: text("manifestUrl"),
   encryptionKey: text("encryptionKey"),
   shlUrl: text("shlUrl"),
   qrPayload: text("qrPayload"),
-  status: mysqlEnum("status", ["active", "expired", "revoked"]).default("active").notNull(),
+  viewerUrl: text("viewerUrl"),
+  status: mysqlEnum("status", ["pending_review", "active", "expired", "revoked", "disabled", "max_accessed"]).default("active").notNull(),
   maxAccessCount: int("maxAccessCount"),
   currentAccessCount: int("currentAccessCount").default(0).notNull(),
+  passcodeRequired: boolean("passcodeRequired").default(true).notNull(),
+  passcodeSalt: varchar("passcodeSalt", { length: 128 }),
+  passcodeHash: varchar("passcodeHash", { length: 255 }),
+  passcodeFailedAttempts: int("passcodeFailedAttempts").default(0).notNull(),
+  passcodeMaxAttempts: int("passcodeMaxAttempts").default(5).notNull(),
+  longTerm: boolean("longTerm").default(false).notNull(),
+  singleFile: boolean("singleFile").default(false).notNull(),
+  recipientPolicy: json("recipientPolicy"),
+  consentCredentialId: varchar("consentCredentialId", { length: 255 }),
+  manifestCredentialId: varchar("manifestCredentialId", { length: 255 }),
+  presentationId: varchar("presentationId", { length: 255 }),
+  sourceBundleHash: varchar("sourceBundleHash", { length: 255 }),
+  policyDecision: json("policyDecision"),
+  currentManifestVersion: int("currentManifestVersion").default(1).notNull(),
+  contextHash: varchar("contextHash", { length: 128 }),
+  autoUpdatePolicy: varchar("autoUpdatePolicy", { length: 32 }).default("manual_review"),
+  lastAccessedAt: timestamp("lastAccessedAt"),
+  disabledReason: text("disabledReason"),
   expiresAt: timestamp("expiresAt"),
   revokedAt: timestamp("revokedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
 export type SmartHealthLink = typeof smartHealthLinks.$inferSelect;
 export type InsertSmartHealthLink = typeof smartHealthLinks.$inferInsert;
+
+export const shlFiles = mysqlTable("shl_files", {
+  id: int("id").autoincrement().primaryKey(),
+  shlId: int("shlId").notNull(),
+  manifestVersion: int("manifestVersion").default(1).notNull(),
+  fileId: varchar("fileId", { length: 128 }).notNull(),
+  version: int("version").default(1).notNull(),
+  contentType: mysqlEnum("contentType", ["application/fhir+json", "application/smart-health-card", "application/smart-api-access"]).notNull(),
+  embeddedJwe: mediumtext("embeddedJwe"),
+  location: text("location"),
+  contentHash: varchar("contentHash", { length: 128 }).notNull(),
+  plaintextHash: varchar("plaintextHash", { length: 128 }),
+  encryptedSizeBytes: int("encryptedSizeBytes"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ShlFile = typeof shlFiles.$inferSelect;
+export type InsertShlFile = typeof shlFiles.$inferInsert;
+
+export const shlManifestVersions = mysqlTable("shl_manifest_versions", {
+  id: int("id").autoincrement().primaryKey(),
+  shlId: int("shlId").notNull(),
+  manifestVersion: int("manifestVersion").default(1).notNull(),
+  contextHash: varchar("contextHash", { length: 128 }).notNull(),
+  scopeHash: varchar("scopeHash", { length: 128 }),
+  sourceBundleHash: varchar("sourceBundleHash", { length: 255 }),
+  manifestHash: varchar("manifestHash", { length: 255 }).notNull(),
+  manifestCredentialId: varchar("manifestCredentialId", { length: 255 }),
+  presentationId: varchar("presentationId", { length: 255 }),
+  status: mysqlEnum("status", ["current", "superseded", "revoked"]).default("current").notNull(),
+  changeReason: text("changeReason"),
+  createdBy: int("createdBy"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ShlManifestVersion = typeof shlManifestVersions.$inferSelect;
+export type InsertShlManifestVersion = typeof shlManifestVersions.$inferInsert;
 
 export const shlAccessLogs = mysqlTable("shl_access_logs", {
   id: int("id").autoincrement().primaryKey(),
@@ -603,6 +666,14 @@ export const shlAccessLogs = mysqlTable("shl_access_logs", {
   accessorName: varchar("accessorName", { length: 255 }),
   accessorOrg: varchar("accessorOrg", { length: 255 }),
   accessorCountry: varchar("accessorCountry", { length: 3 }),
+  recipient: varchar("recipient", { length: 255 }),
+  result: mysqlEnum("result", ["granted", "denied", "expired", "revoked", "bad_passcode", "max_accessed", "rate_limited"]).default("granted").notNull(),
+  failureReason: text("failureReason"),
+  userAgent: text("userAgent"),
+  manifestRequestedAt: timestamp("manifestRequestedAt"),
+  fileId: varchar("fileId", { length: 128 }),
+  countryHint: varchar("countryHint", { length: 3 }),
+  verifiedVpResult: json("verifiedVpResult"),
   ipAddress: varchar("ipAddress", { length: 45 }),
   accessedAt: timestamp("accessedAt").defaultNow().notNull(),
 });

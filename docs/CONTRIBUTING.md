@@ -27,6 +27,7 @@ Before opening a Pull Request, ensure:
   - Portability module is modified
   - New reusable components are added (e.g., QRScanner)
   - Verification flow changes
+- [ ] `docs/SHL_CONTEXT_VERSIONING.md` is reviewed when changing Smart Health Links, SHL manifests, passcode/access policy, or VC/VP bindings around SHL transport
 
 ---
 

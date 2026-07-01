@@ -11,6 +11,8 @@ export * from "./seedData";
 export * from "./sourceTruth";
 export * from "./presentation";
 export * from "./reseed";
+export * from "./shl";
+export * from "./shlSimulator";
 
 import { buildMedicalCertificateFhir, buildPrescriptionMedicationRequests } from "./clinicalDocuments";
 import { canonicalizeHisPayload } from "./fhir";
