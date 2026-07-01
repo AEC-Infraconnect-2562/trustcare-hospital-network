@@ -217,6 +217,13 @@ export async function getCredentialById(id: number) {
   return result[0];
 }
 
+export async function getIssuedCredentialByCredentialId(credentialId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(issuedCredentials).where(eq(issuedCredentials.credentialId, credentialId)).limit(1);
+  return result[0];
+}
+
 export async function listCredentialIssuanceRequests(filters?: { hospitalId?: number; subjectId?: number; status?: string; makerId?: number; checkerId?: number; limit?: number }) {
   const db = await getDb();
   if (!db) return [];
@@ -287,6 +294,13 @@ export async function createIssuedPresentation(data: InsertIssuedPresentation) {
   if (!db) return;
   const result = await db.insert(issuedPresentations).values(data);
   return result[0].insertId;
+}
+
+export async function getIssuedPresentationByPresentationId(presentationId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(issuedPresentations).where(eq(issuedPresentations.presentationId, presentationId)).limit(1);
+  return result[0];
 }
 
 export async function listPresentationHistory(patientId: number) {
@@ -533,6 +547,8 @@ import {
   syncReconciliationJobs, InsertSyncReconciliationJob,
   trustRegistry, InsertTrustRegistryEntry,
   smartHealthLinks, InsertSmartHealthLink,
+  shlFiles, InsertShlFile,
+  shlManifestVersions, InsertShlManifestVersion,
   shlAccessLogs,
   payerAdapters, InsertPayerAdapter,
   coverageEligibility, InsertCoverageEligibility,
@@ -757,10 +773,19 @@ export async function getTrustRegistryByDid(did: string) {
 // ============================================================
 // SMART HEALTH LINKS HELPERS
 // ============================================================
-export async function listSmartHealthLinks(patientId: number) {
+export async function listSmartHealthLinks(filter: number | { patientId?: number; hospitalId?: number; status?: string; purpose?: string } = {}) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(smartHealthLinks).where(eq(smartHealthLinks.patientId, patientId)).orderBy(desc(smartHealthLinks.createdAt));
+  const normalized = typeof filter === "number" ? { patientId: filter } : filter;
+  const conditions = [];
+  if (normalized.patientId) conditions.push(eq(smartHealthLinks.patientId, normalized.patientId));
+  if (normalized.hospitalId) conditions.push(eq(smartHealthLinks.hospitalId, normalized.hospitalId));
+  if (normalized.status) conditions.push(eq(smartHealthLinks.status, normalized.status as any));
+  if (normalized.purpose) conditions.push(eq(smartHealthLinks.purpose, normalized.purpose as any));
+  if (conditions.length > 0) {
+    return db.select().from(smartHealthLinks).where(and(...conditions)).orderBy(desc(smartHealthLinks.createdAt));
+  }
+  return db.select().from(smartHealthLinks).orderBy(desc(smartHealthLinks.createdAt));
 }
 
 export async function createSmartHealthLink(data: InsertSmartHealthLink) {
@@ -777,10 +802,23 @@ export async function getShlById(id: number) {
   return result[0];
 }
 
-export async function revokeShl(id: number) {
+export async function getShlByManifestToken(manifestToken: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(smartHealthLinks).where(eq(smartHealthLinks.manifestToken, manifestToken)).limit(1);
+  return result[0];
+}
+
+export async function updateSmartHealthLink(id: number, data: Partial<InsertSmartHealthLink>) {
   const db = await getDb();
   if (!db) return;
-  await db.update(smartHealthLinks).set({ status: "revoked", revokedAt: new Date() } as any).where(eq(smartHealthLinks.id, id));
+  await db.update(smartHealthLinks).set(data as any).where(eq(smartHealthLinks.id, id));
+}
+
+export async function revokeShl(id: number, reason?: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(smartHealthLinks).set({ status: "revoked", revokedAt: new Date(), disabledReason: reason } as any).where(eq(smartHealthLinks.id, id));
 }
 
 export async function incrementShlAccessCount(id: number) {
@@ -788,11 +826,67 @@ export async function incrementShlAccessCount(id: number) {
   if (!db) return;
   const shl = await getShlById(id);
   if (shl) {
-    await db.update(smartHealthLinks).set({ currentAccessCount: shl.currentAccessCount + 1 } as any).where(eq(smartHealthLinks.id, id));
+    await db.update(smartHealthLinks).set({ currentAccessCount: shl.currentAccessCount + 1, lastAccessedAt: new Date() } as any).where(eq(smartHealthLinks.id, id));
   }
 }
 
-export async function createShlAccessLog(data: { shlId: number; accessorName?: string; accessorOrg?: string; accessorCountry?: string; ipAddress?: string }) {
+export async function createShlFile(data: InsertShlFile) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(shlFiles).values(data);
+  return result[0].insertId;
+}
+
+export async function listShlFiles(shlId: number, manifestVersion?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(shlFiles.shlId, shlId)];
+  if (manifestVersion) conditions.push(eq(shlFiles.manifestVersion, manifestVersion));
+  return db.select().from(shlFiles).where(and(...conditions)).orderBy(desc(shlFiles.createdAt));
+}
+
+export async function createShlManifestVersion(data: InsertShlManifestVersion) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(shlManifestVersions).values(data);
+  return result[0].insertId;
+}
+
+export async function supersedeShlManifestVersions(shlId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(shlManifestVersions).set({ status: "superseded" } as any)
+    .where(and(eq(shlManifestVersions.shlId, shlId), eq(shlManifestVersions.status, "current" as any)));
+}
+
+export async function revokeShlManifestVersions(shlId: number, reason?: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(shlManifestVersions).set({ status: "revoked", changeReason: reason } as any)
+    .where(and(eq(shlManifestVersions.shlId, shlId), eq(shlManifestVersions.status, "current" as any)));
+}
+
+export async function listShlManifestVersions(shlId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(shlManifestVersions).where(eq(shlManifestVersions.shlId, shlId)).orderBy(desc(shlManifestVersions.createdAt));
+}
+
+export async function createShlAccessLog(data: {
+  shlId: number;
+  accessorName?: string;
+  accessorOrg?: string;
+  accessorCountry?: string;
+  recipient?: string;
+  result?: string;
+  failureReason?: string;
+  userAgent?: string;
+  manifestRequestedAt?: Date;
+  fileId?: string;
+  countryHint?: string;
+  verifiedVpResult?: unknown;
+  ipAddress?: string;
+}) {
   const db = await getDb();
   if (!db) return;
   await db.insert(shlAccessLogs).values(data as any);

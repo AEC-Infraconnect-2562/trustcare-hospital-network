@@ -64,6 +64,27 @@
       "when": 1782913800000,
       "tag": "0008_vc_document_storage_taxonomy",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1782917400000,
+      "tag": "0009_mediumtext_jwt_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1782921000000,
+      "tag": "0010_vc_schema_versioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1782924600000,
+      "tag": "0011_shl_transport_vc_trust_layer",
+      "breakpoints": true
     }
   ]
 }

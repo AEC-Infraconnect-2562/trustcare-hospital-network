@@ -35,6 +35,7 @@ import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
+import { normalizeActiveRole, sanitizeAdditionalRolesForSystemRole } from "@shared/rolePolicy";
 
 // Icon map
 const iconMap: Record<string, any> = {
@@ -72,7 +73,7 @@ const allMenuItems: MenuItemDef[] = [
   // Patient Services
   { id: "wallet", label: "กระเป๋าสุขภาพ", icon: "Wallet", path: "/wallet", roles: ["patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   { id: "consent", label: "จัดการความยินยอม", icon: "ShieldCheck", path: "/consent", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
-  { id: "shl", label: "ลิงก์แชร์สุขภาพ", icon: "Link2", path: "/shl", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
+  { id: "shl", label: "ลิงก์แชร์สุขภาพ", icon: "Link2", path: "/shl", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   // Clinical Services
   { id: "referral", label: "ส่งต่อผู้ป่วย", icon: "ArrowRightLeft", path: "/referral", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "clinical", groupLabel: "บริการทางคลินิก" },
   { id: "cross-border", label: "ส่งต่อข้ามเครือข่าย", icon: "Globe", path: "/cross-border", roles: ["system_admin", "hospital_admin", "doctor"], group: "clinical", groupLabel: "บริการทางคลินิก" },
@@ -154,8 +155,10 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
   const { theme, toggleTheme } = useTheme();
 
   // Default to system_admin for admin users, patient for others
-  const userRole: SystemRole = (user as any)?.systemRole || (user?.role === "admin" ? "system_admin" : "patient");
-  const grouped = getGroupedMenu(userRole);
+  const systemRole: SystemRole = (user as any)?.systemRole || (user?.role === "admin" ? "system_admin" : "patient");
+  const additionalRoles = sanitizeAdditionalRolesForSystemRole(systemRole, (user as any)?.additionalRoles ?? []);
+  const activeRole = normalizeActiveRole(systemRole, (user as any)?.activeRole ?? systemRole, additionalRoles) as SystemRole;
+  const grouped = getGroupedMenu(activeRole);
   const activeItem = allMenuItems.find(item => item.path === location);
 
   useEffect(() => {
@@ -255,7 +258,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                     <p className="text-sm font-medium truncate leading-none">{user?.name || "-"}</p>
                     <p className="text-[11px] text-muted-foreground truncate mt-1">
-                      {getRoleLabel(userRole)}
+                      {getRoleLabel(activeRole)}
                     </p>
                   </div>
                 </button>

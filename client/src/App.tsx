@@ -23,6 +23,7 @@ import CrossBorder from "./pages/CrossBorder";
 import Integration from "./pages/Integration";
 import TrustRegistry from "./pages/TrustRegistry";
 import SmartHealthLinks from "./pages/SmartHealthLinks";
+import ShlViewer from "./pages/ShlViewer";
 import ExecutiveDashboard from "./pages/ExecutiveDashboard";
 import PatientIdentity from "./pages/PatientIdentity";
 import PortabilityWorkbench from "./pages/PortabilityWorkbench";
@@ -50,6 +51,7 @@ function Router() {
       <Route path="/fhir-mapping" component={FhirMapping} />
       <Route path="/terminology" component={Terminology} />
       <Route path="/trust-registry" component={TrustRegistry} />
+      <Route path="/shl-viewer" component={ShlViewer} />
       <Route path="/shl" component={SmartHealthLinks} />
       <Route path="/executive" component={ExecutiveDashboard} />
       <Route path="/patient-identity" component={PatientIdentity} />

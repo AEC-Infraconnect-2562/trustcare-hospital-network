@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 3.4 (Schema Versioning + Role Policy + Demo Login)
+**Version:** 3.5 (Smart Health Links Transport + VC/VP Trust Layer)
 **Last updated:** 2026-07-01
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -44,7 +44,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        DATABASE (MySQL/TiDB)                         │
-│  36+ tables · 10 migrations (0000–0009)                             │
+│  38+ tables · 12 migrations (0000–0011)                             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -83,6 +83,8 @@ routers.ts
         ├── trust.ts (trust registry policy builder)
         ├── clinicalDocuments.ts (FHIR Composition builders)
         ├── types.ts (shared type definitions)
+        ├── shl.ts (SHL payload, passcode hash, JWE manifest helpers)
+        ├── shlSimulator.ts (realistic HIS/legacy source scenarios for SHL QA)
         └── utils.ts (sha256, nanoid, date helpers)
 ```
 
@@ -245,7 +247,7 @@ Users can switch active roles via `auth.switchRole` mutation, which sets the `tr
 
 ## 4. Database Schema / ERD
 
-### 4.1 Table Inventory (35 Tables)
+### 4.1 Table Inventory (38 Tables)
 
 | # | Table | Purpose | Key Relations |
 |---|-------|---------|---------------|
@@ -277,14 +279,16 @@ Users can switch active roles via `auth.switchRole` mutation, which sets the `tr
 | 26 | `credential_status_events` | VC revocation/suspension log | — |
 | 27 | `sync_reconciliation_jobs` | Sync-back reconciliation tracking | — |
 | 28 | `trust_registry` | Trusted issuer registry | — |
-| 29 | `smart_health_links` | SHL link management | → users, hospitals |
-| 30 | `shl_access_logs` | SHL access audit | → smart_health_links |
-| 31 | `payer_adapters` | Insurance payer configurations | → hospitals |
-| 32 | `coverage_eligibility` | Coverage check results | → users, payer_adapters |
-| 33 | `claim_cases` | Insurance claim cases | → users, hospitals, payer_adapters |
-| 34 | `international_cases` | Medical tourism cases | → hospitals |
-| 35 | `travel_documents` | International patient documents | → international_cases |
-| 36 | `cross_border_referrals` | Cross-border referral tracking | → hospitals |
+| 29 | `smart_health_links` | SHL link management, manifest token, consent/access policy, VC/VP bindings | → users, hospitals |
+| 30 | `shl_files` | Encrypted SHL manifest file entries (FHIR JSON, SMART Health Card, SMART API access) | → smart_health_links |
+| 31 | `shl_manifest_versions` | Immutable SHL trust snapshots and supersede/revoke history | → smart_health_links |
+| 32 | `shl_access_logs` | SHL access audit including passcode failures and recipient metadata | → smart_health_links |
+| 33 | `payer_adapters` | Insurance payer configurations | → hospitals |
+| 34 | `coverage_eligibility` | Coverage check results | → users, payer_adapters |
+| 35 | `claim_cases` | Insurance claim cases | → users, hospitals, payer_adapters |
+| 36 | `international_cases` | Medical tourism cases | → hospitals |
+| 37 | `travel_documents` | International patient documents | → international_cases |
+| 38 | `cross_border_referrals` | Cross-border referral tracking | → hospitals |
 
 ### 4.2 Core VC/VP Tables (ERD)
 
@@ -354,8 +358,11 @@ Migrations must be applied sequentially. Each migration builds on the previous s
 | 6 | `0006_vc_vp_reseed_persistence` | Seed batch tracking | issued_presentations, vc_vp_seed_batches |
 | 7 | `0007_maker_checker_issuance_requests` | Maker/Checker workflow | ALTER users ADD credentialEntitlements, systemRole enum expansion (+ maker, checker), CREATE credential_issuance_requests |
 | 8 | `0008_vc_document_storage_taxonomy` | Document taxonomy | ADD documentCategory, documentSubcategory, storageKey, searchTags to credential_templates and issued_credentials |
+| 9 | `0009_mediumtext_jwt_columns` | Large JWT storage | ALTER sdJwtVc and presentationJwt to MEDIUMTEXT |
+| 10 | `0010_vc_schema_versioning` | VC schema registry | vc_schema_registry, schemaVersion columns |
+| 11 | `0011_shl_transport_vc_trust_layer` | SHL production transport and trust layer | smart_health_links manifest/passcode/VC/VP fields, shl_files, shl_manifest_versions, expanded shl_access_logs |
 
-**Important:** Migrations 0005 and 0005_bent_rachel_grey are duplicates from different branches. The canonical sequence uses `0005_seed_vc_vp_extended_documents`. Similarly for 0006.
+**Important:** Migrations 0005 and 0005_bent_rachel_grey are duplicates from different branches. The canonical sequence uses `0005_seed_vc_vp_extended_documents`. Similarly for 0006. The Drizzle journal must include 0009, 0010, and 0011 in order before applying SHL tables.
 
 ---
 
@@ -397,10 +404,13 @@ The reseed process:
 7. **Trust registry** — Registers hospital DIDs as trusted issuers
 8. **Audit trail** — Logs all seed operations
 
+Additional SHL seed step: the reseed process creates realistic Smart Health Link packages for referral, cross-border, e-claim, medical tourist, discharge, patient summary, and self-share scenarios. Each package includes `smart_health_links`, encrypted `shl_files`, `shl_manifest_versions`, `ShlManifestCredential`, and a holder VP.
+
 ### 6.4 Reseed Idempotency
 
 - Reseeding checks for existing `batchId` in `vc_vp_seed_batches`
 - If `resetExistingSeed = true`, deletes credentials with `urn:trustcare:seed` prefix before reseeding
+- If `resetExistingSeed = true`, previous seed SHLs with `urn:trustcare:seed:shl:` manifest tokens are revoked before new active SHLs are created.
 - Batch hash is computed from `{patientsPerHospital, hospitals, documents, version}` for deterministic identification
 
 ### 6.5 Seed Audit
@@ -471,6 +481,24 @@ Admins can run the read-only `portability.auditSeedDb` endpoint, or use the Port
 - Default domain: `trustcare.network`
 - Hospital DID resolution: `https://{domain}/hospital/{code}/.well-known/did.json`
 - Portability endpoint: `https://{domain}/api/portability/{code}`
+
+---
+
+## 7.5 Smart Health Links Transport + VC/VP Trust Layer
+
+TrustCare uses SHL as the transport/share-link mechanism and VC/VP as the trust layer around the SHL manifest.
+
+The `shlink:/...` payload contains the manifest URL, content encryption key, expiry, flags, and optional label. It is not itself a VC. The manifest endpoint returns standard SHL file entries such as `application/fhir+json`, with encrypted embedded JWE content. TrustCare-specific proof is carried in the `trustcare` manifest extension through `ShlManifestCredential`, holder VP, manifest hash, source FHIR bundle hash, consent reference, and access policy metadata.
+
+Runtime flow:
+
+1. Maker or holder action creates a `smart_health_links` row, `shl_files` encrypted FHIR bundle, and `shl_manifest_versions` snapshot.
+2. Staff-created SHL packages for hospital documents enter Maker/Checker review as `shl_manifest` requests.
+3. Checker approval issues `ShlManifestCredential`, creates a holder VP, activates the SHL, and links `manifestCredentialId` plus `presentationId`.
+4. Public viewers call `/api/shl/manifest/:manifestToken` with recipient metadata and passcode. The access resolver enforces expiry, revocation, max access, passcode lockout, and writes `shl_access_logs`.
+5. Context changes follow the versioned policy in [`docs/SHL_CONTEXT_VERSIONING.md`](./SHL_CONTEXT_VERSIONING.md): content refresh supersedes manifest versions, material context/scope changes create a new SHL, and consent/security/correction events revoke affected VC/VP evidence.
+
+For local QA when a live HIS adapter is not connected, `shlSimulator.ts` generates realistic source-of-truth payloads for cross-branch referral, cross-border, e-claim, medical tourist, discharge, patient summary, and patient self-share. These payloads still pass through `canonicalizeHisPayload()` and are stored as encrypted FHIR Bundle files.
 
 ---
 
@@ -874,6 +902,8 @@ Credential schemas evolve over time. The schema versioning system tracks which v
 ## References
 
 - [W3C Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
+- [SMART Health Links Protocol](https://docs.smarthealthit.org/smart-health-links/spec/)
+- [TrustCare SHL Context Versioning](./SHL_CONTEXT_VERSIONING.md)
 - [SD-JWT-VC (IETF Draft)](https://datatracker.ietf.org/doc/draft-ietf-oauth-sd-jwt-vc/)
 - [HL7 FHIR R4 International Patient Summary](http://hl7.org/fhir/uv/ips/)
 - [DID Core Specification](https://www.w3.org/TR/did-core/)
