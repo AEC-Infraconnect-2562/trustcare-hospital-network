@@ -28,7 +28,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Wallet, ArrowRightLeft, ShieldCheck,
   BadgeCheck, ScanLine, GitBranch, BookOpen, Building2, FileSearch, Users,
   Settings, Moon, Sun, Bell, Globe, Plane, Receipt, Plug, ShieldAlert, Link2,
-  FileJson2, BarChart3, Fingerprint,
+  FileJson2, BarChart3, Fingerprint, FilePlus, ClipboardCheck,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -42,6 +42,7 @@ const iconMap: Record<string, any> = {
   LayoutDashboard, Wallet, ArrowRightLeft, ShieldCheck, BadgeCheck, ScanLine,
   GitBranch, BookOpen, Building2, FileSearch, Users, Settings, Globe, Plane,
   Receipt, Plug, ShieldAlert, Link2, FileJson2, BarChart3, Fingerprint,
+  FilePlus, ClipboardCheck,
 };
 
 type SystemRole = "system_admin" | "hospital_admin" | "doctor" | "nurse" | "integration_engineer" | "patient";
@@ -80,6 +81,8 @@ const allMenuItems: MenuItemDef[] = [
   { id: "international", label: "ผู้ป่วยต่างชาติ", icon: "Plane", path: "/international", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "clinical", groupLabel: "บริการทางคลินิก" },
   // Digital Credentials
   { id: "issuer", label: "ออกใบรับรอง", icon: "BadgeCheck", path: "/issuer", roles: ["system_admin", "hospital_admin", "doctor"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
+  { id: "maker-queue", label: "สร้างคำขอ VC (Maker)", icon: "FilePlus", path: "/maker-queue", roles: ["system_admin", "hospital_admin", "doctor"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
+  { id: "checker-queue", label: "ตรวจสอบคำขอ (Checker)", icon: "ClipboardCheck", path: "/checker-queue", roles: ["system_admin"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
   { id: "verifier", label: "ตรวจสอบใบรับรอง", icon: "ScanLine", path: "/verifier", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
   { id: "trust-registry", label: "ทะเบียนความน่าเชื่อถือ", icon: "ShieldAlert", path: "/trust-registry", roles: ["system_admin", "hospital_admin"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
   // Claims & Finance
@@ -99,8 +102,8 @@ const allMenuItems: MenuItemDef[] = [
 
 // Additional roles that grant access to specific menu items
 const ADDITIONAL_ROLE_MENU_MAP: Record<string, string[]> = {
-  issuer_maker: ["issuer", "verifier"],
-  issuer_checker: ["issuer", "verifier"],
+  issuer_maker: ["issuer", "maker-queue", "verifier"],
+  issuer_checker: ["issuer", "checker-queue", "maker-queue", "verifier"],
 };
 
 function getMenuForRole(role: SystemRole, additionalRoles: string[] = []) {
@@ -352,9 +355,17 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
               <SidebarTrigger className="h-9 w-9 rounded-lg" />
               <span className="text-sm font-medium">{activeItem?.label ?? "เมนู"}</span>
             </div>
-            <button onClick={toggleTheme} className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-accent">
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
+            <div className="flex items-center gap-1">
+              <NotificationBell />
+              <button onClick={toggleTheme} className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-accent">
+                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+        )}
+        {!isMobile && (
+          <div className="flex border-b h-12 items-center justify-end bg-background/95 px-4 backdrop-blur sticky top-0 z-40">
+            <NotificationBell />
           </div>
         )}
         <main className="flex-1 p-4 md:p-6">{children}</main>
@@ -373,4 +384,68 @@ function getRoleLabel(role: SystemRole): string {
     patient: "ผู้ป่วย",
   };
   return map[role] || role;
+}
+
+function NotificationBell() {
+  const { data: unreadData } = trpc.notification.unreadCount.useQuery(undefined, { refetchInterval: 15000 });
+  const { data: notifications, refetch } = trpc.notification.list.useQuery(undefined, { refetchInterval: 15000 });
+  const markAllRead = trpc.notification.markAllRead.useMutation({ onSuccess: () => refetch() });
+  const [open, setOpen] = useState(false);
+  const unreadCount = unreadData?.count || 0;
+
+  const typeIcons: Record<string, string> = {
+    vc_request_created: "📝",
+    vc_submitted_for_review: "📤",
+    vc_approved: "✅",
+    vc_rejected: "❌",
+    vc_issued: "🎉",
+    system: "🔔",
+    referral_update: "🔄",
+    consent_request: "📋",
+  };
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <button className="relative h-9 w-9 flex items-center justify-center rounded-lg hover:bg-accent transition-colors">
+          <Bell className="h-4 w-4" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
+        <div className="flex items-center justify-between px-3 py-2 border-b">
+          <span className="text-sm font-semibold">การแจ้งเตือน</span>
+          {unreadCount > 0 && (
+            <button
+              onClick={() => markAllRead.mutate()}
+              className="text-xs text-primary hover:underline"
+            >
+              อ่านทั้งหมด
+            </button>
+          )}
+        </div>
+        {!notifications?.length ? (
+          <div className="py-6 text-center text-sm text-muted-foreground">ไม่มีการแจ้งเตือน</div>
+        ) : (
+          notifications.slice(0, 20).map((n: any) => (
+            <DropdownMenuItem key={n.id} className={`flex flex-col items-start gap-1 px-3 py-2 cursor-default ${!n.isRead ? "bg-primary/5" : ""}`}>
+              <div className="flex items-center gap-2 w-full">
+                <span className="text-base">{typeIcons[n.type] || "🔔"}</span>
+                <span className="text-sm font-medium flex-1 truncate">{n.title}</span>
+                {!n.isRead && <span className="h-2 w-2 rounded-full bg-primary shrink-0" />}
+              </div>
+              {n.message && <p className="text-xs text-muted-foreground line-clamp-2 pl-7">{n.message}</p>}
+              <span className="text-[10px] text-muted-foreground pl-7">
+                {new Date(n.createdAt).toLocaleString("th-TH", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }

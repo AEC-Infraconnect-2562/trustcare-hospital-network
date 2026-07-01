@@ -699,6 +699,13 @@ export const appRouter = router({
       await db.markNotificationRead(input.id);
       return { success: true };
     }),
+    markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
+      await db.markAllNotificationsRead(ctx.user.id);
+      return { success: true };
+    }),
+    unreadCount: protectedProcedure.query(async ({ ctx }) => {
+      return { count: await db.getUnreadNotificationCount(ctx.user.id) };
+    }),
   }),
 
   // ============================================================
@@ -1604,6 +1611,285 @@ export const appRouter = router({
     }),
   }),
 
+  // ============================================================
+  // MAKER/CHECKER WORKFLOW
+  // ============================================================
+  makerChecker: router({
+    // Maker: create a new credential request
+    createRequest: clinicalProcedure.input(z.object({
+      templateId: z.number(),
+      patientId: z.number(),
+      hospitalId: z.number().optional(),
+      credentialData: z.any().optional(),
+      makerNotes: z.string().optional(),
+      priority: z.enum(["normal", "urgent"]).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const user = ctx.user as any;
+      const result = await db.createCredentialRequest({
+        templateId: input.templateId,
+        patientId: input.patientId,
+        hospitalId: input.hospitalId || user.hospitalId,
+        makerId: ctx.user.id,
+        credentialData: input.credentialData,
+        makerNotes: input.makerNotes,
+        priority: input.priority,
+      });
+      // Notify maker (confirmation)
+      await db.createNotification({
+        userId: ctx.user.id,
+        hospitalId: input.hospitalId || user.hospitalId,
+        type: "vc_request_created",
+        title: "สร้างคำขอออก VC สำเร็จ",
+        message: `คำขอ ${result.requestNumber} ถูกสร้างแล้ว รอส่งตรวจสอบ`,
+        metadata: { requestId: result.id, requestNumber: result.requestNumber },
+      });
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: user.systemRole,
+        hospitalId: input.hospitalId || user.hospitalId,
+        action: "vc_request.created",
+        resourceType: "credential_request",
+        resourceId: result.requestNumber,
+        details: { templateId: input.templateId, patientId: input.patientId },
+      });
+      return result;
+    }),
+
+    // Maker: update a draft request
+    updateDraft: clinicalProcedure.input(z.object({
+      requestId: z.number(),
+      credentialData: z.any().optional(),
+      makerNotes: z.string().optional(),
+      templateId: z.number().optional(),
+      patientId: z.number().optional(),
+      priority: z.enum(["normal", "urgent"]).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const request = await db.getCredentialRequestById(input.requestId);
+      if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "ไม่พบคำขอ" });
+      if (request.makerId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "ไม่มีสิทธิ์แก้ไขคำขอนี้" });
+      if (request.status !== "draft") throw new TRPCError({ code: "BAD_REQUEST", message: "แก้ไขได้เฉพาะคำขอสถานะ draft" });
+      await db.updateCredentialRequestDraft(input.requestId, {
+        credentialData: input.credentialData,
+        makerNotes: input.makerNotes,
+        templateId: input.templateId,
+        patientId: input.patientId,
+        priority: input.priority,
+      });
+      return { success: true };
+    }),
+
+    // Maker: submit for review
+    submitForReview: clinicalProcedure.input(z.object({
+      requestId: z.number(),
+    })).mutation(async ({ ctx, input }) => {
+      const request = await db.getCredentialRequestById(input.requestId);
+      if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "ไม่พบคำขอ" });
+      if (request.makerId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "ไม่มีสิทธิ์ส่งคำขอนี้" });
+      if (request.status !== "draft") throw new TRPCError({ code: "BAD_REQUEST", message: "ส่งตรวจสอบได้เฉพาะคำขอสถานะ draft" });
+      await db.submitRequestForReview(input.requestId);
+      const user = ctx.user as any;
+      // Notify all checkers in the same hospital
+      const allUsers = await db.listUsers();
+      for (const u of allUsers) {
+        const roles = await db.getUserAdditionalRoles(u.id);
+        if (roles.includes("issuer_checker") && (u.hospitalId === request.hospitalId || (u as any).systemRole === "system_admin")) {
+          await db.createNotification({
+            userId: u.id,
+            hospitalId: request.hospitalId,
+            type: "vc_submitted_for_review",
+            title: "มีคำขอออก VC รอตรวจสอบ",
+            message: `คำขอ ${request.requestNumber} จาก ${user.name} รอการตรวจสอบ`,
+            metadata: { requestId: request.id, requestNumber: request.requestNumber, makerName: user.name },
+          });
+        }
+      }
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: user.systemRole,
+        hospitalId: request.hospitalId,
+        action: "vc_request.submitted",
+        resourceType: "credential_request",
+        resourceId: request.requestNumber,
+        details: { requestId: request.id },
+      });
+      return { success: true };
+    }),
+
+    // Maker: cancel a request
+    cancelRequest: clinicalProcedure.input(z.object({
+      requestId: z.number(),
+    })).mutation(async ({ ctx, input }) => {
+      const request = await db.getCredentialRequestById(input.requestId);
+      if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "ไม่พบคำขอ" });
+      if (request.makerId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "ไม่มีสิทธิ์ยกเลิกคำขอนี้" });
+      if (!["draft", "pending_review"].includes(request.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "ยกเลิกได้เฉพาะคำขอสถานะ draft หรือ pending_review" });
+      await db.cancelCredentialRequest(input.requestId);
+      return { success: true };
+    }),
+
+    // Checker: approve a request
+    approve: clinicalProcedure.input(z.object({
+      requestId: z.number(),
+      comment: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      // Verify user is a checker
+      const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
+      const user = ctx.user as any;
+      const isChecker = additionalRoles.includes("issuer_checker") || user.systemRole === "system_admin";
+      if (!isChecker) throw new TRPCError({ code: "FORBIDDEN", message: "ต้องมีสิทธิ์ Checker จึงจะอนุมัติได้" });
+
+      const request = await db.getCredentialRequestById(input.requestId);
+      if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "ไม่พบคำขอ" });
+      if (request.status !== "pending_review") throw new TRPCError({ code: "BAD_REQUEST", message: "อนุมัติได้เฉพาะคำขอที่รอตรวจสอบ" });
+      if (request.makerId === ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "ไม่สามารถอนุมัติคำขอที่ตนเองสร้างได้" });
+
+      await db.approveRequest(input.requestId, ctx.user.id, input.comment);
+
+      // Auto-issue the credential
+      const template = (await db.listCredentialTemplates(request.hospitalId || undefined))?.find(t => t.id === request.templateId);
+      const credentialId = `urn:uuid:${nanoid(32)}`;
+      const issuedId = await db.createIssuedCredential({
+        credentialId,
+        templateId: request.templateId,
+        issuerId: ctx.user.id,
+        issuerHospitalId: request.hospitalId || 0,
+        subjectId: request.patientId,
+        type: (template?.type || "patient_summary") as any,
+        credentialData: request.credentialData,
+      });
+      await db.markRequestIssued(input.requestId, issuedId!);
+
+      // Auto-create wallet card for patient
+      const cardType = template?.type === "patient_identity" ? "identity" :
+        template?.type === "consent_receipt" ? "consent" :
+        template?.type === "patient_summary" ? "patient_summary" :
+        template?.type === "allergy_alert" ? "allergy" :
+        template?.type === "medication_summary" ? "medication" :
+        template?.type === "referral_vc" ? "referral" :
+        template?.type === "medical_certificate" ? "medical_certificate" :
+        template?.type === "prescription" ? "prescription" :
+        template?.type === "claim_package" ? "claim" :
+        template?.type === "sync_receipt" ? "sync_receipt" : "immunization";
+      await db.createWalletCard({
+        patientId: request.patientId,
+        credentialId: issuedId!,
+        cardType: cardType as any,
+        displayName: template?.name || "Credential",
+        displayNameEn: template?.nameEn || template?.type?.replace(/_/g, " ") || "Credential",
+      });
+
+      // Notify maker that their request was approved
+      await db.createNotification({
+        userId: request.makerId,
+        hospitalId: request.hospitalId,
+        type: "vc_approved",
+        title: "คำขอออก VC ได้รับอนุมัติ",
+        message: `คำขอ ${request.requestNumber} ได้รับอนุมัติจาก ${user.name} และออก VC เรียบร้อยแล้ว`,
+        metadata: { requestId: request.id, requestNumber: request.requestNumber, checkerName: user.name, credentialId },
+      });
+      // Notify patient that a VC was issued to them
+      await db.createNotification({
+        userId: request.patientId,
+        hospitalId: request.hospitalId,
+        type: "vc_issued",
+        title: "คุณได้รับใบรับรองดิจิทัลใหม่",
+        message: `ใบรับรอง ${template?.name || "VC"} ถูกออกให้คุณเรียบร้อยแล้ว`,
+        metadata: { requestId: request.id, credentialId, templateName: template?.name },
+      });
+
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: user.systemRole,
+        hospitalId: request.hospitalId,
+        action: "vc_request.approved",
+        resourceType: "credential_request",
+        resourceId: request.requestNumber,
+        details: { requestId: request.id, issuedCredentialId: issuedId, comment: input.comment },
+      });
+
+      return { success: true, credentialId, issuedCredentialId: issuedId };
+    }),
+
+    // Checker: reject a request
+    reject: clinicalProcedure.input(z.object({
+      requestId: z.number(),
+      comment: z.string().min(1, "กรุณาระบุเหตุผลในการปฏิเสธ"),
+    })).mutation(async ({ ctx, input }) => {
+      // Verify user is a checker
+      const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
+      const user = ctx.user as any;
+      const isChecker = additionalRoles.includes("issuer_checker") || user.systemRole === "system_admin";
+      if (!isChecker) throw new TRPCError({ code: "FORBIDDEN", message: "ต้องมีสิทธิ์ Checker จึงจะปฏิเสธได้" });
+
+      const request = await db.getCredentialRequestById(input.requestId);
+      if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "ไม่พบคำขอ" });
+      if (request.status !== "pending_review") throw new TRPCError({ code: "BAD_REQUEST", message: "ปฏิเสธได้เฉพาะคำขอที่รอตรวจสอบ" });
+
+      await db.rejectRequest(input.requestId, ctx.user.id, input.comment);
+
+      // Notify maker that their request was rejected
+      await db.createNotification({
+        userId: request.makerId,
+        hospitalId: request.hospitalId,
+        type: "vc_rejected",
+        title: "คำขอออก VC ถูกปฏิเสธ",
+        message: `คำขอ ${request.requestNumber} ถูกปฏิเสธโดย ${user.name}: ${input.comment}`,
+        metadata: { requestId: request.id, requestNumber: request.requestNumber, checkerName: user.name, reason: input.comment },
+      });
+
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: user.systemRole,
+        hospitalId: request.hospitalId,
+        action: "vc_request.rejected",
+        resourceType: "credential_request",
+        resourceId: request.requestNumber,
+        details: { requestId: request.id, comment: input.comment },
+      });
+
+      return { success: true };
+    }),
+
+    // List requests for maker (my requests)
+    myRequests: clinicalProcedure.query(async ({ ctx }) => {
+      return db.listCredentialRequestsByMaker(ctx.user.id);
+    }),
+
+    // List pending review requests for checker
+    pendingReviews: clinicalProcedure.query(async ({ ctx }) => {
+      const user = ctx.user as any;
+      const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
+      const isChecker = additionalRoles.includes("issuer_checker") || user.systemRole === "system_admin";
+      if (!isChecker) return [];
+      // System admin sees all, checker sees their hospital
+      if (user.systemRole === "system_admin") {
+        return db.listPendingReviewRequests();
+      }
+      return db.listPendingReviewRequests(user.hospitalId);
+    }),
+
+    // Get single request detail
+    getById: clinicalProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      return db.getCredentialRequestById(input.id);
+    }),
+
+    // Count pending reviews (for badge)
+    pendingCount: protectedProcedure.query(async ({ ctx }) => {
+      const user = ctx.user as any;
+      const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
+      const isChecker = additionalRoles.includes("issuer_checker") || user.systemRole === "system_admin";
+      if (!isChecker) return { count: 0 };
+      if (user.systemRole === "system_admin") {
+        return { count: await db.countPendingReviewRequests() };
+      }
+      return { count: await db.countPendingReviewRequests(user.hospitalId) };
+    }),
+
+    // List my reviewed requests (for checker history)
+    myReviews: clinicalProcedure.query(async ({ ctx }) => {
+      return db.listCredentialRequestsByChecker(ctx.user.id);
+    }),
+  }),
   // ============================================================
   // EXECUTIVE DASHBOARD
   // ============================================================

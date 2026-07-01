@@ -15,6 +15,7 @@ import {
   terminologyMappings, InsertTerminologyMapping,
   auditEvents, InsertAuditEvent,
   notifications, InsertNotification,
+  credentialRequests, InsertCredentialRequest,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -947,4 +948,172 @@ export async function removeUserRole(userId: number, role: string) {
 export async function listUserRoles(userId: number) {
   const db = await getDb();
   return db!.select().from(userRoles).where(eq(userRoles.userId, userId));
+}
+
+
+// ============================================================
+// CREDENTIAL REQUESTS (Maker/Checker Workflow)
+// ============================================================
+
+export async function generateRequestNumber(): Promise<string> {
+  const db = await getDb();
+  const [row] = await db!.select({ cnt: count() }).from(credentialRequests);
+  const seq = (row?.cnt || 0) + 1;
+  const now = new Date();
+  const yy = now.getFullYear().toString().slice(-2);
+  const mm = (now.getMonth() + 1).toString().padStart(2, "0");
+  return `REQ-${yy}${mm}-${seq.toString().padStart(5, "0")}`;
+}
+
+export async function createCredentialRequest(data: {
+  templateId: number;
+  patientId: number;
+  hospitalId?: number;
+  makerId: number;
+  credentialData?: any;
+  makerNotes?: string;
+  priority?: "normal" | "urgent";
+}) {
+  const db = await getDb();
+  const requestNumber = await generateRequestNumber();
+  const [result] = await db!.insert(credentialRequests).values({
+    requestNumber,
+    templateId: data.templateId,
+    patientId: data.patientId,
+    hospitalId: data.hospitalId || null,
+    makerId: data.makerId,
+    credentialData: data.credentialData || null,
+    makerNotes: data.makerNotes || null,
+    priority: data.priority || "normal",
+    status: "draft",
+  }).$returningId();
+  return { id: result.id, requestNumber };
+}
+
+export async function submitRequestForReview(requestId: number) {
+  const db = await getDb();
+  await db!.update(credentialRequests)
+    .set({ status: "pending_review", submittedAt: new Date() })
+    .where(eq(credentialRequests.id, requestId));
+}
+
+export async function approveRequest(requestId: number, checkerId: number, comment?: string) {
+  const db = await getDb();
+  await db!.update(credentialRequests)
+    .set({
+      status: "approved",
+      checkerId,
+      checkerComment: comment || null,
+      reviewedAt: new Date(),
+    })
+    .where(eq(credentialRequests.id, requestId));
+}
+
+export async function rejectRequest(requestId: number, checkerId: number, comment: string) {
+  const db = await getDb();
+  await db!.update(credentialRequests)
+    .set({
+      status: "rejected",
+      checkerId,
+      checkerComment: comment,
+      reviewedAt: new Date(),
+    })
+    .where(eq(credentialRequests.id, requestId));
+}
+
+export async function markRequestIssued(requestId: number, issuedCredentialId: number) {
+  const db = await getDb();
+  await db!.update(credentialRequests)
+    .set({
+      status: "issued",
+      issuedCredentialId,
+      issuedAt: new Date(),
+    })
+    .where(eq(credentialRequests.id, requestId));
+}
+
+export async function getCredentialRequestById(requestId: number) {
+  const db = await getDb();
+  const [row] = await db!.select().from(credentialRequests).where(eq(credentialRequests.id, requestId));
+  return row || null;
+}
+
+export async function listCredentialRequestsByMaker(makerId: number) {
+  const db = await getDb();
+  return db!.select().from(credentialRequests)
+    .where(eq(credentialRequests.makerId, makerId))
+    .orderBy(desc(credentialRequests.createdAt));
+}
+
+export async function listPendingReviewRequests(hospitalId?: number) {
+  const db = await getDb();
+  if (hospitalId) {
+    return db!.select().from(credentialRequests)
+      .where(and(eq(credentialRequests.status, "pending_review"), eq(credentialRequests.hospitalId, hospitalId)))
+      .orderBy(desc(credentialRequests.submittedAt));
+  }
+  return db!.select().from(credentialRequests)
+    .where(eq(credentialRequests.status, "pending_review"))
+    .orderBy(desc(credentialRequests.submittedAt));
+}
+
+export async function listCredentialRequestsByChecker(checkerId: number) {
+  const db = await getDb();
+  return db!.select().from(credentialRequests)
+    .where(eq(credentialRequests.checkerId, checkerId))
+    .orderBy(desc(credentialRequests.reviewedAt));
+}
+
+export async function updateCredentialRequestDraft(requestId: number, data: {
+  credentialData?: any;
+  makerNotes?: string;
+  templateId?: number;
+  patientId?: number;
+  priority?: "normal" | "urgent";
+}) {
+  const db = await getDb();
+  const updateData: any = {};
+  if (data.credentialData !== undefined) updateData.credentialData = data.credentialData;
+  if (data.makerNotes !== undefined) updateData.makerNotes = data.makerNotes;
+  if (data.templateId !== undefined) updateData.templateId = data.templateId;
+  if (data.patientId !== undefined) updateData.patientId = data.patientId;
+  if (data.priority !== undefined) updateData.priority = data.priority;
+  await db!.update(credentialRequests)
+    .set(updateData)
+    .where(and(eq(credentialRequests.id, requestId), eq(credentialRequests.status, "draft")));
+}
+
+export async function cancelCredentialRequest(requestId: number) {
+  const db = await getDb();
+  await db!.update(credentialRequests)
+    .set({ status: "cancelled" })
+    .where(eq(credentialRequests.id, requestId));
+}
+
+export async function countPendingReviewRequests(hospitalId?: number) {
+  const db = await getDb();
+  if (hospitalId) {
+    const [row] = await db!.select({ cnt: count() }).from(credentialRequests)
+      .where(and(eq(credentialRequests.status, "pending_review"), eq(credentialRequests.hospitalId, hospitalId)));
+    return row?.cnt || 0;
+  }
+  const [row] = await db!.select({ cnt: count() }).from(credentialRequests)
+    .where(eq(credentialRequests.status, "pending_review"));
+  return row?.cnt || 0;
+}
+
+
+export async function markAllNotificationsRead(userId: number) {
+  const db = await getDb();
+  await db!.update(notifications)
+    .set({ isRead: true })
+    .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+}
+
+export async function getUnreadNotificationCount(userId: number): Promise<number> {
+  const db = await getDb();
+  const [row] = await db!.select({ cnt: count() })
+    .from(notifications)
+    .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+  return row?.cnt || 0;
 }

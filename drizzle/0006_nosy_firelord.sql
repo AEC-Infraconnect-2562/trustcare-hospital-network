@@ -1,0 +1,22 @@
+CREATE TABLE `credential_requests` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`requestNumber` varchar(50) NOT NULL,
+	`templateId` int NOT NULL,
+	`patientId` int NOT NULL,
+	`hospitalId` int,
+	`makerId` int NOT NULL,
+	`checkerId` int,
+	`status` enum('draft','pending_review','approved','rejected','issued','cancelled') NOT NULL DEFAULT 'draft',
+	`credentialData` json,
+	`makerNotes` text,
+	`checkerComment` text,
+	`issuedCredentialId` int,
+	`priority` enum('normal','urgent') NOT NULL DEFAULT 'normal',
+	`submittedAt` timestamp,
+	`reviewedAt` timestamp,
+	`issuedAt` timestamp,
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `credential_requests_id` PRIMARY KEY(`id`),
+	CONSTRAINT `credential_requests_requestNumber_unique` UNIQUE(`requestNumber`)
+);

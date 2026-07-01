@@ -280,7 +280,7 @@ export const notifications = mysqlTable("notifications", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId"),
   hospitalId: int("hospitalId"),
-  type: mysqlEnum("type", ["hospital_onboarded", "vc_revoked", "break_glass", "data_quality", "referral_update", "consent_request", "system"]).notNull(),
+  type: mysqlEnum("type", ["hospital_onboarded", "vc_revoked", "break_glass", "data_quality", "referral_update", "consent_request", "system", "vc_request_created", "vc_submitted_for_review", "vc_approved", "vc_rejected", "vc_issued"]).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
   message: text("message"),
   isRead: boolean("isRead").default(false).notNull(),
@@ -649,3 +649,29 @@ export const userRoles = mysqlTable("user_roles", {
 });
 export type UserRole = typeof userRoles.$inferSelect;
 export type InsertUserRole = typeof userRoles.$inferInsert;
+
+// ============================================================
+// CREDENTIAL REQUESTS (Maker/Checker Workflow)
+// ============================================================
+export const credentialRequests = mysqlTable("credential_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  requestNumber: varchar("requestNumber", { length: 50 }).notNull().unique(),
+  templateId: int("templateId").notNull(),
+  patientId: int("patientId").notNull(),
+  hospitalId: int("hospitalId"),
+  makerId: int("makerId").notNull(),
+  checkerId: int("checkerId"),
+  status: mysqlEnum("status", ["draft", "pending_review", "approved", "rejected", "issued", "cancelled"]).default("draft").notNull(),
+  credentialData: json("credentialData"), // The actual credential payload prepared by maker
+  makerNotes: text("makerNotes"),
+  checkerComment: text("checkerComment"),
+  issuedCredentialId: int("issuedCredentialId"), // Link to issued_credentials after approval
+  priority: mysqlEnum("priority", ["normal", "urgent"]).default("normal").notNull(),
+  submittedAt: timestamp("submittedAt"),
+  reviewedAt: timestamp("reviewedAt"),
+  issuedAt: timestamp("issuedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type CredentialRequest = typeof credentialRequests.$inferSelect;
+export type InsertCredentialRequest = typeof credentialRequests.$inferInsert;

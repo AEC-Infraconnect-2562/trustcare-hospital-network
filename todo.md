@@ -179,3 +179,19 @@
 - [x] Update menu visibility to use activeRole (not just systemRole)
 - [x] Backend: add switchRole mutation that validates user can assume the role
 - [x] Update tests for role switching
+
+## v2.2 - Maker/Checker Workflow for Issuer
+- [x] Create credential_requests table (id, templateId, patientId, makerId, checkerId, status, credentialData, makerNotes, checkerComment, createdAt, updatedAt)
+- [x] Add credential request statuses: draft, pending_review, approved, rejected, issued
+- [x] DB helpers: createCredentialRequest, listPendingRequests, approveRequest, rejectRequest, getRequestById
+- [x] Maker router: create request, list my requests, update draft, submit for review
+- [x] Checker router: list pending reviews, approve, reject with comment
+- [x] Auto-issue VC on approval (approved → issued)
+- [x] In-app notification on every event: request_created, submitted_for_review, approved, rejected, issued
+- [x] Notification bell icon in DashboardLayout header with unread count
+- [x] Notification dropdown/page showing all messages with timestamps
+- [x] Maker UI page: form to create credential request, list of my requests with status
+- [x] Checker UI page: review queue with approve/reject buttons and comment field
+- [x] Add menu items: "สร้างคำขอออก VC" (Maker), "ตรวจสอบคำขอ" (Checker)
+- [x] Update routes in App.tsx for new pages
+- [x] Write tests for Maker/Checker workflow

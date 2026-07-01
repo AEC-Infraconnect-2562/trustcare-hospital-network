@@ -26,6 +26,8 @@ import SmartHealthLinks from "./pages/SmartHealthLinks";
 import ExecutiveDashboard from "./pages/ExecutiveDashboard";
 import PatientIdentity from "./pages/PatientIdentity";
 import PortabilityWorkbench from "./pages/PortabilityWorkbench";
+import MakerQueue from "./pages/MakerQueue";
+import CheckerQueue from "./pages/CheckerQueue";
 
 function Router() {
   return (
@@ -35,6 +37,8 @@ function Router() {
       <Route path="/hospitals" component={Hospitals} />
       <Route path="/wallet" component={Wallet} />
       <Route path="/issuer" component={Issuer} />
+      <Route path="/maker-queue" component={MakerQueue} />
+      <Route path="/checker-queue" component={CheckerQueue} />
       <Route path="/verifier" component={Verifier} />
       <Route path="/consent" component={Consent} />
       <Route path="/referral" component={Referral} />

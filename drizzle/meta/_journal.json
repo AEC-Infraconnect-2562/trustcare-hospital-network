@@ -43,6 +43,13 @@
       "when": 1782901028346,
       "tag": "0005_bent_rachel_grey",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1782902913440,
+      "tag": "0006_nosy_firelord",
+      "breakpoints": true
     }
   ]
 }
