@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { ClipboardCheck, FileBadge, FileJson2, Pill, RefreshCcw, ShieldCheck } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, Database, FileBadge, FileJson2, KeyRound, Pill, RefreshCcw, ShieldCheck, Tags, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -33,6 +33,7 @@ export default function PortabilityWorkbench() {
   const [payload, setPayload] = useState(JSON.stringify(sampleHisPayload, null, 2));
   const [latestJwt, setLatestJwt] = useState("");
   const [verifyInput, setVerifyInput] = useState("");
+  const [csvText, setCsvText] = useState("");
 
   const canonicalize = trpc.portability.canonicalizeHis.useMutation({
     onSuccess: () => toast.success("Canonical FHIR bundle generated"),
@@ -47,19 +48,11 @@ export default function PortabilityWorkbench() {
     onError: (error) => toast.error(error.message),
   });
   const certificate = trpc.portability.issueMedicalCertificate.useMutation({
-    onSuccess: (data) => {
-      setLatestJwt(data.jwt);
-      setVerifyInput(data.jwt);
-      toast.success("Medical certificate VC issued");
-    },
+    onSuccess: () => toast.success("Medical certificate request submitted for Checker review"),
     onError: (error) => toast.error(error.message),
   });
   const prescription = trpc.portability.issuePrescription.useMutation({
-    onSuccess: (data) => {
-      setLatestJwt(data.jwt);
-      setVerifyInput(data.jwt);
-      toast.success("Prescription VC issued");
-    },
+    onSuccess: () => toast.success("Prescription request submitted for Checker review"),
     onError: (error) => toast.error(error.message),
   });
   const verify = trpc.portability.verify.useMutation({
@@ -80,6 +73,37 @@ export default function PortabilityWorkbench() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const demoSeed = trpc.portability.demoSeed.useQuery({ patientsPerHospital: 12 });
+  const labels = trpc.portability.standardLabels.useQuery();
+  const didDocs = trpc.portability.didDocuments.useQuery({ hospitalCode: "TCC", patientSeed: "P001", carepassId: "CP-TH-2026-000001" });
+  const connectors = trpc.portability.sourceTruthConnectors.useQuery();
+  const seedBatches = trpc.portability.seedBatches.useQuery({ limit: 10 });
+  const issuedPresentations = trpc.portability.issuedPresentations.useQuery({ limit: 10 });
+  const issuanceRequests = trpc.credential.issuanceRequests.useQuery({ limit: 10 });
+  const reviewCsv = trpc.portability.reviewCsvImport.useMutation({
+    onSuccess: () => toast.success("CSV reviewed against canonical mapping"),
+    onError: (error) => toast.error(error.message),
+  });
+  const canonicalizeDraft = trpc.portability.canonicalizeDraft.useMutation({
+    onSuccess: () => toast.success("Reviewed draft canonicalized"),
+    onError: (error) => toast.error(error.message),
+  });
+  const reseedDb = trpc.portability.reseedDb.useMutation({
+    onSuccess: async () => {
+      toast.success("VC/VP seed data reseeded in DB");
+      await Promise.all([seedBatches.refetch(), issuedPresentations.refetch(), issuanceRequests.refetch()]);
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const approveRequest = trpc.credential.approveIssuanceRequest.useMutation({
+    onSuccess: async (data) => {
+      setLatestJwt(data.credential.jwt);
+      setVerifyInput(data.credential.jwt);
+      toast.success("Checker issued VC");
+      await issuanceRequests.refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
   const parsedPayload = useMemo(() => {
     try {
@@ -90,6 +114,8 @@ export default function PortabilityWorkbench() {
   }, [payload]);
 
   const firstTarget = syncTargets.data?.[0];
+  const firstReadyDraft = (reviewCsv.data?.drafts as any[] | undefined)?.find((draft) => draft.status === "ready");
+  const firstSubmittedRequest = issuanceRequests.data?.find((request) => request.status === "submitted");
   const sampleMedicationRequest = {
     resourceType: "MedicationRequest",
     id: "rx-demo-001",
@@ -117,6 +143,9 @@ export default function PortabilityWorkbench() {
           <TabsList>
             <TabsTrigger value="canonical" className="gap-2"><FileJson2 className="h-3.5 w-3.5" />Canonical</TabsTrigger>
             <TabsTrigger value="documents" className="gap-2"><FileBadge className="h-3.5 w-3.5" />VC Documents</TabsTrigger>
+            <TabsTrigger value="source-truth" className="gap-2"><Upload className="h-3.5 w-3.5" />Source Truth</TabsTrigger>
+            <TabsTrigger value="seed" className="gap-2"><Database className="h-3.5 w-3.5" />Seed/DID</TabsTrigger>
+            <TabsTrigger value="checker" className="gap-2"><CheckCircle2 className="h-3.5 w-3.5" />Checker</TabsTrigger>
             <TabsTrigger value="verify" className="gap-2"><ClipboardCheck className="h-3.5 w-3.5" />Verify</TabsTrigger>
             <TabsTrigger value="sync" className="gap-2"><RefreshCcw className="h-3.5 w-3.5" />Sync Back</TabsTrigger>
             <TabsTrigger value="production" className="gap-2"><ShieldCheck className="h-3.5 w-3.5" />Production</TabsTrigger>
@@ -209,7 +238,7 @@ export default function PortabilityWorkbench() {
                       validUntil: new Date(Date.now() + 3 * 86400000).toISOString(),
                     })}
                   >
-                    Issue Medical Certificate VC
+                    Submit as Maker
                   </Button>
                   <ResultCard title="Certificate Result" data={certificate.data} compact />
                 </CardContent>
@@ -231,11 +260,75 @@ export default function PortabilityWorkbench() {
                       dispenseWindowDays: 30,
                     })}
                   >
-                    Issue Prescription VC
+                    Submit as Maker
                   </Button>
                   <ResultCard title="Prescription Result" data={prescription.data} compact />
                 </CardContent>
               </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="source-truth" className="mt-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.8fr)]">
+              <Card>
+                <CardHeader><CardTitle className="text-base flex items-center gap-2"><Upload className="h-4 w-4" />Canonical Data Mapping Review</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <Textarea
+                    className="min-h-[300px] font-mono text-xs"
+                    value={csvText}
+                    onChange={(event) => setCsvText(event.target.value)}
+                    placeholder="hospital_code,hn,full_name_th,birth_date,visit_no,..."
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => setCsvText(String((demoSeed.data as any)?.sourceTruth?.csv?.csvText ?? ""))}>Use Seed CSV</Button>
+                    <Button disabled={!csvText || reviewCsv.isPending} onClick={() => reviewCsv.mutate({ csvText, sourceSystem: "CSV-UPLOAD", sourceOrganizationId: "TCC", sourceOrganizationName: "TrustCare Central Hospital" })}>Review CSV</Button>
+                    <Button variant="outline" disabled={!firstReadyDraft || canonicalizeDraft.isPending} onClick={() => firstReadyDraft && canonicalizeDraft.mutate({ draft: firstReadyDraft })}>Canonicalize Ready Draft</Button>
+                  </div>
+                  <ResultCard title="Source Connectors" data={connectors.data} compact />
+                </CardContent>
+              </Card>
+              <div className="space-y-4">
+                <ResultCard title="CSV Review" data={reviewCsv.data} compact />
+                <ResultCard title="Canonical Draft" data={canonicalizeDraft.data} compact />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="seed" className="mt-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader><CardTitle className="text-base flex items-center gap-2"><Database className="h-4 w-4" />Seed and Reseed</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button disabled={reseedDb.isPending} onClick={() => reseedDb.mutate({ patientsPerHospital: 12, resetExistingSeed: true })}>Reseed DB VC/VP</Button>
+                    <Button variant="outline" onClick={() => seedBatches.refetch()}>Refresh Batches</Button>
+                  </div>
+                  <ResultCard title="Reseed Result" data={reseedDb.data} compact />
+                  <ResultCard title="Seed Batches" data={seedBatches.data} compact />
+                </CardContent>
+              </Card>
+              <div className="space-y-4">
+                <ResultCard title="Demo Seed Catalog" data={(demoSeed.data as any)?.counts ? { counts: (demoSeed.data as any).counts, hospitals: (demoSeed.data as any).hospitals, vpScenarios: (demoSeed.data as any).vpScenarios } : demoSeed.data} compact />
+                <ResultCard title="Issued Presentations" data={issuedPresentations.data} compact />
+              </div>
+              <ResultCard title="DID:web / DID:key Documents" data={didDocs.data} compact />
+              <ResultCard title="FHIR and Document Labels" data={labels.data ? { brand: (labels.data as any).brand, fontPolicy: (labels.data as any).fontPolicy, sampleDocuments: Object.entries((labels.data as any).documentTypes ?? {}).slice(0, 8) } : undefined} compact />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="checker" className="mt-4">
+            <div className="grid gap-4 lg:grid-cols-[0.8fr_1fr]">
+              <Card>
+                <CardHeader><CardTitle className="text-base flex items-center gap-2"><CheckCircle2 className="h-4 w-4" />Maker/Checker Queue</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Button variant="outline" onClick={() => issuanceRequests.refetch()}>Refresh Queue</Button>
+                    <Button disabled={!firstSubmittedRequest || approveRequest.isPending} onClick={() => firstSubmittedRequest && approveRequest.mutate({ id: firstSubmittedRequest.id, checkerNotes: "Checked against canonical review and approved." })}>Approve First Request</Button>
+                  </div>
+                  <ResultCard title="Latest Issued VC" data={approveRequest.data} compact />
+                </CardContent>
+              </Card>
+              <ResultCard title="Issuance Requests" data={issuanceRequests.data} />
             </div>
           </TabsContent>
 

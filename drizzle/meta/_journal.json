@@ -36,6 +36,34 @@
       "when": 1782899400000,
       "tag": "0004_production_portability_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1782903000000,
+      "tag": "0005_seed_vc_vp_extended_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1782906600000,
+      "tag": "0006_vc_vp_reseed_persistence",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1782910200000,
+      "tag": "0007_maker_checker_issuance_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1782913800000,
+      "tag": "0008_vc_document_storage_taxonomy",
+      "breakpoints": true
     }
   ]
 }

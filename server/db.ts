@@ -6,7 +6,9 @@ import {
   departments, InsertDepartment,
   credentialTemplates, InsertCredentialTemplate,
   issuedCredentials, InsertIssuedCredential,
+  credentialIssuanceRequests, InsertCredentialIssuanceRequest,
   walletCards, InsertWalletCard,
+  issuedPresentations, InsertIssuedPresentation,
   presentationHistory,
   consentPolicies, InsertConsentPolicy,
   consentRecords, InsertConsentRecord,
@@ -14,6 +16,7 @@ import {
   fhirFieldMappings, InsertFhirFieldMapping,
   terminologyMappings, InsertTerminologyMapping,
   auditEvents, InsertAuditEvent,
+  vcVpSeedBatches, InsertVcVpSeedBatch,
   notifications, InsertNotification,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -171,7 +174,7 @@ export async function createCredentialTemplate(data: InsertCredentialTemplate) {
 // ============================================================
 // ISSUED CREDENTIAL HELPERS
 // ============================================================
-export async function listIssuedCredentials(filters?: { hospitalId?: number; subjectId?: number; type?: string; status?: string }) {
+export async function listIssuedCredentials(filters?: { hospitalId?: number; subjectId?: number; type?: string; status?: string; documentCategory?: string }) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
@@ -179,6 +182,7 @@ export async function listIssuedCredentials(filters?: { hospitalId?: number; sub
   if (filters?.subjectId) conditions.push(eq(issuedCredentials.subjectId, filters.subjectId));
   if (filters?.type) conditions.push(eq(issuedCredentials.type, filters.type as any));
   if (filters?.status) conditions.push(eq(issuedCredentials.status, filters.status as any));
+  if (filters?.documentCategory) conditions.push(eq(issuedCredentials.documentCategory, filters.documentCategory));
   if (conditions.length > 0) {
     return db.select().from(issuedCredentials).where(and(...conditions)).orderBy(desc(issuedCredentials.issuedAt));
   }
@@ -209,6 +213,42 @@ export async function getCredentialById(id: number) {
   return result[0];
 }
 
+export async function listCredentialIssuanceRequests(filters?: { hospitalId?: number; subjectId?: number; status?: string; makerId?: number; checkerId?: number; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters?.hospitalId) conditions.push(eq(credentialIssuanceRequests.issuerHospitalId, filters.hospitalId));
+  if (filters?.subjectId) conditions.push(eq(credentialIssuanceRequests.subjectId, filters.subjectId));
+  if (filters?.status) conditions.push(eq(credentialIssuanceRequests.status, filters.status as any));
+  if (filters?.makerId) conditions.push(eq(credentialIssuanceRequests.makerId, filters.makerId));
+  if (filters?.checkerId) conditions.push(eq(credentialIssuanceRequests.checkerId, filters.checkerId));
+  const limit = filters?.limit ?? 100;
+  if (conditions.length > 0) {
+    return db.select().from(credentialIssuanceRequests).where(and(...conditions)).orderBy(desc(credentialIssuanceRequests.createdAt)).limit(limit);
+  }
+  return db.select().from(credentialIssuanceRequests).orderBy(desc(credentialIssuanceRequests.createdAt)).limit(limit);
+}
+
+export async function createCredentialIssuanceRequest(data: InsertCredentialIssuanceRequest) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(credentialIssuanceRequests).values(data);
+  return result[0].insertId;
+}
+
+export async function getCredentialIssuanceRequestById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(credentialIssuanceRequests).where(eq(credentialIssuanceRequests.id, id)).limit(1);
+  return result[0];
+}
+
+export async function updateCredentialIssuanceRequest(id: number, data: Partial<InsertCredentialIssuanceRequest>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(credentialIssuanceRequests).set(data as any).where(eq(credentialIssuanceRequests.id, id));
+}
+
 // ============================================================
 // WALLET CARD HELPERS
 // ============================================================
@@ -222,6 +262,26 @@ export async function createWalletCard(data: InsertWalletCard) {
   const db = await getDb();
   if (!db) return;
   const result = await db.insert(walletCards).values(data);
+  return result[0].insertId;
+}
+
+export async function listIssuedPresentations(filter?: { patientId?: number; status?: string; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filter?.patientId) conditions.push(eq(issuedPresentations.patientId, filter.patientId));
+  if (filter?.status) conditions.push(eq(issuedPresentations.status, filter.status as any));
+  const limit = filter?.limit ?? 50;
+  if (conditions.length > 0) {
+    return db.select().from(issuedPresentations).where(and(...conditions)).orderBy(desc(issuedPresentations.createdAt)).limit(limit);
+  }
+  return db.select().from(issuedPresentations).orderBy(desc(issuedPresentations.createdAt)).limit(limit);
+}
+
+export async function createIssuedPresentation(data: InsertIssuedPresentation) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(issuedPresentations).values(data);
   return result[0].insertId;
 }
 
@@ -388,6 +448,19 @@ export async function createAuditEvent(data: InsertAuditEvent) {
   const db = await getDb();
   if (!db) return;
   await db.insert(auditEvents).values(data);
+}
+
+export async function listVcVpSeedBatches(limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(vcVpSeedBatches).orderBy(desc(vcVpSeedBatches.startedAt)).limit(limit);
+}
+
+export async function createVcVpSeedBatch(data: InsertVcVpSeedBatch) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(vcVpSeedBatches).values(data);
+  return result[0].insertId;
 }
 
 // ============================================================
@@ -734,6 +807,13 @@ export async function listPayerAdapters() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(payerAdapters).orderBy(desc(payerAdapters.createdAt));
+}
+
+export async function getPayerAdapterById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(payerAdapters).where(eq(payerAdapters.id, id)).limit(1);
+  return result[0];
 }
 
 export async function createPayerAdapter(data: InsertPayerAdapter) {

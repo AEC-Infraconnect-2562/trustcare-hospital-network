@@ -43,7 +43,7 @@ const iconMap: Record<string, any> = {
   Receipt, Plug, ShieldAlert, Link2, FileJson2,
 };
 
-type SystemRole = "system_admin" | "hospital_admin" | "doctor" | "nurse" | "integration_engineer" | "patient";
+type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
 
 interface MenuItemDef {
   id: string;
@@ -67,7 +67,7 @@ const menuGroups = [
 
 const allMenuItems: MenuItemDef[] = [
   // Overview
-  { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient"], group: "overview", groupLabel: "ภาพรวม" },
+  { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "overview", groupLabel: "ภาพรวม" },
   { id: "executive", label: "แดชบอร์ดผู้บริหาร", icon: "BarChart3", path: "/executive", roles: ["system_admin", "hospital_admin"], group: "overview", groupLabel: "ภาพรวม" },
   // Patient Services
   { id: "wallet", label: "กระเป๋าสุขภาพ", icon: "Wallet", path: "/wallet", roles: ["patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
@@ -78,14 +78,14 @@ const allMenuItems: MenuItemDef[] = [
   { id: "cross-border", label: "ส่งต่อข้ามเครือข่าย", icon: "Globe", path: "/cross-border", roles: ["system_admin", "hospital_admin", "doctor"], group: "clinical", groupLabel: "บริการทางคลินิก" },
   { id: "international", label: "ผู้ป่วยต่างชาติ", icon: "Plane", path: "/international", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "clinical", groupLabel: "บริการทางคลินิก" },
   // Digital Credentials
-  { id: "issuer", label: "ออกใบรับรอง", icon: "BadgeCheck", path: "/issuer", roles: ["system_admin", "hospital_admin", "doctor"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
-  { id: "verifier", label: "ตรวจสอบใบรับรอง", icon: "ScanLine", path: "/verifier", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
+  { id: "issuer", label: "ออกใบรับรอง", icon: "BadgeCheck", path: "/issuer", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
+  { id: "verifier", label: "ตรวจสอบใบรับรอง", icon: "ScanLine", path: "/verifier", roles: ["system_admin", "hospital_admin", "checker", "doctor", "nurse"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
   { id: "trust-registry", label: "ทะเบียนความน่าเชื่อถือ", icon: "ShieldAlert", path: "/trust-registry", roles: ["system_admin", "hospital_admin"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
   // Claims & Finance
   { id: "claim-center", label: "ศูนย์เคลม", icon: "Receipt", path: "/claim-center", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "claims", groupLabel: "เคลมและการเงิน" },
   // Interoperability
   { id: "integration", label: "เชื่อมต่อระบบ HIS", icon: "Plug", path: "/integration", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
-  { id: "portability", label: "Portability Layer", icon: "FileJson2", path: "/portability", roles: ["system_admin", "hospital_admin", "doctor", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
+  { id: "portability", label: "Portability Layer", icon: "FileJson2", path: "/portability", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
   { id: "fhir-mapping", label: "แผนที่ข้อมูล FHIR", icon: "GitBranch", path: "/fhir-mapping", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
   { id: "terminology", label: "จับคู่รหัสมาตรฐาน", icon: "BookOpen", path: "/terminology", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
   // Administration
@@ -323,6 +323,8 @@ function getRoleLabel(role: SystemRole): string {
   const map: Record<SystemRole, string> = {
     system_admin: "ผู้ดูแลระบบ",
     hospital_admin: "ผู้ดูแลโรงพยาบาล",
+    maker: "Maker",
+    checker: "Checker",
     doctor: "แพทย์",
     nurse: "พยาบาล",
     integration_engineer: "วิศวกรระบบ",

@@ -89,10 +89,11 @@ export async function issueCredential(input: {
   validDays?: number;
   audience?: string;
   now?: Date;
+  credentialId?: string;
 }): Promise<IssuedVc> {
   const now = input.now ?? new Date();
   const expiresAt = addDays(now, input.validDays ?? 365);
-  const id = urnUuid();
+  const id = input.credentialId ?? urnUuid();
   const signingMaterial = await resolveSigningMaterial(input.issuer.did, "vc");
   const credential = stripUndefined(buildCredentialEnvelope({
     id,
@@ -219,10 +220,11 @@ export async function createPresentation(input: {
   audience?: string;
   validMinutes?: number;
   now?: Date;
+  presentationId?: string;
 }): Promise<PresentationPackage> {
   const now = input.now ?? new Date();
   const expiresAt = new Date(now.getTime() + (input.validMinutes ?? 10) * 60_000);
-  const id = urnUuid();
+  const id = input.presentationId ?? urnUuid();
   const credentialIds = input.credentials.map((credential) => credential.id);
   const signingMaterial = await resolveSigningMaterial(input.holderDid, "vp");
   const jwt = await new SignJWT({

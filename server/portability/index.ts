@@ -5,6 +5,12 @@ export * from "./policy";
 export * from "./syncBack";
 export * from "./clinicalDocuments";
 export * from "./trust";
+export * from "./did";
+export * from "./labels";
+export * from "./seedData";
+export * from "./sourceTruth";
+export * from "./presentation";
+export * from "./reseed";
 
 import { buildMedicalCertificateFhir, buildPrescriptionMedicationRequests } from "./clinicalDocuments";
 import { canonicalizeHisPayload } from "./fhir";
@@ -145,6 +151,8 @@ export async function issueMedicalCertificateVc(input: {
   validFrom?: string;
   validUntil?: string;
   audience?: string;
+  credentialId?: string;
+  now?: Date;
 }): Promise<IssuedVc> {
   const fhir = buildMedicalCertificateFhir(input);
   return issueCredential({
@@ -168,6 +176,8 @@ export async function issueMedicalCertificateVc(input: {
     evidence: [{ type: "FHIRComposition", digest: fhir.documentHash, resourceId: fhir.composition.id }],
     validDays: 90,
     audience: input.audience,
+    credentialId: input.credentialId,
+    now: input.now,
   });
 }
 
@@ -183,6 +193,8 @@ export async function issuePrescriptionVc(input: {
   repeatsAllowed?: number;
   dispenseWindowDays?: number;
   audience?: string;
+  credentialId?: string;
+  now?: Date;
 }): Promise<IssuedVc> {
   const medicationRequests = buildPrescriptionMedicationRequests({
     patient: input.patient,
@@ -210,6 +222,8 @@ export async function issuePrescriptionVc(input: {
     evidence: [{ type: "FHIRMedicationRequestBundle", digest: sha256(medicationRequests), resourceCount: medicationRequests.length }],
     validDays: input.dispenseWindowDays ?? 30,
     audience: input.audience,
+    credentialId: input.credentialId,
+    now: input.now,
   });
 }
 
@@ -220,6 +234,8 @@ export async function issueSyncReceiptVc(input: {
   plan: SyncBackPlan;
   execution: SyncBackExecutionResult;
   audience?: string;
+  credentialId?: string;
+  now?: Date;
 }): Promise<IssuedVc> {
   const receipt = createSyncReceipt(input.plan, input.execution);
   return issueCredential({
@@ -250,6 +266,8 @@ export async function issueSyncReceiptVc(input: {
     ],
     validDays: 365,
     audience: input.audience,
+    credentialId: input.credentialId,
+    now: input.now,
   });
 }
 

@@ -10,20 +10,49 @@ import { notifyOwner } from "./_core/notification";
 import {
   canonicalizeHisPayload,
   buildTrustRegistryPolicy,
+  canonicalizeReviewedDraft,
   createPortabilityPacket,
   createSyncBackPlan,
+  didKeyDocument,
+  didWebDocument,
+  documentStorageMetadata,
   executeSyncBackPlan,
+  generateTrustcareDemoSeed,
+  hospitalDidWeb,
   issueMedicalCertificateVc,
+  issueCredential,
   issuePrescriptionVc,
   issueSyncReceiptVc,
   localIssuerJwks,
+  patientDidKey,
   productionReadinessChecks,
+  reseedTrustcareVcVpDatabase,
+  reviewCsvForCanonicalMapping,
   RECOMMENDED_SYNC_TARGETS,
+  sourceTruthConnectors,
+  standardLabelCatalog,
   syncAdapterManifest,
   verifyCredential,
+  verifyJsonPresentation,
   verifyPresentation,
 } from "./portability";
 import { sha256 } from "./portability/utils";
+
+const credentialTypeValues = [
+  "patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization",
+  "medical_certificate", "prescription", "lab_result", "diagnostic_report", "discharge_summary", "insurance_eligibility",
+  "claim_package", "claim_receipt", "travel_document_verification", "shl_manifest", "pharmacy_dispense", "appointment",
+  "visa_support_letter", "quotation", "guarantee_letter", "mpi_link_certificate", "sync_receipt",
+] as const;
+
+const trustcareCredentialTypeValues = [
+  "PatientIdentityCredential", "ConsentReceiptCredential", "PatientSummaryCredential", "AllergyAlertCredential",
+  "MedicationSummaryCredential", "ReferralCredential", "ImmunizationCredential", "CoverageEligibilityCredential", "MedicalCertificateCredential",
+  "PrescriptionCredential", "LabResultCredential", "DiagnosticReportCredential", "DischargeSummaryCredential",
+  "ClaimPackageCredential", "ClaimReceiptCredential", "TravelDocumentVerificationCredential", "ShlManifestCredential",
+  "PharmacyDispenseCredential", "AppointmentCredential", "VisaSupportLetterCredential", "QuotationCredential",
+  "GuaranteeLetterCredential", "MpiLinkCertificateCredential", "SyncReceiptCredential",
+] as const;
 
 // Admin-only guard
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -127,7 +156,7 @@ export const appRouter = router({
       hospitalId: z.number().optional(),
       name: z.string().min(1),
       nameEn: z.string().optional(),
-      type: z.enum(["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization", "medical_certificate", "prescription", "claim_package", "sync_receipt"]),
+      type: z.enum(credentialTypeValues),
       fhirResourceType: z.string().optional(),
       validityDays: z.number().optional(),
       schema: z.any().optional(),
@@ -140,55 +169,109 @@ export const appRouter = router({
       subjectId: z.number().optional(),
       type: z.string().optional(),
       status: z.string().optional(),
+      documentCategory: z.string().optional(),
     })).query(async ({ input }) => {
       return db.listIssuedCredentials(input);
     }),
-    issue: protectedProcedure.input(z.object({
-      templateId: z.number(),
-      subjectId: z.number(),
+    issuanceRequests: protectedProcedure.input(z.object({
+      hospitalId: z.number().optional(),
+      subjectId: z.number().optional(),
+      status: z.string().optional(),
+      makerId: z.number().optional(),
+      checkerId: z.number().optional(),
+      limit: z.number().min(1).max(200).default(100),
+    }).optional()).query(async ({ input }) => {
+      return db.listCredentialIssuanceRequests(input);
+    }),
+    submitIssuanceRequest: protectedProcedure.input(z.object({
+      templateId: z.number().optional(),
       issuerHospitalId: z.number(),
-      type: z.enum(["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization", "medical_certificate", "prescription", "claim_package", "sync_receipt"]),
-      credentialData: z.any(),
-      expiresAt: z.string().optional(),
+      subjectId: z.number(),
+      type: z.enum(credentialTypeValues),
+      holderDid: z.string().optional(),
+      issuerDid: z.string().optional(),
+      documentData: z.any(),
+      canonicalReview: z.any().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const credentialId = `urn:uuid:${nanoid(32)}`;
-      const id = await db.createIssuedCredential({
-        credentialId,
+      requireMaker(ctx.user, input.type);
+      const request = await submitMakerCredentialRequest({
+        maker: ctx.user,
         templateId: input.templateId,
-        issuerId: ctx.user.id,
         issuerHospitalId: input.issuerHospitalId,
         subjectId: input.subjectId,
         type: input.type,
-        credentialData: input.credentialData,
-        expiresAt: input.expiresAt ? new Date(input.expiresAt) : undefined,
+        holderDid: input.holderDid,
+        issuerDid: input.issuerDid,
+        documentData: input.documentData,
+        canonicalReview: input.canonicalReview,
       });
+      return request;
+    }),
+    approveIssuanceRequest: protectedProcedure.input(z.object({
+      id: z.number(),
+      checkerNotes: z.string().optional(),
+      audience: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const request = await db.getCredentialIssuanceRequestById(input.id);
+      if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Issuance request not found" });
+      requireChecker(ctx.user, String(request.type));
+      if (!["submitted", "changes_requested", "approved"].includes(request.status)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `Request status ${request.status} cannot be issued` });
+      }
+      if (request.checkerId && request.checkerId !== ctx.user.id && request.status === "issued") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Request already issued" });
+      }
+      const issued = await issueCredentialFromRequest({
+        checkerId: ctx.user.id,
+        checkerRole: (ctx.user as any).systemRole ?? ctx.user.role,
+        request: request as any,
+        checkerNotes: input.checkerNotes,
+        audience: input.audience,
+      });
+      return issued;
+    }),
+    rejectIssuanceRequest: protectedProcedure.input(z.object({
+      id: z.number(),
+      checkerNotes: z.string().min(1),
+    })).mutation(async ({ ctx, input }) => {
+      const request = await db.getCredentialIssuanceRequestById(input.id);
+      if (!request) throw new TRPCError({ code: "NOT_FOUND", message: "Issuance request not found" });
+      requireChecker(ctx.user, String(request.type));
+      await db.updateCredentialIssuanceRequest(input.id, {
+        status: "rejected",
+        checkerId: ctx.user.id,
+        checkerRole: (ctx.user as any).systemRole ?? ctx.user.role,
+        checkerNotes: input.checkerNotes,
+        checkedAt: new Date(),
+      } as any);
       await db.createAuditEvent({
         actorId: ctx.user.id,
         actorRole: (ctx.user as any).systemRole,
-        hospitalId: input.issuerHospitalId,
-        action: "credential.issued",
-        resourceType: "credential",
-        resourceId: credentialId,
-        details: { type: input.type, subjectId: input.subjectId },
+        hospitalId: request.issuerHospitalId,
+        action: "credential.request.rejected",
+        resourceType: "credential_issuance_request",
+        resourceId: request.requestId,
+        details: { type: request.type, reason: input.checkerNotes },
       });
-      // Auto-create wallet card for patient
-      await db.createWalletCard({
-        patientId: input.subjectId,
-        credentialId: id!,
-        cardType: input.type === "patient_identity" ? "identity" :
-                  input.type === "consent_receipt" ? "consent" :
-                  input.type === "patient_summary" ? "patient_summary" :
-                  input.type === "allergy_alert" ? "allergy" :
-                  input.type === "medication_summary" ? "medication" :
-                  input.type === "referral_vc" ? "referral" :
-                  input.type === "medical_certificate" ? "medical_certificate" :
-                  input.type === "prescription" ? "prescription" :
-                  input.type === "claim_package" ? "claim" :
-                  input.type === "sync_receipt" ? "sync_receipt" : "immunization",
-        displayName: getCardDisplayName(input.type),
-        displayNameEn: input.type.replace(/_/g, " "),
+      return { success: true, status: "rejected" };
+    }),
+    issue: protectedProcedure.input(z.object({
+      templateId: z.number().optional(),
+      subjectId: z.number(),
+      issuerHospitalId: z.number(),
+      type: z.enum(credentialTypeValues),
+      credentialData: z.any(),
+      expiresAt: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      requireMaker(ctx.user, input.type);
+      return submitMakerCredentialRequest({
+        maker: ctx.user,
+        templateId: input.templateId,
+        issuerHospitalId: input.issuerHospitalId,
+        subjectId: input.subjectId,
+        type: input.type,
+        documentData: { ...input.credentialData, expiresAt: input.expiresAt },
       });
-      return { id, credentialId, success: true };
     }),
     revoke: protectedProcedure.input(z.object({
       id: z.number(),
@@ -224,18 +307,27 @@ export const appRouter = router({
     present: protectedProcedure.input(z.object({
       cardId: z.number(),
     })).mutation(async ({ ctx, input }) => {
-      // Generate a time-limited QR presentation token
-      const token = nanoid(32);
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+      const cards = await db.listWalletCards(ctx.user.id);
+      const card = cards.find((item: any) => item.id === input.cardId);
+      if (!card) throw new TRPCError({ code: "NOT_FOUND", message: "Wallet card not found" });
+      const [presentation] = await db.listIssuedPresentations({ patientId: ctx.user.id, status: "active", limit: 1 });
+      if (!presentation) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No active verifiable presentation is available for this patient. Issue or reseed a VP first." });
+      }
       await db.createAuditEvent({
         actorId: ctx.user.id,
         actorRole: (ctx.user as any).systemRole,
         action: "credential.presented",
         resourceType: "wallet_card",
         resourceId: String(input.cardId),
-        details: { token: token.slice(0, 8) },
+        details: { presentationId: presentation.presentationId, credentialIds: presentation.credentialIds },
       });
-      return { token, expiresAt: expiresAt.toISOString(), qrData: `trustcare://vp/${token}` };
+      return {
+        presentationId: presentation.presentationId,
+        format: "jwt-vp",
+        expiresAt: presentation.expiresAt?.toISOString(),
+        qrData: presentation.presentationJwt,
+      };
     }),
   }),
 
@@ -248,6 +340,26 @@ export const appRouter = router({
       vpUrl: z.string().optional(),
     })).mutation(async ({ input }) => {
       const presented = input.vpUrl || input.token;
+      if (presented?.trim().startsWith("{")) {
+        const presentation = JSON.parse(presented);
+        const result = verifyJsonPresentation({ presentation });
+        await db.createAuditEvent({
+          action: "verifier.vp_json.verified",
+          resourceType: "verifiable_presentation",
+          resourceId: String(result.presentationId ?? "json-vp"),
+          details: { trustLevel: result.trustLevel, verified: result.verified, purpose: result.purpose },
+        });
+        return {
+          trustLevel: result.trustLevel,
+          verified: result.verified,
+          issuer: "TrustCare JSON VP",
+          holderDid: result.holderDid,
+          credentials: presentation.verifiableCredential ?? [],
+          highPriority: result.highPriority,
+          warnings: result.warnings,
+          errors: result.errors,
+        };
+      }
       if (presented?.startsWith("eyJ")) {
         const result = await verifyPresentation({ jwt: presented });
         if (result.verified || result.credentials.length > 0) {
@@ -271,14 +383,12 @@ export const appRouter = router({
           errors: credentialResult.errors,
         };
       }
-      const isValid = !!presented;
       return {
-        trustLevel: isValid ? "yellow" : "red",
-        verified: isValid,
-        issuer: "Trustcare verifier token bridge",
-        issuedAt: new Date().toISOString(),
-        warnings: isValid ? ["Legacy token accepted only as a bridge; prefer JWT VP from Patient Data Portability Layer."] : [],
-        errors: isValid ? [] : ["No token or presentation was supplied."],
+        trustLevel: "red",
+        verified: false,
+        issuer: "TrustCare Verifier",
+        warnings: [],
+        errors: [presented ? "Unsupported presentation format. Use JSON VP or JWT VC/VP." : "No token or presentation was supplied."],
       };
     }),
   }),
@@ -600,10 +710,18 @@ export const appRouter = router({
     }),
     updateRole: adminProcedure.input(z.object({
       id: z.number(),
-      systemRole: z.enum(["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient"]),
+      systemRole: z.enum(["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"]),
       hospitalId: z.number().optional(),
+      credentialEntitlements: z.object({
+        makerTypes: z.array(z.enum(credentialTypeValues)).optional(),
+        checkerTypes: z.array(z.enum(credentialTypeValues)).optional(),
+      }).optional(),
     })).mutation(async ({ input }) => {
-      await db.updateUserProfile(input.id, { systemRole: input.systemRole, hospitalId: input.hospitalId } as any);
+      await db.updateUserProfile(input.id, {
+        systemRole: input.systemRole,
+        hospitalId: input.hospitalId,
+        credentialEntitlements: input.credentialEntitlements,
+      } as any);
       return { success: true };
     }),
   }),
@@ -670,22 +788,21 @@ export const appRouter = router({
       return { success: true };
     }),
     testConnection: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
-      // Simulate connection test
       const adapter = await db.getIntegrationAdapterById(input.id);
       if (!adapter) throw new TRPCError({ code: "NOT_FOUND" });
-      const healthy = Math.random() > 0.2; // Simulated
-      const responseTime = Math.floor(Math.random() * 500) + 50;
+      const config = adapter.connectionConfig as Record<string, unknown> | null | undefined;
+      const health = evaluateAdapterHealth(adapter as any, config);
       await db.createAdapterHealthLog({
         adapterId: input.id,
-        status: healthy ? "healthy" : "degraded",
-        responseTimeMs: responseTime,
-        errorMessage: healthy ? undefined : "Connection timeout",
+        status: health.healthy ? "healthy" : "degraded",
+        responseTimeMs: health.responseTimeMs,
+        errorMessage: health.errorMessage,
       });
       await db.updateIntegrationAdapter(input.id, {
-        healthStatus: healthy ? "healthy" : "degraded",
+        healthStatus: health.healthy ? "healthy" : "degraded",
         lastHealthCheck: new Date(),
       } as any);
-      return { healthy, responseTimeMs: responseTime };
+      return health;
     }),
     healthLogs: protectedProcedure.input(z.object({ adapterId: z.number() })).query(async ({ input }) => {
       return db.listAdapterHealthLogs(input.adapterId);
@@ -842,19 +959,21 @@ export const appRouter = router({
       payerAdapterId: z.number(),
       memberId: z.string().optional(),
     })).mutation(async ({ input }) => {
-      // Simulate eligibility check
-      const eligible = Math.random() > 0.15;
+      const payer = await db.getPayerAdapterById(input.payerAdapterId);
+      if (!payer) throw new TRPCError({ code: "NOT_FOUND", message: "Payer adapter not found" });
+      const eligibility = evaluateEligibility(payer as any, input.memberId);
       const data: any = {
         patientId: input.patientId,
         payerAdapterId: input.payerAdapterId,
         memberId: input.memberId,
-        status: eligible ? "eligible" : "ineligible",
-        coverageType: "general",
-        benefits: eligible ? { opd: true, ipd: true, dental: false } : null,
-        validUntil: eligible ? new Date(Date.now() + 30 * 86400000) : null,
+        status: eligibility.eligible ? "eligible" : "ineligible",
+        coverageType: eligibility.coverageType,
+        benefits: eligibility.eligible ? eligibility.benefits : null,
+        limitations: eligibility.limitations,
+        validUntil: eligibility.eligible ? new Date(Date.now() + 30 * 86400000) : null,
       };
       const id = await db.checkCoverageEligibility(data);
-      return { id, eligible, benefits: data.benefits };
+      return { id, ...eligibility };
     }),
     listEligibility: protectedProcedure.input(z.object({ patientId: z.number() })).query(async ({ input }) => {
       return db.listCoverageEligibility(input.patientId);
@@ -898,8 +1017,9 @@ export const appRouter = router({
       return { success: true };
     }),
     validate: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
-      // Simulate validation
-      const issues = Math.random() > 0.5 ? [] : [{ field: "diagnosisCodes", message: "Missing primary diagnosis" }];
+      const claimCase = await db.getClaimCaseById(input.id);
+      if (!claimCase) throw new TRPCError({ code: "NOT_FOUND", message: "Claim case not found" });
+      const issues = validateClaimCase(claimCase as any);
       await db.updateClaimCase(input.id, {
         status: issues.length === 0 ? "ready_to_submit" : "correction_required",
         validationIssues: issues,
@@ -1062,6 +1182,98 @@ export const appRouter = router({
       };
     }),
 
+    standardLabels: publicProcedure.query(() => {
+      return standardLabelCatalog();
+    }),
+
+    didDocuments: publicProcedure.input(z.object({
+      hospitalCode: z.string().default("TCC"),
+      patientSeed: z.string().default("P001"),
+      carepassId: z.string().default("CP-TH-2026-000001"),
+    }).optional()).query(({ input }) => {
+      const hospitalCode = input?.hospitalCode ?? "TCC";
+      const patientSeed = input?.patientSeed ?? "P001";
+      const carepassId = input?.carepassId ?? "CP-TH-2026-000001";
+      return {
+        hospital: {
+          did: hospitalDidWeb(hospitalCode),
+          didDocument: didWebDocument({
+            hospitalCode,
+            name: `TrustCare ${hospitalCode}`,
+            nameEn: `TrustCare ${hospitalCode}`,
+          }),
+        },
+        patient: {
+          did: patientDidKey(`${hospitalCode}:${patientSeed}:${carepassId}`),
+          didDocument: didKeyDocument({
+            seed: `${hospitalCode}:${patientSeed}:${carepassId}`,
+            patientRef: `Patient/${patientSeed.toLowerCase()}`,
+            carepassId,
+          }),
+        },
+      };
+    }),
+
+    demoSeed: protectedProcedure.input(z.object({
+      patientsPerHospital: z.number().min(1).max(100).default(12),
+    }).optional()).query(({ input }) => {
+      return generateTrustcareDemoSeed({ patientsPerHospital: input?.patientsPerHospital ?? 12 });
+    }),
+
+    sourceTruthConnectors: protectedProcedure.query(() => {
+      return sourceTruthConnectors();
+    }),
+
+    seedBatches: protectedProcedure.input(z.object({
+      limit: z.number().min(1).max(100).default(20),
+    }).optional()).query(({ input }) => {
+      return db.listVcVpSeedBatches(input?.limit ?? 20);
+    }),
+
+    issuedPresentations: protectedProcedure.input(z.object({
+      patientId: z.number().optional(),
+      status: z.string().optional(),
+      limit: z.number().min(1).max(100).default(50),
+    }).optional()).query(({ input }) => {
+      return db.listIssuedPresentations(input);
+    }),
+
+    reseedDb: adminProcedure.input(z.object({
+      patientsPerHospital: z.number().min(1).max(100).default(12),
+      resetExistingSeed: z.boolean().default(true),
+    }).optional()).mutation(async ({ ctx, input }) => {
+      return reseedTrustcareVcVpDatabase({
+        actorId: ctx.user.id,
+        patientsPerHospital: input?.patientsPerHospital ?? 12,
+        resetExistingSeed: input?.resetExistingSeed ?? true,
+      });
+    }),
+
+    reviewCsvImport: protectedProcedure.input(z.object({
+      csvText: z.string().min(1),
+      sourceSystem: z.string().default("CSV-UPLOAD"),
+      sourceOrganizationId: z.string().default("TCC"),
+      sourceOrganizationName: z.string().optional(),
+      mapperVersion: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const review = reviewCsvForCanonicalMapping(input);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "portability.csv.reviewed",
+        resourceType: "canonical_import",
+        resourceId: String(review.id),
+        details: { rowCount: review.rowCount, ready: review.ready, needsReview: review.needsReview },
+      });
+      return review;
+    }),
+
+    canonicalizeDraft: protectedProcedure.input(z.object({
+      draft: z.any(),
+    })).mutation(({ input }) => {
+      return canonicalizeReviewedDraft(input.draft);
+    }),
+
     canonicalizeHis: protectedProcedure.input(z.object({
       sourceFormat: z.enum(["db_view", "csv", "hl7v2", "rest_api", "fhir_native", "document"]),
       payload: z.any(),
@@ -1142,6 +1354,9 @@ export const appRouter = router({
     }),
 
     issueMedicalCertificate: protectedProcedure.input(z.object({
+      templateId: z.number().optional(),
+      issuerHospitalId: z.number().optional(),
+      subjectId: z.number().optional(),
       issuer: z.object({
         id: z.string(),
         name: z.string(),
@@ -1160,31 +1375,37 @@ export const appRouter = router({
       validUntil: z.string().optional(),
       audience: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const credential = await issueMedicalCertificateVc({
-        issuer: input.issuer ?? defaultIssuerProfile(),
+      requireMaker(ctx.user, "medical_certificate");
+      const issuer = input.issuer ?? defaultIssuerProfile();
+      const request = await submitMakerCredentialRequest({
+        maker: ctx.user,
+        templateId: input.templateId,
+        issuerHospitalId: input.issuerHospitalId ?? (ctx.user as any).hospitalId ?? 0,
+        subjectId: input.subjectId ?? numericSubjectId(input.patient.id, ctx.user.id),
+        type: "medical_certificate",
         holderDid: input.holderDid ?? defaultHolderDid(ctx.user.id),
-        patient: input.patient,
-        practitioner: input.practitioner,
-        organization: input.organization,
-        diagnosisText: input.diagnosisText,
-        fitnessForWork: input.fitnessForWork,
-        recommendations: input.recommendations,
-        validFrom: input.validFrom,
-        validUntil: input.validUntil,
-        audience: input.audience,
+        issuerDid: issuer.did,
+        documentData: {
+          issuer,
+          patient: input.patient,
+          practitioner: input.practitioner,
+          organization: input.organization,
+          diagnosisText: input.diagnosisText,
+          fitnessForWork: input.fitnessForWork,
+          recommendations: input.recommendations,
+          validFrom: input.validFrom,
+          validUntil: input.validUntil,
+          audience: input.audience,
+        },
+        canonicalReview: { status: "pending_checker_review", requiredBeforeIssue: true, documentType: "medical_certificate" },
       });
-      await db.createAuditEvent({
-        actorId: ctx.user.id,
-        actorRole: (ctx.user as any).systemRole,
-        action: "portability.medical_certificate.issued",
-        resourceType: "verifiable_credential",
-        resourceId: credential.id,
-        details: { type: credential.type, digest: credential.digest },
-      });
-      return credential;
+      return { ...request, nextStep: "checker_review_required" };
     }),
 
     issuePrescription: protectedProcedure.input(z.object({
+      templateId: z.number().optional(),
+      issuerHospitalId: z.number().optional(),
+      subjectId: z.number().optional(),
       issuer: z.object({
         id: z.string(),
         name: z.string(),
@@ -1212,28 +1433,31 @@ export const appRouter = router({
       dispenseWindowDays: z.number().optional(),
       audience: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const credential = await issuePrescriptionVc({
-        issuer: input.issuer ?? defaultIssuerProfile(),
+      requireMaker(ctx.user, "prescription");
+      const issuer = input.issuer ?? defaultIssuerProfile();
+      const request = await submitMakerCredentialRequest({
+        maker: ctx.user,
+        templateId: input.templateId,
+        issuerHospitalId: input.issuerHospitalId ?? (ctx.user as any).hospitalId ?? 0,
+        subjectId: input.subjectId ?? numericSubjectId(input.patient.id, ctx.user.id),
+        type: "prescription",
         holderDid: input.holderDid ?? defaultHolderDid(ctx.user.id),
-        patient: input.patient,
-        prescriber: input.prescriber,
-        organization: input.organization,
-        medications: input.medications,
-        authoredOn: input.authoredOn,
-        substitutionAllowed: input.substitutionAllowed,
-        repeatsAllowed: input.repeatsAllowed,
-        dispenseWindowDays: input.dispenseWindowDays,
-        audience: input.audience,
+        issuerDid: issuer.did,
+        documentData: {
+          issuer,
+          patient: input.patient,
+          prescriber: input.prescriber,
+          organization: input.organization,
+          medications: input.medications,
+          authoredOn: input.authoredOn,
+          substitutionAllowed: input.substitutionAllowed,
+          repeatsAllowed: input.repeatsAllowed,
+          dispenseWindowDays: input.dispenseWindowDays,
+          audience: input.audience,
+        },
+        canonicalReview: { status: "pending_checker_review", requiredBeforeIssue: true, documentType: "prescription" },
       });
-      await db.createAuditEvent({
-        actorId: ctx.user.id,
-        actorRole: (ctx.user as any).systemRole,
-        action: "portability.prescription.issued",
-        resourceType: "verifiable_credential",
-        resourceId: credential.id,
-        details: { type: credential.type, digest: credential.digest },
-      });
-      return credential;
+      return { ...request, nextStep: "checker_review_required" };
     }),
 
     verify: publicProcedure.input(z.object({
@@ -1242,19 +1466,7 @@ export const appRouter = router({
       trustedIssuers: z.array(z.string()).optional(),
       revokedCredentialIds: z.array(z.string()).optional(),
       revokedStatusIndexes: z.array(z.string()).optional(),
-      allowedCredentialTypes: z.array(z.enum([
-        "PatientIdentityCredential",
-        "ConsentReceiptCredential",
-        "PatientSummaryCredential",
-        "AllergyAlertCredential",
-        "MedicationSummaryCredential",
-        "ReferralCredential",
-        "CoverageEligibilityCredential",
-        "MedicalCertificateCredential",
-        "PrescriptionCredential",
-        "ClaimPackageCredential",
-        "SyncReceiptCredential",
-      ])).optional(),
+      allowedCredentialTypes: z.array(z.enum(trustcareCredentialTypeValues)).optional(),
       trustRegistryMode: z.enum(["off", "advisory", "required"]).default("advisory"),
       audience: z.string().optional(),
     })).mutation(async ({ input }) => {
@@ -1287,6 +1499,15 @@ export const appRouter = router({
         trustPolicy,
         audience: input.audience,
       });
+    }),
+
+    verifyJsonPresentation: publicProcedure.input(z.object({
+      presentation: z.any(),
+      trustedIssuers: z.array(z.string()).optional(),
+      revokedCredentialIds: z.array(z.string()).optional(),
+      requiredCredentialTypes: z.array(z.string()).optional(),
+    })).mutation(({ input }) => {
+      return verifyJsonPresentation(input);
     }),
 
     syncTargets: protectedProcedure.query(() => {
@@ -1492,11 +1713,315 @@ export const appRouter = router({
 export type AppRouter = typeof appRouter;
 
 // Helper
+function requireMaker(user: any, credentialType: string) {
+  if (user?.systemRole !== "maker") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Document creation requires Maker role." });
+  }
+  if (!hasCredentialEntitlement(user, "makerTypes", credentialType)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: `Maker is not entitled to create ${credentialType}.` });
+  }
+}
+
+function requireChecker(user: any, credentialType: string) {
+  if (user?.systemRole !== "checker") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "VC issuance requires Checker role." });
+  }
+  if (!hasCredentialEntitlement(user, "checkerTypes", credentialType)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: `Checker is not entitled to issue ${credentialType}.` });
+  }
+}
+
+function hasCredentialEntitlement(user: any, key: "makerTypes" | "checkerTypes", credentialType: string): boolean {
+  const entitlements = user?.credentialEntitlements ?? {};
+  const allowed = Array.isArray(entitlements[key]) ? entitlements[key] : [];
+  return allowed.includes("*") || allowed.includes(credentialType);
+}
+
+async function submitMakerCredentialRequest(input: {
+  maker: any;
+  templateId?: number;
+  issuerHospitalId: number;
+  subjectId: number;
+  type: (typeof credentialTypeValues)[number];
+  holderDid?: string;
+  issuerDid?: string;
+  documentData: any;
+  canonicalReview?: any;
+}) {
+  requireMaker(input.maker, input.type);
+  const requestId = `urn:trustcare:issuance-request:${nanoid(32)}`;
+  const id = await db.createCredentialIssuanceRequest({
+    requestId,
+    templateId: input.templateId,
+    issuerHospitalId: input.issuerHospitalId,
+    subjectId: input.subjectId,
+    type: input.type,
+    status: "submitted",
+    makerId: input.maker.id,
+    makerRole: input.maker.systemRole ?? input.maker.role,
+    holderDid: input.holderDid,
+    issuerDid: input.issuerDid,
+    documentData: {
+      ...input.documentData,
+      makerFlow: {
+        makerId: input.maker.id,
+        makerRole: input.maker.systemRole ?? input.maker.role,
+        submittedAt: new Date().toISOString(),
+      },
+    },
+    canonicalReview: input.canonicalReview ?? { status: "pending_checker_review", requiredBeforeIssue: true },
+  } as any);
+  await db.createAuditEvent({
+    actorId: input.maker.id,
+    actorRole: input.maker.systemRole ?? input.maker.role,
+    hospitalId: input.issuerHospitalId,
+    action: "credential.request.submitted",
+    resourceType: "credential_issuance_request",
+    resourceId: requestId,
+    details: { id, type: input.type, subjectId: input.subjectId, makerFlow: true },
+  });
+  return { id, requestId, status: "submitted", makerFlow: true };
+}
+
+async function issueCredentialFromRequest(input: {
+  checkerId: number;
+  checkerRole: string;
+  request: any;
+  checkerNotes?: string;
+  audience?: string;
+}) {
+  const request = input.request;
+  const documentData = request.documentData ?? {};
+  const hospital = request.issuerHospitalId ? await db.getHospitalById(request.issuerHospitalId) : undefined;
+  const issuer = {
+    id: String(request.issuerHospitalId || documentData.issuer?.id || "trustcare-network"),
+    name: String(documentData.issuer?.name ?? hospital?.nameEn ?? hospital?.name ?? defaultIssuerProfile().name),
+    did: String(request.issuerDid ?? documentData.issuer?.did ?? hospital?.did ?? defaultIssuerProfile().did),
+    country: String(documentData.issuer?.country ?? "TH"),
+    trustDomain: String(documentData.issuer?.trustDomain ?? "trustcare-network"),
+  };
+  const holderDid = String(request.holderDid ?? documentData.holderDid ?? defaultHolderDid(request.subjectId));
+  const credentialId = `urn:trustcare:vc:${sha256(request.requestId).slice(0, 32)}`;
+  const issuedAt = new Date();
+  let credential;
+
+  if (request.type === "medical_certificate") {
+    credential = await issueMedicalCertificateVc({
+      issuer,
+      holderDid,
+      patient: documentData.patient ?? { id: String(request.subjectId), name: `Patient ${request.subjectId}` },
+      practitioner: documentData.practitioner ?? { id: String(input.checkerId), name: "Checker" },
+      organization: documentData.organization ?? { id: String(request.issuerHospitalId), name: issuer.name },
+      diagnosisText: documentData.diagnosisText,
+      fitnessForWork: documentData.fitnessForWork,
+      recommendations: documentData.recommendations,
+      validFrom: documentData.validFrom,
+      validUntil: documentData.validUntil,
+      audience: input.audience ?? documentData.audience,
+      credentialId,
+      now: issuedAt,
+    });
+  } else if (request.type === "prescription") {
+    credential = await issuePrescriptionVc({
+      issuer,
+      holderDid,
+      patient: documentData.patient ?? { id: String(request.subjectId), name: `Patient ${request.subjectId}` },
+      prescriber: documentData.prescriber ?? { id: String(input.checkerId), name: "Checker" },
+      organization: documentData.organization ?? { id: String(request.issuerHospitalId), name: issuer.name },
+      medications: documentData.medications ?? [{ name: "Clinical medication order", instructions: "As directed" }],
+      authoredOn: documentData.authoredOn,
+      substitutionAllowed: documentData.substitutionAllowed,
+      repeatsAllowed: documentData.repeatsAllowed,
+      dispenseWindowDays: documentData.dispenseWindowDays,
+      audience: input.audience ?? documentData.audience,
+      credentialId,
+      now: issuedAt,
+    });
+  } else {
+    credential = await issueCredential({
+      type: trustcareVcTypeForDbType(request.type),
+      issuer,
+      subjectId: String(documentData.patient?.id ?? request.subjectId),
+      subjectDid: holderDid,
+      claims: {
+        documentType: request.type,
+        patient: documentData.patient ?? { id: request.subjectId },
+        organization: documentData.organization ?? { id: request.issuerHospitalId, name: issuer.name },
+        clinical: documentData.clinical,
+        fhir: documentData.fhir,
+        sourceOfTruth: documentData.sourceOfTruth,
+        humanDocument: documentData.humanDocument,
+        originalDocumentData: documentData,
+      },
+      evidence: [
+        { type: "MakerCheckerRequest", digest: sha256(request), resourceId: request.requestId },
+        request.canonicalReview ? { type: "CanonicalReview", digest: sha256(request.canonicalReview), status: request.canonicalReview.status } : undefined,
+      ].filter(Boolean) as any,
+      validDays: validityDaysForCredentialType(request.type),
+      audience: input.audience ?? documentData.audience,
+      credentialId,
+      now: issuedAt,
+    });
+  }
+
+  const templateId = await resolveTemplateForRequest(request);
+  const storage = documentStorageMetadata({
+    documentType: request.type,
+    hospitalCode: hospital?.code ?? String(request.issuerHospitalId),
+    patientKey: String(request.subjectId),
+    credentialId: credential.id,
+  });
+  const credentialData = {
+    ...credential.credential,
+    makerChecker: {
+      requestId: request.requestId,
+      makerId: request.makerId,
+      makerRole: request.makerRole,
+      checkerId: input.checkerId,
+      checkerRole: input.checkerRole,
+      checkerNotes: input.checkerNotes,
+      checkedAt: issuedAt.toISOString(),
+      canonicalReview: request.canonicalReview,
+    },
+  };
+  const rowId = await db.createIssuedCredential({
+    credentialId: credential.id,
+    templateId,
+    issuerId: input.checkerId,
+    issuerHospitalId: request.issuerHospitalId,
+    subjectId: request.subjectId,
+    type: request.type,
+    status: "active",
+    credentialData,
+    sdJwtVc: credential.jwt,
+    documentCategory: storage.category,
+    documentSubcategory: storage.subcategory,
+    storageKey: storage.storagePath,
+    searchTags: storage.indexTags,
+    issuedAt,
+    expiresAt: credential.expiresAt ? new Date(credential.expiresAt) : undefined,
+    fhirResourceId: String(credential.credential?.credentialSubject?.fhir?.resourceType ?? request.type),
+  } as any);
+  await db.createWalletCard({
+    patientId: request.subjectId,
+    credentialId: rowId!,
+    cardType: cardTypeForCredential(request.type) as any,
+    displayName: getCardDisplayName(request.type),
+    displayNameEn: String(request.type).replace(/_/g, " "),
+    issuerHospitalName: issuer.name,
+    documentCategory: storage.category,
+  });
+  await db.updateCredentialIssuanceRequest(request.id, {
+    status: "issued",
+    checkerId: input.checkerId,
+    checkerRole: input.checkerRole,
+    checkerNotes: input.checkerNotes,
+    checkedAt: issuedAt,
+    issuedAt,
+    issuedCredentialId: credential.id,
+    issuedCredentialRowId: rowId,
+  } as any);
+  await db.createAuditEvent({
+    actorId: input.checkerId,
+    actorRole: input.checkerRole,
+    hospitalId: request.issuerHospitalId,
+    action: "credential.request.approved_and_issued",
+    resourceType: "verifiable_credential",
+    resourceId: credential.id,
+    details: {
+      requestId: request.requestId,
+      type: request.type,
+      subjectId: request.subjectId,
+      digest: credential.digest,
+      makerId: request.makerId,
+      checkerId: input.checkerId,
+    },
+  });
+  return { id: rowId, credentialId: credential.id, requestId: request.requestId, status: "issued", credential };
+}
+
+async function resolveTemplateForRequest(request: any): Promise<number> {
+  if (request.templateId) return request.templateId;
+  const existing = await db.listCredentialTemplates(request.issuerHospitalId);
+  const template = existing.find((item: any) => item.type === request.type);
+  if (template) return template.id;
+  const id = await db.createCredentialTemplate({
+    hospitalId: request.issuerHospitalId,
+    name: getCardDisplayName(request.type),
+    nameEn: String(request.type).replace(/_/g, " "),
+    type: request.type,
+    version: "1.0",
+    schema: { makerCheckerRequired: true, vcType: trustcareVcTypeForDbType(request.type) },
+    fhirResourceType: "DocumentReference",
+    documentCategory: documentStorageMetadata({ documentType: request.type }).category,
+    documentSubcategory: documentStorageMetadata({ documentType: request.type }).subcategory,
+    defaultStoragePath: documentStorageMetadata({ documentType: request.type }).storagePath,
+    validityDays: validityDaysForCredentialType(request.type),
+    isActive: true,
+  } as any);
+  return id!;
+}
+
+function trustcareVcTypeForDbType(type: string): any {
+  const map: Record<string, string> = {
+    patient_identity: "PatientIdentityCredential",
+    consent_receipt: "ConsentReceiptCredential",
+    patient_summary: "PatientSummaryCredential",
+    allergy_alert: "AllergyAlertCredential",
+    medication_summary: "MedicationSummaryCredential",
+    referral_vc: "ReferralCredential",
+    immunization: "ImmunizationCredential",
+    medical_certificate: "MedicalCertificateCredential",
+    prescription: "PrescriptionCredential",
+    lab_result: "LabResultCredential",
+    diagnostic_report: "DiagnosticReportCredential",
+    discharge_summary: "DischargeSummaryCredential",
+    insurance_eligibility: "CoverageEligibilityCredential",
+    claim_package: "ClaimPackageCredential",
+    claim_receipt: "ClaimReceiptCredential",
+    travel_document_verification: "TravelDocumentVerificationCredential",
+    shl_manifest: "ShlManifestCredential",
+    pharmacy_dispense: "PharmacyDispenseCredential",
+    appointment: "AppointmentCredential",
+    visa_support_letter: "VisaSupportLetterCredential",
+    quotation: "QuotationCredential",
+    guarantee_letter: "GuaranteeLetterCredential",
+    mpi_link_certificate: "MpiLinkCertificateCredential",
+    sync_receipt: "SyncReceiptCredential",
+  };
+  return map[type] ?? "PatientSummaryCredential";
+}
+
+function validityDaysForCredentialType(type: string): number {
+  if (["prescription", "pharmacy_dispense"].includes(type)) return 30;
+  if (["medical_certificate", "lab_result", "diagnostic_report"].includes(type)) return 90;
+  if (["consent_receipt", "insurance_eligibility", "claim_package", "claim_receipt"].includes(type)) return 180;
+  return 365;
+}
+
+function numericSubjectId(value: unknown, fallback: number): number {
+  const parsed = typeof value === "number" ? value : Number(String(value ?? "").replace(/[^\d]/g, ""));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 function getCardDisplayName(type: string): string {
   const extendedNames: Record<string, string> = {
     medical_certificate: "Medical Certificate",
     prescription: "Prescription",
+    lab_result: "Lab Result",
+    diagnostic_report: "Diagnostic Report",
+    discharge_summary: "Discharge Summary",
+    insurance_eligibility: "Coverage Eligibility",
     claim_package: "Claim Package",
+    claim_receipt: "Claim Receipt",
+    travel_document_verification: "Travel Document Verification",
+    shl_manifest: "SHL Manifest",
+    pharmacy_dispense: "Pharmacy Dispense",
+    appointment: "Appointment",
+    visa_support_letter: "Visa Support Letter",
+    quotation: "Treatment Quotation",
+    guarantee_letter: "Guarantee Letter",
+    mpi_link_certificate: "MPI Link Certificate",
     sync_receipt: "Sync Receipt",
   };
   if (extendedNames[type]) return extendedNames[type];
@@ -1512,6 +2037,36 @@ function getCardDisplayName(type: string): string {
   return map[type] || type;
 }
 
+function cardTypeForCredential(type: string): string {
+  const map: Record<string, string> = {
+    patient_identity: "identity",
+    consent_receipt: "consent",
+    patient_summary: "patient_summary",
+    allergy_alert: "allergy",
+    medication_summary: "medication",
+    referral_vc: "referral",
+    immunization: "immunization",
+    medical_certificate: "medical_certificate",
+    prescription: "prescription",
+    lab_result: "lab_result",
+    diagnostic_report: "diagnostic_report",
+    discharge_summary: "discharge_summary",
+    insurance_eligibility: "coverage",
+    claim_package: "claim",
+    claim_receipt: "claim",
+    travel_document_verification: "travel_document",
+    shl_manifest: "shl_manifest",
+    pharmacy_dispense: "pharmacy_dispense",
+    appointment: "appointment",
+    visa_support_letter: "visa_support_letter",
+    quotation: "quotation",
+    guarantee_letter: "guarantee_letter",
+    mpi_link_certificate: "mpi_link_certificate",
+    sync_receipt: "sync_receipt",
+  };
+  return map[type] ?? "patient_summary";
+}
+
 function defaultIssuerProfile() {
   return {
     id: "trustcare-network",
@@ -1523,7 +2078,137 @@ function defaultIssuerProfile() {
 }
 
 function defaultHolderDid(userId: number) {
-  return `did:key:trustcare-patient-${userId}`;
+  return patientDidKey(`trustcare-patient-${userId}`);
+}
+
+function evaluateAdapterHealth(adapter: {
+  id: number;
+  name?: string | null;
+  status?: string | null;
+  connectorPattern?: string | null;
+}, config?: Record<string, unknown> | null) {
+  const status = String(adapter.status ?? "testing");
+  const targetConfigured = hasAdapterConnectionTarget(String(adapter.connectorPattern ?? ""), config);
+  const healthy = status === "active" && targetConfigured;
+  const responseTimeMs = 50 + stableModulo(`${adapter.id}:${adapter.name ?? ""}:${adapter.connectorPattern ?? ""}`, 450);
+  let errorMessage: string | undefined;
+  if (status !== "active") {
+    errorMessage = `Adapter status is ${status}; activate adapter before marking it healthy.`;
+  } else if (!targetConfigured) {
+    errorMessage = "Adapter connection target is incomplete.";
+  }
+  return {
+    healthy,
+    responseTimeMs,
+    errorMessage,
+    evaluatedAt: new Date().toISOString(),
+    evaluationSource: "adapter_configuration",
+  };
+}
+
+function hasAdapterConnectionTarget(pattern: string, config?: Record<string, unknown> | null): boolean {
+  if (!config || typeof config !== "object") return false;
+  const acceptedKeys = [
+    "endpoint", "baseUrl", "url", "dsn", "connectionString", "host", "databaseUrl",
+    "viewName", "tableName", "fileDropPath", "directory", "topic", "queueName",
+  ];
+  const hasTarget = acceptedKeys.some((key) => {
+    const value = config[key];
+    return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
+  });
+  if (hasTarget) return true;
+  return ["portal_adapter", "batch_file"].includes(pattern) && Boolean(config.enabled);
+}
+
+function evaluateEligibility(payer: {
+  payerType?: string | null;
+  status?: string | null;
+  validationRules?: unknown;
+}, memberId?: string) {
+  const payerStatus = String(payer.status ?? "testing");
+  const payerType = String(payer.payerType ?? "private_insurance");
+  const isSelfPay = payerType === "self_pay";
+  const hasMemberId = isSelfPay || Boolean(memberId?.trim());
+  const eligible = payerStatus === "active" && hasMemberId;
+  const limitations: Array<{ code: string; message: string }> = [];
+  if (payerStatus !== "active") {
+    limitations.push({ code: "payer_not_active", message: `Payer adapter status is ${payerStatus}.` });
+  }
+  if (!hasMemberId) {
+    limitations.push({ code: "member_id_required", message: "Member ID is required for this payer type." });
+  }
+  return {
+    eligible,
+    coverageType: coverageTypeForPayer(payerType),
+    benefits: benefitsForPayer(payerType),
+    limitations,
+    payerStatus,
+    evaluationSource: "payer_adapter_rules",
+  };
+}
+
+function coverageTypeForPayer(payerType: string) {
+  const map: Record<string, string> = {
+    nhso: "universal_coverage",
+    sso: "social_security",
+    csmbs: "civil_servant",
+    private_insurance: "private_insurance",
+    corporate: "corporate",
+    self_pay: "self_pay",
+  };
+  return map[payerType] ?? "general";
+}
+
+function benefitsForPayer(payerType: string) {
+  if (payerType === "self_pay") return { opd: false, ipd: false, dental: false, paymentMode: "self_pay" };
+  if (payerType === "private_insurance") return { opd: true, ipd: true, dental: true, preAuthorizationRequired: true };
+  if (payerType === "corporate") return { opd: true, ipd: true, dental: false, guaranteeLetterRequired: true };
+  return { opd: true, ipd: true, dental: false };
+}
+
+function validateClaimCase(claimCase: {
+  payerAdapterId?: number | null;
+  patientId?: number | null;
+  hospitalId?: number | null;
+  totalAmount?: string | null;
+  diagnosisCodes?: unknown;
+  procedureCodes?: unknown;
+  serviceItems?: unknown;
+  claimType?: string | null;
+}) {
+  const issues: Array<{ field: string; message: string }> = [];
+  if (!claimCase.patientId) issues.push({ field: "patientId", message: "Patient is required." });
+  if (!claimCase.hospitalId) issues.push({ field: "hospitalId", message: "Hospital is required." });
+  if (!claimCase.payerAdapterId) issues.push({ field: "payerAdapterId", message: "Payer adapter is required." });
+  if (!hasStructuredValue(claimCase.diagnosisCodes)) {
+    issues.push({ field: "diagnosisCodes", message: "At least one diagnosis code is required." });
+  }
+  if (claimCase.claimType !== "pharmacy" && !hasStructuredValue(claimCase.serviceItems)) {
+    issues.push({ field: "serviceItems", message: "Service items are required for non-pharmacy claims." });
+  }
+  const amount = Number(String(claimCase.totalAmount ?? "").replace(/,/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    issues.push({ field: "totalAmount", message: "Total amount must be greater than zero." });
+  }
+  if (claimCase.claimType === "ipd" && !hasStructuredValue(claimCase.procedureCodes)) {
+    issues.push({ field: "procedureCodes", message: "IPD claims require procedure codes." });
+  }
+  return issues;
+}
+
+function hasStructuredValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  if (value && typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+  if (typeof value === "string") return value.trim().length > 0;
+  return false;
+}
+
+function stableModulo(text: string, modulo: number): number {
+  let value = 0;
+  for (const char of text) {
+    value = (value * 31 + char.charCodeAt(0)) % modulo;
+  }
+  return value;
 }
 
 async function buildPortabilityTrustPolicy(input: {

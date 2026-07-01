@@ -5,11 +5,19 @@ import {
   createPortabilityPacket,
   createSyncBackPlan,
   executeSyncBackPlan,
+  documentStorageMetadata,
+  generateTrustcareDemoSeed,
+  hospitalDidWeb,
   issueMedicalCertificateVc,
   issuePrescriptionVc,
   issueSyncReceiptVc,
+  patientDidKey,
   RECOMMENDED_SYNC_TARGETS,
+  reviewCsvForCanonicalMapping,
+  canonicalizeReviewedDraft,
+  standardLabelCatalog,
   verifyCredential,
+  verifyJsonPresentation,
   verifyPresentation,
 } from "./portability";
 
@@ -200,5 +208,68 @@ describe("Patient Data Portability Layer", () => {
     const hl7Execution = executeSyncBackPlan(hl7Plan, { actorId: "doctor-demo" });
     expect(hl7Execution.reconciliation?.status).toBe("scheduled");
     expect(hl7Execution.reconciliation?.runMode).toBe("ack_replay");
+  });
+
+  it("generates DID-bound seed data, reviews CSV through canonical mapping, and classifies VC documents for storage", () => {
+    const seed = generateTrustcareDemoSeed({ patientsPerHospital: 4 });
+    expect(seed.counts.hospitals).toBe(3);
+    expect(seed.counts.patients).toBe(12);
+    expect(seed.hospitals.every((hospital: any) => String(hospital.did).startsWith("did:web:"))).toBe(true);
+    expect(seed.patients.every((patient: any) => String(patient.holderDid).startsWith("did:key:"))).toBe(true);
+
+    expect(hospitalDidWeb("TCC")).toBe("did:web:trustcare.network:hospital:tcc");
+    expect(patientDidKey("TCC:P001:CP-TH-2026-000001")).toMatch(/^did:key:z/);
+
+    const review = reviewCsvForCanonicalMapping({
+      csvText: seed.sourceTruth.csv.csvText,
+      sourceSystem: "TCC-HIS",
+      sourceOrganizationId: "HCODE-TCC-99991",
+    });
+    expect(review.ready).toBeGreaterThan(0);
+    const canonical = canonicalizeReviewedDraft(review.drafts[0]);
+    expect(canonical.makeVcReady).toBe(true);
+    expect(canonical.canonical.bundle.resourceType).toBe("Bundle");
+
+    const labels = standardLabelCatalog();
+    expect(labels.documentCategories.medication_and_pharmacy.en).toBe("Medication and Pharmacy");
+    const storage = documentStorageMetadata({
+      documentType: "prescription",
+      hospitalCode: "TCC",
+      patientKey: "HN-TCC-0001",
+      credentialId: "urn:trustcare:vc:test",
+    });
+    expect(storage.category).toBe("medication_and_pharmacy");
+    expect(storage.storagePath).toContain("/prescription/");
+  });
+
+  it("verifies JSON VP fixtures structurally without accepting placeholder proof as green trust", () => {
+    const issuerDid = "did:web:trustcare.network:hospital:tcc";
+    const holderDid = "did:key:z6MkTrustCarePatientP001";
+    const result = verifyJsonPresentation({
+      presentation: {
+        id: "vp-test",
+        type: ["VerifiablePresentation"],
+        holder: holderDid,
+        purpose: "pharmacy",
+        verifiableCredential: [
+          {
+            id: "vc-prescription-test",
+            type: ["VerifiableCredential", "PrescriptionCredential"],
+            issuer: { id: issuerDid },
+            credentialSubject: {
+              id: holderDid,
+              patient: { name: "Somchai Jaidee" },
+              clinical: { medications: [{ name: "Metformin 500mg" }] },
+            },
+            proof: { type: "DataIntegrityProof", proofValue: "placeholder" },
+          },
+        ],
+      },
+      trustedIssuers: [issuerDid],
+      requiredCredentialTypes: ["prescription"],
+    });
+    expect(result.verified).toBe(true);
+    expect(result.trustLevel).toBe("yellow");
+    expect(result.warnings.join(" ")).toContain("placeholder");
   });
 });

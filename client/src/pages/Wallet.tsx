@@ -1,23 +1,44 @@
 import DashboardLayout from "@/components/DashboardLayout";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { trpc } from "@/lib/trpc";
-import { Wallet as WalletIcon, CreditCard, History, QrCode, Shield, AlertTriangle, Pill, FileText, User, Syringe, Printer, Fingerprint, CheckCircle2 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useCallback } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { trpc } from "@/lib/trpc";
+import {
+  AlertTriangle, BadgeCheck, CalendarDays, CreditCard, FileBadge, FileCheck2, FileText, Globe2,
+  History, Landmark, Link2, Microscope, PackageCheck, Pill, Printer, QrCode, ReceiptText,
+  RefreshCcw, ScanLine, Shield, Syringe, User, Wallet as WalletIcon,
+} from "lucide-react";
+import QRCode from "qrcode";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-const cardTypeConfig: Record<string, { icon: any; color: string; bgGradient: string }> = {
-  allergy: { icon: AlertTriangle, color: "text-red-100", bgGradient: "from-red-500 to-red-700" },
-  medication: { icon: Pill, color: "text-blue-100", bgGradient: "from-blue-500 to-blue-700" },
-  patient_summary: { icon: FileText, color: "text-emerald-100", bgGradient: "from-emerald-500 to-emerald-700" },
-  consent: { icon: Shield, color: "text-violet-100", bgGradient: "from-violet-500 to-violet-700" },
-  identity: { icon: User, color: "text-slate-100", bgGradient: "from-slate-600 to-slate-800" },
-  immunization: { icon: Syringe, color: "text-amber-100", bgGradient: "from-amber-500 to-amber-700" },
-  referral: { icon: FileText, color: "text-cyan-100", bgGradient: "from-cyan-500 to-cyan-700" },
+const cardTypeConfig: Record<string, { icon: any; bgGradient: string }> = {
+  allergy: { icon: AlertTriangle, bgGradient: "from-red-500 to-red-700" },
+  medication: { icon: Pill, bgGradient: "from-blue-500 to-blue-700" },
+  patient_summary: { icon: FileText, bgGradient: "from-emerald-500 to-emerald-700" },
+  consent: { icon: Shield, bgGradient: "from-violet-500 to-violet-700" },
+  identity: { icon: User, bgGradient: "from-slate-600 to-slate-800" },
+  immunization: { icon: Syringe, bgGradient: "from-amber-500 to-amber-700" },
+  referral: { icon: FileText, bgGradient: "from-cyan-500 to-cyan-700" },
+  medical_certificate: { icon: FileBadge, bgGradient: "from-teal-600 to-teal-800" },
+  prescription: { icon: Pill, bgGradient: "from-sky-600 to-sky-800" },
+  lab_result: { icon: Microscope, bgGradient: "from-lime-600 to-lime-800" },
+  diagnostic_report: { icon: ScanLine, bgGradient: "from-indigo-600 to-indigo-800" },
+  discharge_summary: { icon: FileCheck2, bgGradient: "from-green-600 to-green-800" },
+  coverage: { icon: Shield, bgGradient: "from-emerald-600 to-emerald-800" },
+  claim: { icon: ReceiptText, bgGradient: "from-rose-600 to-rose-800" },
+  travel_document: { icon: Globe2, bgGradient: "from-cyan-600 to-cyan-800" },
+  shl_manifest: { icon: QrCode, bgGradient: "from-zinc-600 to-zinc-800" },
+  pharmacy_dispense: { icon: PackageCheck, bgGradient: "from-blue-600 to-blue-800" },
+  appointment: { icon: CalendarDays, bgGradient: "from-purple-600 to-purple-800" },
+  visa_support_letter: { icon: BadgeCheck, bgGradient: "from-fuchsia-600 to-fuchsia-800" },
+  quotation: { icon: FileText, bgGradient: "from-orange-600 to-orange-800" },
+  guarantee_letter: { icon: Landmark, bgGradient: "from-yellow-600 to-yellow-800" },
+  mpi_link_certificate: { icon: Link2, bgGradient: "from-stone-600 to-stone-800" },
+  sync_receipt: { icon: RefreshCcw, bgGradient: "from-slate-600 to-slate-800" },
 };
 
 export default function Wallet() {
@@ -25,27 +46,28 @@ export default function Wallet() {
   const { data: history, isLoading: histLoading } = trpc.wallet.history.useQuery();
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [qrOpen, setQrOpen] = useState(false);
-  const [biometricVerified, setBiometricVerified] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [presentation, setPresentation] = useState<any>(null);
+
+  const presentMutation = trpc.wallet.present.useMutation({
+    onSuccess: async (data) => {
+      setPresentation(data);
+      setQrDataUrl(await QRCode.toDataURL(data.qrData, { margin: 1, width: 224 }));
+      toast.success("สร้าง VP QR สำเร็จ");
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
   const handleShowQR = useCallback((card: any) => {
     setSelectedCard(card);
-    setBiometricVerified(false);
+    setQrDataUrl("");
+    setPresentation(null);
     setQrOpen(true);
-  }, []);
-
-  const handleBiometricConfirm = useCallback(async () => {
-    setVerifying(true);
-    // Simulate biometric verification (in real app, use WebAuthn API)
-    await new Promise(r => setTimeout(r, 1200));
-    setBiometricVerified(true);
-    setVerifying(false);
-    toast.success("ยืนยันตัวตนสำเร็จ");
   }, []);
 
   const handlePrintQR = useCallback(() => {
     window.print();
-    toast.info("กำลังพิมพ์ QR Code สำหรับใช้แบบกระดาษ");
+    toast.info("กำลังพิมพ์ VP QR");
   }, []);
 
   return (
@@ -53,7 +75,7 @@ export default function Wallet() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">กระเป๋าสุขภาพ</h1>
-          <p className="text-muted-foreground text-sm mt-1">Health Card ของคุณ — แตะเพื่อแสดง QR Code</p>
+          <p className="text-muted-foreground text-sm mt-1">Health cards backed by issued VC/VP records.</p>
         </div>
 
         <Tabs defaultValue="cards">
@@ -73,39 +95,34 @@ export default function Wallet() {
                   const config = cardTypeConfig[card.cardType] || cardTypeConfig.identity;
                   const Icon = config.icon;
                   return (
-                    <div
+                    <button
                       key={card.id}
                       onClick={() => handleShowQR(card)}
-                      className={`relative rounded-xl p-5 text-white shadow-lg hover:shadow-xl transition-all cursor-pointer bg-gradient-to-br ${config.bgGradient} hover:-translate-y-1 active:scale-[0.97]`}
+                      className={`relative rounded-lg p-5 text-left text-white shadow-lg hover:shadow-xl transition-all bg-gradient-to-br ${config.bgGradient} hover:-translate-y-1 active:scale-[0.98]`}
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm shrink-0">
                             <Icon className="h-5 w-5" />
                           </div>
-                          <div>
-                            <h3 className="font-medium text-sm">{card.displayName}</h3>
-                            <p className="text-xs opacity-80">{card.issuerHospitalName || "Trustcare Network"}</p>
+                          <div className="min-w-0">
+                            <h3 className="font-medium text-sm truncate">{card.displayName}</h3>
+                            <p className="text-xs opacity-80 truncate">{card.issuerHospitalName || "TrustCare Network"}</p>
                           </div>
                         </div>
                         {card.isPinned && <Badge className="bg-white/20 text-white border-0 text-[10px]">ปักหมุด</Badge>}
                       </div>
-                      <div className="mt-6 flex items-end justify-between">
-                        <div>
-                          <p className="text-[10px] opacity-60 uppercase tracking-wider">ประเภท</p>
-                          <p className="text-xs opacity-90">{card.displayNameEn || card.cardType}</p>
+                      <div className="mt-6 flex items-end justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="text-[10px] opacity-60 uppercase tracking-wider">Type</p>
+                          <p className="text-xs opacity-90 truncate">{card.displayNameEn || card.cardType}</p>
                         </div>
                         <div className="flex items-center gap-1 text-white/80">
                           <QrCode className="h-3.5 w-3.5" />
-                          <span className="text-xs">แตะเพื่อแสดง</span>
+                          <span className="text-xs">VP QR</span>
                         </div>
                       </div>
-                      <div className="absolute top-0 right-0 w-24 h-24 opacity-10">
-                        <svg viewBox="0 0 100 100" fill="currentColor">
-                          <circle cx="80" cy="20" r="40" />
-                        </svg>
-                      </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -114,7 +131,6 @@ export default function Wallet() {
                 <CardContent className="flex flex-col items-center justify-center py-16">
                   <WalletIcon className="h-12 w-12 text-muted-foreground/30 mb-4" />
                   <p className="text-muted-foreground">ยังไม่มี Health Card ในกระเป๋า</p>
-                  <p className="text-sm text-muted-foreground mt-1">เมื่อโรงพยาบาลออกใบรับรองให้ การ์ดจะปรากฏที่นี่</p>
                 </CardContent>
               </Card>
             )}
@@ -127,25 +143,20 @@ export default function Wallet() {
               <Card>
                 <CardContent className="p-0">
                   <div className="divide-y">
-                    {history.map((h: any) => (
-                      <div key={h.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                    {history.map((item: any) => (
+                      <div key={item.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
                         <div className="flex items-center gap-3">
                           <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
                             <QrCode className="h-4 w-4 text-primary" />
                           </div>
                           <div>
-                            <p className="text-sm font-medium">{h.verifierName || "ผู้ตรวจสอบ"}</p>
-                            <p className="text-xs text-muted-foreground">{h.purpose || "ตรวจสอบข้อมูล"}</p>
+                            <p className="text-sm font-medium">{item.verifierName || "Verifier"}</p>
+                            <p className="text-xs text-muted-foreground">{item.purpose || "verification"}</p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <Badge variant={h.verificationResult === "valid" ? "default" : "destructive"} className="text-[10px]">
-                            {h.verificationResult === "valid" ? "ผ่าน" : h.verificationResult === "expired" ? "หมดอายุ" : "ไม่ผ่าน"}
-                          </Badge>
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            {new Date(h.presentedAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
-                          </p>
-                        </div>
+                        <Badge variant={item.verificationResult === "valid" ? "default" : "destructive"} className="text-[10px]">
+                          {item.verificationResult || "recorded"}
+                        </Badge>
                       </div>
                     ))}
                   </div>
@@ -163,96 +174,41 @@ export default function Wallet() {
         </Tabs>
       </div>
 
-      {/* QR Presentation Modal */}
       <Dialog open={qrOpen} onOpenChange={setQrOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-center">แสดงข้อมูลสุขภาพ</DialogTitle>
-            <DialogDescription className="text-center">
-              {biometricVerified ? "แสดง QR Code ให้เจ้าหน้าที่สแกน" : "กรุณายืนยันตัวตนก่อนแสดงข้อมูล"}
-            </DialogDescription>
+            <DialogTitle className="text-center">Verifiable Presentation QR</DialogTitle>
+            <DialogDescription className="text-center">{selectedCard?.displayName}</DialogDescription>
           </DialogHeader>
 
-          {!biometricVerified ? (
-            <div className="flex flex-col items-center gap-6 py-6">
+          {!qrDataUrl ? (
+            <div className="flex flex-col items-center gap-5 py-6">
               <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
-                <Fingerprint className="h-10 w-10 text-primary" />
-              </div>
-              <div className="text-center space-y-2">
-                <p className="text-sm font-medium">ยืนยันตัวตน</p>
-                <p className="text-xs text-muted-foreground">
-                  เพื่อความปลอดภัย กรุณายืนยันตัวตนก่อนแสดงข้อมูลสุขภาพ
-                </p>
+                <QrCode className="h-10 w-10 text-primary" />
               </div>
               <Button
-                onClick={handleBiometricConfirm}
-                disabled={verifying}
+                onClick={() => selectedCard && presentMutation.mutate({ cardId: selectedCard.id })}
+                disabled={!selectedCard || presentMutation.isPending}
                 className="w-full"
                 size="lg"
               >
-                {verifying ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    กำลังยืนยัน...
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2">
-                    <Fingerprint className="h-4 w-4" />
-                    แตะเพื่อยืนยัน
-                  </span>
-                )}
+                {presentMutation.isPending ? "กำลังสร้าง QR..." : "สร้าง VP QR"}
               </Button>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-4 py-4">
-              <div className="flex items-center gap-2 text-green-600 mb-2">
-                <CheckCircle2 className="h-4 w-4" />
-                <span className="text-xs font-medium">ยืนยันตัวตนแล้ว</span>
+              <div className="rounded-lg border p-3 bg-white">
+                <img src={qrDataUrl} alt="Verifiable Presentation QR" className="h-56 w-56" />
               </div>
-
-              {/* QR Code Display */}
-              <div className="border-2 border-dashed border-muted-foreground/20 rounded-xl p-4 bg-white">
-                <div className="w-48 h-48 bg-gradient-to-br from-gray-100 to-gray-50 rounded-lg flex items-center justify-center relative">
-                  {/* Simulated QR pattern */}
-                  <div className="grid grid-cols-7 gap-0.5 p-2">
-                    {Array.from({ length: 49 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className={`w-5 h-5 rounded-sm ${
-                          Math.random() > 0.5 ? "bg-gray-900" : "bg-white"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="h-10 w-10 bg-white rounded-lg shadow-sm flex items-center justify-center">
-                      <QrCode className="h-6 w-6 text-primary" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="text-center space-y-1">
+              <div className="text-center space-y-1 max-w-full">
                 <p className="text-sm font-medium">{selectedCard?.displayName}</p>
-                <p className="text-xs text-muted-foreground">
-                  QR Code นี้มีอายุ 5 นาที
-                </p>
+                <p className="text-xs text-muted-foreground break-all">{presentation?.presentationId}</p>
+                {presentation?.expiresAt && <p className="text-xs text-muted-foreground">Expires {new Date(presentation.expiresAt).toLocaleString("th-TH")}</p>}
               </div>
-
-              {/* Paper QR Fallback */}
-              <div className="w-full border-t pt-4 mt-2">
-                <Button
-                  variant="outline"
-                  onClick={handlePrintQR}
-                  className="w-full gap-2"
-                >
-                  <Printer className="h-4 w-4" />
-                  พิมพ์ QR Code (สำหรับใช้แบบกระดาษ)
-                </Button>
-                <p className="text-[10px] text-muted-foreground text-center mt-2">
-                  สำหรับผู้ที่ไม่สะดวกใช้โทรศัพท์ สามารถพิมพ์ QR Code ไว้ใช้แทนได้
-                </p>
-              </div>
+              <Button variant="outline" onClick={handlePrintQR} className="w-full gap-2">
+                <Printer className="h-4 w-4" />
+                พิมพ์ QR
+              </Button>
             </div>
           )}
         </DialogContent>
