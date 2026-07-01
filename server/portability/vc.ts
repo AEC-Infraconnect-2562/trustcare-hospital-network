@@ -1,4 +1,4 @@
-import { jwtVerify, SignJWT } from "jose";
+import { decodeJwt, decodeProtectedHeader, importJWK, jwtVerify, SignJWT } from "jose";
 import type {
   CanonicalFhirResult,
   ConsentGrant,
@@ -7,15 +7,76 @@ import type {
   IssuerProfile,
   JsonRecord,
   PresentationPackage,
+  TrustRegistryVerificationPolicy,
   TrustcareCredentialType,
 } from "./types";
 import { addDays, isoNow, sha256, stableStringify, stripUndefined, urnUuid } from "./utils";
 
 const DEFAULT_AUDIENCE = "https://trustcare.network/verifier";
+const DEFAULT_STATUS_LIST = "https://trustcare.network/status/revocation-list";
+
+interface VerificationOptions {
+  trustedIssuers?: string[];
+  trustedIssuerJwks?: Record<string, JsonRecord[]>;
+  trustedKidJwks?: Record<string, JsonRecord>;
+  requireTrustedIssuer?: boolean;
+  audience?: string;
+  revokedCredentialIds?: string[];
+  revokedStatusIndexes?: string[];
+  allowedCredentialTypes?: TrustcareCredentialType[];
+  trustPolicy?: TrustRegistryVerificationPolicy;
+}
 
 function signingSecret(): Uint8Array {
   const secret = process.env.TRUSTCARE_VC_SIGNING_SECRET ?? process.env.JWT_SECRET ?? "trustcare-dev-vc-secret-change-me";
   return new TextEncoder().encode(secret);
+}
+
+async function resolveSigningMaterial(issuerDid: string, purpose: "vc" | "vp"): Promise<{
+  alg: string;
+  kid: string;
+  key: unknown;
+  keyMode: IssuedVc["keyMode"];
+  publicJwk?: JsonRecord;
+}> {
+  const privateJwk = parseJwk(process.env.TRUSTCARE_VC_SIGNING_PRIVATE_JWK);
+  if (privateJwk) {
+    const alg = process.env.TRUSTCARE_VC_SIGNING_ALG ?? String(privateJwk.alg ?? "ES256");
+    const kid = process.env.TRUSTCARE_VC_KEY_ID ?? String(privateJwk.kid ?? `${issuerDid}#${purpose}-signing-key`);
+    const normalized = { ...privateJwk, alg, kid };
+    return {
+      alg,
+      kid,
+      key: await importJWK(normalized, alg),
+      keyMode: "asymmetric",
+      publicJwk: toPublicJwk(normalized),
+    };
+  }
+
+  return {
+    alg: "HS256",
+    kid: `${issuerDid}#dev-${purpose}-signing-key`,
+    key: signingSecret(),
+    keyMode: "dev-hmac",
+  };
+}
+
+export async function localIssuerJwks(issuerDid = "did:web:trustcare.network"): Promise<JsonRecord> {
+  const privateJwk = parseJwk(process.env.TRUSTCARE_VC_SIGNING_PRIVATE_JWK);
+  const publicJwk = parseJwk(process.env.TRUSTCARE_VC_SIGNING_PUBLIC_JWK) ?? (privateJwk ? toPublicJwk(privateJwk) : undefined);
+  if (!publicJwk) {
+    return {
+      keys: [],
+      issuer: issuerDid,
+      warning: "No asymmetric public JWK configured. Set TRUSTCARE_VC_SIGNING_PRIVATE_JWK and TRUSTCARE_VC_SIGNING_PUBLIC_JWK before production.",
+    };
+  }
+  const alg = process.env.TRUSTCARE_VC_SIGNING_ALG ?? String(publicJwk.alg ?? "ES256");
+  const kid = process.env.TRUSTCARE_VC_KEY_ID ?? String(publicJwk.kid ?? `${issuerDid}#vc-signing-key`);
+  return {
+    keys: [{ ...publicJwk, alg, kid, use: publicJwk.use ?? "sig" }],
+    issuer: issuerDid,
+  };
 }
 
 export async function issueCredential(input: {
@@ -32,6 +93,7 @@ export async function issueCredential(input: {
   const now = input.now ?? new Date();
   const expiresAt = addDays(now, input.validDays ?? 365);
   const id = urnUuid();
+  const signingMaterial = await resolveSigningMaterial(input.issuer.did, "vc");
   const credential = stripUndefined(buildCredentialEnvelope({
     id,
     type: input.type,
@@ -51,14 +113,14 @@ export async function issueCredential(input: {
     trustcare_claim_digest: digest,
     trustcare_disclosure_digests: disclosureDigests,
   })
-    .setProtectedHeader({ alg: "HS256", typ: "vc+JWT", kid: `${input.issuer.did}#dev-signing-key` })
+    .setProtectedHeader({ alg: signingMaterial.alg, typ: "vc+JWT", kid: signingMaterial.kid })
     .setIssuer(input.issuer.did)
     .setSubject(input.subjectDid ?? input.subjectId)
     .setAudience(input.audience ?? DEFAULT_AUDIENCE)
     .setJti(id)
     .setIssuedAt(Math.floor(now.getTime() / 1000))
     .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
-    .sign(signingSecret());
+    .sign(signingMaterial.key as any);
 
   return {
     id,
@@ -69,36 +131,54 @@ export async function issueCredential(input: {
     digest,
     expiresAt: expiresAt.toISOString(),
     disclosureDigests,
+    alg: signingMaterial.alg,
+    kid: signingMaterial.kid,
+    keyMode: signingMaterial.keyMode,
+    statusListIndex: credential.credentialStatus?.statusListIndex,
   };
 }
 
-export async function verifyCredential(input: {
-  jwt: string;
-  trustedIssuers?: string[];
-  audience?: string;
-  revokedCredentialIds?: string[];
-}): Promise<{
+export async function verifyCredential(input: VerificationOptions & { jwt: string }): Promise<{
   verified: boolean;
   trustLevel: "green" | "yellow" | "red";
   credential?: JsonRecord;
   issuer?: string;
   credentialId?: string;
+  credentialType?: string;
+  kid?: string;
+  alg?: string;
   warnings: string[];
   errors: string[];
 }> {
   const warnings: string[] = [];
   const errors: string[] = [];
   try {
-    const result = await jwtVerify(input.jwt, signingSecret(), { audience: input.audience ?? DEFAULT_AUDIENCE });
+    const protectedHeader = decodeProtectedHeader(input.jwt);
+    const unverifiedPayload = decodeJwt(input.jwt) as JsonRecord;
+    const effectivePolicy = mergeVerificationPolicy(input);
+    const result = await jwtVerify(input.jwt, async () => resolveVerificationKey({
+      jwt: input.jwt,
+      issuer: String(unverifiedPayload.iss ?? ""),
+      kid: typeof protectedHeader.kid === "string" ? protectedHeader.kid : undefined,
+      alg: String(protectedHeader.alg ?? ""),
+      policy: effectivePolicy,
+    }), { audience: input.audience ?? DEFAULT_AUDIENCE });
     const payload = result.payload as JsonRecord;
     const credential = payload.vc as JsonRecord | undefined;
     const issuer = String(payload.iss ?? "");
     const credentialId = String(payload.jti ?? credential?.id ?? "");
+    const credentialType = String(payload.vct ?? (Array.isArray(credential?.type) ? credential.type[credential.type.length - 1] : credential?.type ?? ""));
     const expectedDigest = String(payload.trustcare_claim_digest ?? "");
     if (!credential) errors.push("Missing VC payload.");
     if (credential && expectedDigest && sha256(credential) !== expectedDigest) errors.push("Credential digest mismatch.");
-    if (input.trustedIssuers?.length && !input.trustedIssuers.includes(issuer)) errors.push("Issuer is not in the trust registry.");
-    if (input.revokedCredentialIds?.includes(credentialId)) errors.push("Credential has been revoked.");
+    if (effectivePolicy.trustedIssuers.length && !effectivePolicy.trustedIssuers.includes(issuer)) errors.push("Issuer is not in the trust registry.");
+    if (effectivePolicy.requireTrustedIssuer && !effectivePolicy.trustedIssuers.includes(issuer)) errors.push("Production verification requires a verified trust registry issuer.");
+    if (effectivePolicy.revokedCredentialIds.includes(credentialId)) errors.push("Credential has been revoked.");
+    const statusIndex = String(credential?.credentialStatus?.statusListIndex ?? "");
+    if (statusIndex && effectivePolicy.revokedStatusIndexes.includes(statusIndex)) errors.push("Credential status list index is revoked.");
+    if (effectivePolicy.allowedCredentialTypes?.length && !effectivePolicy.allowedCredentialTypes.includes(credentialType as TrustcareCredentialType)) {
+      errors.push("Credential type is not allowed by verifier policy.");
+    }
 
     const exp = typeof payload.exp === "number" ? payload.exp * 1000 : undefined;
     if (exp) {
@@ -106,6 +186,8 @@ export async function verifyCredential(input: {
       if (days < 0) errors.push("Credential is expired.");
       else if (days <= 30) warnings.push("Credential expires within 30 days.");
     }
+    if (protectedHeader.alg === "HS256") warnings.push("Credential uses development HMAC signing; configure asymmetric JWKs before production.");
+    if (!credential?.credentialStatus) warnings.push("Credential has no status entry for revocation checks.");
 
     const verified = errors.length === 0;
     return {
@@ -114,6 +196,9 @@ export async function verifyCredential(input: {
       credential,
       issuer,
       credentialId,
+      credentialType,
+      kid: typeof protectedHeader.kid === "string" ? protectedHeader.kid : undefined,
+      alg: String(protectedHeader.alg ?? ""),
       warnings,
       errors,
     };
@@ -139,6 +224,7 @@ export async function createPresentation(input: {
   const expiresAt = new Date(now.getTime() + (input.validMinutes ?? 10) * 60_000);
   const id = urnUuid();
   const credentialIds = input.credentials.map((credential) => credential.id);
+  const signingMaterial = await resolveSigningMaterial(input.holderDid, "vp");
   const jwt = await new SignJWT({
     vp: {
       "@context": ["https://www.w3.org/ns/credentials/v2"],
@@ -150,13 +236,13 @@ export async function createPresentation(input: {
     },
     trustcare_credential_ids: credentialIds,
   })
-    .setProtectedHeader({ alg: "HS256", typ: "vp+JWT", kid: `${input.holderDid}#wallet-dev-key` })
+    .setProtectedHeader({ alg: signingMaterial.alg, typ: "vp+JWT", kid: signingMaterial.kid })
     .setIssuer(input.holderDid)
     .setAudience(input.audience ?? DEFAULT_AUDIENCE)
     .setJti(id)
     .setIssuedAt(Math.floor(now.getTime() / 1000))
     .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
-    .sign(signingSecret());
+    .sign(signingMaterial.key as any);
 
   return {
     id,
@@ -170,12 +256,7 @@ export async function createPresentation(input: {
   };
 }
 
-export async function verifyPresentation(input: {
-  jwt: string;
-  trustedIssuers?: string[];
-  audience?: string;
-  revokedCredentialIds?: string[];
-}): Promise<{
+export async function verifyPresentation(input: VerificationOptions & { jwt: string }): Promise<{
   verified: boolean;
   trustLevel: "green" | "yellow" | "red";
   holderDid?: string;
@@ -186,19 +267,34 @@ export async function verifyPresentation(input: {
   const warnings: string[] = [];
   const errors: string[] = [];
   try {
-    const result = await jwtVerify(input.jwt, signingSecret(), { audience: input.audience ?? DEFAULT_AUDIENCE });
+    const protectedHeader = decodeProtectedHeader(input.jwt);
+    const unverifiedPayload = decodeJwt(input.jwt) as JsonRecord;
+    const effectivePolicy = mergeVerificationPolicy(input);
+    const result = await jwtVerify(input.jwt, async () => resolveVerificationKey({
+      jwt: input.jwt,
+      issuer: String(unverifiedPayload.iss ?? ""),
+      kid: typeof protectedHeader.kid === "string" ? protectedHeader.kid : undefined,
+      alg: String(protectedHeader.alg ?? ""),
+      policy: { ...effectivePolicy, requireTrustedIssuer: false },
+    }), { audience: input.audience ?? DEFAULT_AUDIENCE });
     const payload = result.payload as JsonRecord;
     const vp = payload.vp as JsonRecord | undefined;
     const vcJwtList = Array.isArray(vp?.verifiableCredential) ? (vp.verifiableCredential as string[]) : [];
     if (!vp || vcJwtList.length === 0) errors.push("Presentation does not contain credentials.");
+    if (protectedHeader.alg === "HS256") warnings.push("Presentation uses development HMAC signing; configure holder or server wallet keys before production.");
 
     const credentials: JsonRecord[] = [];
     for (const jwt of vcJwtList) {
       const verification = await verifyCredential({
         jwt,
-        trustedIssuers: input.trustedIssuers,
+        trustedIssuers: effectivePolicy.trustedIssuers,
+        trustedIssuerJwks: effectivePolicy.trustedIssuerJwks,
+        trustedKidJwks: effectivePolicy.trustedKidJwks,
+        requireTrustedIssuer: effectivePolicy.requireTrustedIssuer,
         audience: input.audience,
-        revokedCredentialIds: input.revokedCredentialIds,
+        revokedCredentialIds: effectivePolicy.revokedCredentialIds,
+        revokedStatusIndexes: effectivePolicy.revokedStatusIndexes,
+        allowedCredentialTypes: effectivePolicy.allowedCredentialTypes,
       });
       warnings.push(...verification.warnings);
       errors.push(...verification.errors);
@@ -348,12 +444,72 @@ function buildCredentialEnvelope(input: {
     },
     evidence: input.evidence ?? [],
     credentialStatus: {
-      type: "StatusList2021Entry",
+      id: `${statusListCredential()}/${statusListIndex(input.id)}`,
+      type: "BitstringStatusListEntry",
       statusPurpose: "revocation",
-      statusListIndex: sha256(input.id).slice(0, 8),
-      statusListCredential: "https://trustcare.network/status/dev-list",
+      statusListIndex: statusListIndex(input.id),
+      statusListCredential: statusListCredential(),
     },
   };
+}
+
+async function resolveVerificationKey(input: {
+  jwt: string;
+  issuer: string;
+  kid?: string;
+  alg: string;
+  policy: ReturnType<typeof mergeVerificationPolicy>;
+}): Promise<any> {
+  if (input.alg.startsWith("HS")) return signingSecret();
+
+  const candidates = [
+    input.kid ? input.policy.trustedKidJwks[input.kid] : undefined,
+    ...(input.policy.trustedIssuerJwks[input.issuer] ?? []),
+    ...(((await localIssuerJwks(input.issuer)).keys as JsonRecord[] | undefined) ?? []),
+  ].filter(Boolean) as JsonRecord[];
+
+  const jwk = candidates.find((item) => !input.kid || item.kid === input.kid) ?? candidates[0];
+  if (!jwk) throw new Error(`No public JWK available for issuer ${input.issuer || "unknown"} and kid ${input.kid ?? "unknown"}.`);
+  return importJWK(jwk, input.alg);
+}
+
+function mergeVerificationPolicy(input: VerificationOptions) {
+  const trustedIssuers = Array.from(new Set([...(input.trustPolicy?.trustedIssuers ?? []), ...(input.trustedIssuers ?? [])]));
+  const revokedCredentialIds = Array.from(new Set([...(input.trustPolicy?.revokedCredentialIds ?? []), ...(input.revokedCredentialIds ?? [])]));
+  const revokedStatusIndexes = Array.from(new Set([...(input.trustPolicy?.revokedStatusIndexes ?? []), ...(input.revokedStatusIndexes ?? [])]));
+  return {
+    trustedIssuers,
+    trustedIssuerJwks: input.trustPolicy?.issuerJwks ?? input.trustedIssuerJwks ?? {},
+    trustedKidJwks: input.trustPolicy?.kidJwks ?? input.trustedKidJwks ?? {},
+    requireTrustedIssuer: input.requireTrustedIssuer ?? (input.trustPolicy?.mode === "required"),
+    revokedCredentialIds,
+    revokedStatusIndexes,
+    allowedCredentialTypes: input.trustPolicy?.allowedCredentialTypes ?? input.allowedCredentialTypes,
+  };
+}
+
+function parseJwk(value: string | undefined): JsonRecord | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function toPublicJwk(jwk: JsonRecord): JsonRecord {
+  const publicJwk = { ...jwk };
+  for (const privateField of ["d", "p", "q", "dp", "dq", "qi", "oth", "k"]) delete publicJwk[privateField];
+  return publicJwk;
+}
+
+function statusListCredential(): string {
+  return process.env.TRUSTCARE_STATUS_LIST_URL ?? DEFAULT_STATUS_LIST;
+}
+
+function statusListIndex(id: string): string {
+  return String(parseInt(sha256(id).slice(0, 10), 16) % 131_072);
 }
 
 function buildDisclosureDigests(claims: JsonRecord): Record<string, string> {

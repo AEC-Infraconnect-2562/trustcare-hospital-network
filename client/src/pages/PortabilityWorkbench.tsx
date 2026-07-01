@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { ClipboardCheck, FileBadge, FileJson2, Pill, RefreshCcw } from "lucide-react";
+import { ClipboardCheck, FileBadge, FileJson2, Pill, RefreshCcw, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -66,6 +66,8 @@ export default function PortabilityWorkbench() {
     onSuccess: (data) => toast[data.verified ? "success" : "error"](data.verified ? "Verified" : "Verification failed"),
   });
   const syncTargets = trpc.portability.syncTargets.useQuery();
+  const productionReadiness = trpc.portability.productionReadiness.useQuery();
+  const reconciliationJobs = trpc.portability.reconciliationJobs.useQuery({ limit: 10 });
   const syncPlan = trpc.portability.planSyncBack.useMutation({
     onSuccess: () => toast.success("Sync-back plan generated"),
     onError: (error) => toast.error(error.message),
@@ -117,6 +119,7 @@ export default function PortabilityWorkbench() {
             <TabsTrigger value="documents" className="gap-2"><FileBadge className="h-3.5 w-3.5" />VC Documents</TabsTrigger>
             <TabsTrigger value="verify" className="gap-2"><ClipboardCheck className="h-3.5 w-3.5" />Verify</TabsTrigger>
             <TabsTrigger value="sync" className="gap-2"><RefreshCcw className="h-3.5 w-3.5" />Sync Back</TabsTrigger>
+            <TabsTrigger value="production" className="gap-2"><ShieldCheck className="h-3.5 w-3.5" />Production</TabsTrigger>
           </TabsList>
 
           <TabsContent value="canonical" className="mt-4">
@@ -244,6 +247,7 @@ export default function PortabilityWorkbench() {
                 <div className="flex flex-wrap gap-2">
                   <Button disabled={!verifyInput || verify.isPending} onClick={() => verify.mutate({ jwt: verifyInput, kind: "presentation" })}>Verify as VP</Button>
                   <Button variant="outline" disabled={!verifyInput || verify.isPending} onClick={() => verify.mutate({ jwt: verifyInput, kind: "credential" })}>Verify as VC</Button>
+                  <Button variant="outline" disabled={!verifyInput || verify.isPending} onClick={() => verify.mutate({ jwt: verifyInput, kind: "credential", trustRegistryMode: "required" })}>Strict Trust Verify</Button>
                   <Button variant="ghost" disabled={!latestJwt} onClick={() => setVerifyInput(latestJwt)}>Use Latest JWT</Button>
                 </div>
                 <ResultCard title="Verification Result" data={verify.data} />
@@ -296,6 +300,13 @@ export default function PortabilityWorkbench() {
                 </CardContent>
               </Card>
               <ResultCard title="Sync Execution Result" data={syncExecute.data ? { plan: syncPlan.data, ...syncExecute.data } : syncPlan.data} />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="production" className="mt-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <ResultCard title="Production Readiness" data={productionReadiness.data} />
+              <ResultCard title="Reconciliation Jobs" data={reconciliationJobs.data} />
             </div>
           </TabsContent>
         </Tabs>

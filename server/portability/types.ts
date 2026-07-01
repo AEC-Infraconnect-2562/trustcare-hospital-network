@@ -118,6 +118,10 @@ export interface IssuedVc {
   digest: string;
   expiresAt?: string;
   disclosureDigests?: Record<string, string>;
+  alg?: string;
+  kid?: string;
+  keyMode?: "asymmetric" | "dev-hmac";
+  statusListIndex?: string;
 }
 
 export interface PresentationPackage {
@@ -202,6 +206,7 @@ export interface SyncBackExecutionResult {
     targetChecksum?: string;
     matched: boolean;
   };
+  reconciliation?: SyncReconciliationJob;
 }
 
 export interface SyncBackExecutionOptions {
@@ -212,4 +217,30 @@ export interface SyncBackExecutionOptions {
   message?: string;
   allowManualReview?: boolean;
   executedAt?: string;
+}
+
+export interface SyncReconciliationJob {
+  id: string;
+  planId: string;
+  executionId: string;
+  targetId: string;
+  targetKind: SyncTargetKind;
+  status: "not_required" | "scheduled" | "manual_review" | "failed";
+  reason: string;
+  runMode: "read_back" | "ack_replay" | "manual_review";
+  dueAt?: string;
+  checks: JsonRecord[];
+  attempts: number;
+}
+
+export type TrustRegistryVerificationMode = "off" | "advisory" | "required";
+
+export interface TrustRegistryVerificationPolicy {
+  mode: TrustRegistryVerificationMode;
+  trustedIssuers: string[];
+  issuerJwks: Record<string, JsonRecord[]>;
+  kidJwks: Record<string, JsonRecord>;
+  revokedCredentialIds: string[];
+  revokedStatusIndexes: string[];
+  allowedCredentialTypes?: TrustcareCredentialType[];
 }

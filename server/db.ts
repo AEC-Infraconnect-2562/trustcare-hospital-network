@@ -452,6 +452,8 @@ import {
   adapterHealthLogs,
   mappingVersions, InsertMappingVersion,
   integrationEventLogs,
+  credentialStatusEvents, InsertCredentialStatusEvent,
+  syncReconciliationJobs, InsertSyncReconciliationJob,
   trustRegistry, InsertTrustRegistryEntry,
   smartHealthLinks, InsertSmartHealthLink,
   shlAccessLogs,
@@ -574,6 +576,70 @@ export async function createIntegrationEvent(data: any) {
   const db = await getDb();
   if (!db) return;
   await db.insert(integrationEventLogs).values(data);
+}
+
+export async function listRevokedCredentialIds() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ credentialId: issuedCredentials.credentialId })
+    .from(issuedCredentials)
+    .where(eq(issuedCredentials.status, "revoked" as any));
+  return rows.map((row) => row.credentialId).filter(Boolean);
+}
+
+export async function createCredentialStatusEvent(data: InsertCredentialStatusEvent) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(credentialStatusEvents).values(data);
+  return result[0].insertId;
+}
+
+export async function listCredentialStatusEvents(filter?: { credentialId?: string; status?: string; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  const limit = filter?.limit ?? 50;
+  if (filter?.credentialId) conditions.push(eq(credentialStatusEvents.credentialId, filter.credentialId));
+  if (filter?.status) conditions.push(eq(credentialStatusEvents.status, filter.status as any));
+  if (conditions.length > 0) {
+    return db.select().from(credentialStatusEvents).where(and(...conditions)).orderBy(desc(credentialStatusEvents.createdAt)).limit(limit);
+  }
+  return db.select().from(credentialStatusEvents).orderBy(desc(credentialStatusEvents.createdAt)).limit(limit);
+}
+
+export async function listRevokedCredentialStatus() {
+  const db = await getDb();
+  if (!db) return { credentialIds: [] as string[], statusListIndexes: [] as string[] };
+  const rows = await db.select({
+    credentialId: credentialStatusEvents.credentialId,
+    statusListIndex: credentialStatusEvents.statusListIndex,
+  })
+    .from(credentialStatusEvents)
+    .where(or(eq(credentialStatusEvents.status, "revoked" as any), eq(credentialStatusEvents.status, "suspended" as any)));
+  return {
+    credentialIds: rows.map((row) => row.credentialId).filter(Boolean),
+    statusListIndexes: rows.map((row) => row.statusListIndex).filter((value): value is string => Boolean(value)),
+  };
+}
+
+export async function createSyncReconciliationJob(data: InsertSyncReconciliationJob) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(syncReconciliationJobs).values(data);
+  return result[0].insertId;
+}
+
+export async function listSyncReconciliationJobs(filter?: { status?: string; targetId?: string; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  const limit = filter?.limit ?? 50;
+  if (filter?.status) conditions.push(eq(syncReconciliationJobs.status, filter.status as any));
+  if (filter?.targetId) conditions.push(eq(syncReconciliationJobs.targetId, filter.targetId));
+  if (conditions.length > 0) {
+    return db.select().from(syncReconciliationJobs).where(and(...conditions)).orderBy(desc(syncReconciliationJobs.createdAt)).limit(limit);
+  }
+  return db.select().from(syncReconciliationJobs).orderBy(desc(syncReconciliationJobs.createdAt)).limit(limit);
 }
 
 // ============================================================
