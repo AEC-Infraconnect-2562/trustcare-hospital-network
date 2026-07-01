@@ -1,5 +1,3 @@
-import type { LucideIcon } from "lucide-react";
-
 export type SystemRole = "system_admin" | "hospital_admin" | "doctor" | "nurse" | "integration_engineer" | "patient";
 
 export interface MenuItem {
@@ -16,14 +14,16 @@ export interface MenuItem {
 
 export const menuGroups = [
   { id: "overview", label: "ภาพรวม", labelEn: "Overview" },
+  { id: "patient_services", label: "บริการผู้ป่วย", labelEn: "Patient Services" },
   { id: "clinical", label: "บริการทางคลินิก", labelEn: "Clinical Services" },
   { id: "credentials", label: "ใบรับรองดิจิทัล", labelEn: "Digital Credentials" },
-  { id: "data", label: "ข้อมูลและมาตรฐาน", labelEn: "Data & Standards" },
+  { id: "claims", label: "เคลมและการเงิน", labelEn: "Claims & Finance" },
+  { id: "interop", label: "เชื่อมต่อและมาตรฐาน", labelEn: "Interoperability" },
   { id: "admin", label: "บริหารระบบ", labelEn: "Administration" },
 ] as const;
 
 export const menuItems: MenuItem[] = [
-  // Overview
+  // ─── Overview ───
   {
     id: "dashboard",
     label: "แดชบอร์ด",
@@ -36,7 +36,7 @@ export const menuItems: MenuItem[] = [
     groupLabelEn: "Overview",
   },
 
-  // Clinical Services
+  // ─── Patient Services ───
   {
     id: "wallet",
     label: "กระเป๋าสุขภาพ",
@@ -44,10 +44,34 @@ export const menuItems: MenuItem[] = [
     icon: "Wallet",
     path: "/wallet",
     roles: ["patient"],
-    group: "clinical",
-    groupLabel: "บริการทางคลินิก",
-    groupLabelEn: "Clinical Services",
+    group: "patient_services",
+    groupLabel: "บริการผู้ป่วย",
+    groupLabelEn: "Patient Services",
   },
+  {
+    id: "consent",
+    label: "จัดการความยินยอม",
+    labelEn: "Consent Management",
+    icon: "ShieldCheck",
+    path: "/consent",
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"],
+    group: "patient_services",
+    groupLabel: "บริการผู้ป่วย",
+    groupLabelEn: "Patient Services",
+  },
+  {
+    id: "shl",
+    label: "ลิงก์แชร์สุขภาพ",
+    labelEn: "Smart Health Links",
+    icon: "Link2",
+    path: "/shl",
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"],
+    group: "patient_services",
+    groupLabel: "บริการผู้ป่วย",
+    groupLabelEn: "Patient Services",
+  },
+
+  // ─── Clinical Services ───
   {
     id: "referral",
     label: "ส่งต่อผู้ป่วย",
@@ -60,18 +84,29 @@ export const menuItems: MenuItem[] = [
     groupLabelEn: "Clinical Services",
   },
   {
-    id: "consent",
-    label: "จัดการความยินยอม",
-    labelEn: "Consent Management",
-    icon: "ShieldCheck",
-    path: "/consent",
-    roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"],
+    id: "cross-border",
+    label: "ส่งต่อข้ามเครือข่าย",
+    labelEn: "Cross-border Referral",
+    icon: "Globe",
+    path: "/cross-border",
+    roles: ["system_admin", "hospital_admin", "doctor"],
+    group: "clinical",
+    groupLabel: "บริการทางคลินิก",
+    groupLabelEn: "Clinical Services",
+  },
+  {
+    id: "international",
+    label: "ผู้ป่วยต่างชาติ",
+    labelEn: "International Patients",
+    icon: "Plane",
+    path: "/international",
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse"],
     group: "clinical",
     groupLabel: "บริการทางคลินิก",
     groupLabelEn: "Clinical Services",
   },
 
-  // Digital Credentials
+  // ─── Digital Credentials ───
   {
     id: "issuer",
     label: "ออกใบรับรอง",
@@ -94,8 +129,43 @@ export const menuItems: MenuItem[] = [
     groupLabel: "ใบรับรองดิจิทัล",
     groupLabelEn: "Digital Credentials",
   },
+  {
+    id: "trust-registry",
+    label: "ทะเบียนความน่าเชื่อถือ",
+    labelEn: "Trust Registry",
+    icon: "ShieldAlert",
+    path: "/trust-registry",
+    roles: ["system_admin", "hospital_admin"],
+    group: "credentials",
+    groupLabel: "ใบรับรองดิจิทัล",
+    groupLabelEn: "Digital Credentials",
+  },
 
-  // Data & Standards
+  // ─── Claims & Finance ───
+  {
+    id: "claim-center",
+    label: "ศูนย์เคลม",
+    labelEn: "Claim Center",
+    icon: "Receipt",
+    path: "/claim-center",
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse"],
+    group: "claims",
+    groupLabel: "เคลมและการเงิน",
+    groupLabelEn: "Claims & Finance",
+  },
+
+  // ─── Interoperability ───
+  {
+    id: "integration",
+    label: "เชื่อมต่อระบบ HIS",
+    labelEn: "HIS Integration",
+    icon: "Plug",
+    path: "/integration",
+    roles: ["system_admin", "hospital_admin", "integration_engineer"],
+    group: "interop",
+    groupLabel: "เชื่อมต่อและมาตรฐาน",
+    groupLabelEn: "Interoperability",
+  },
   {
     id: "fhir-mapping",
     label: "แผนที่ข้อมูล FHIR",
@@ -103,9 +173,9 @@ export const menuItems: MenuItem[] = [
     icon: "GitBranch",
     path: "/fhir-mapping",
     roles: ["system_admin", "hospital_admin", "integration_engineer"],
-    group: "data",
-    groupLabel: "ข้อมูลและมาตรฐาน",
-    groupLabelEn: "Data & Standards",
+    group: "interop",
+    groupLabel: "เชื่อมต่อและมาตรฐาน",
+    groupLabelEn: "Interoperability",
   },
   {
     id: "terminology",
@@ -114,12 +184,12 @@ export const menuItems: MenuItem[] = [
     icon: "BookOpen",
     path: "/terminology",
     roles: ["system_admin", "hospital_admin", "integration_engineer"],
-    group: "data",
-    groupLabel: "ข้อมูลและมาตรฐาน",
-    groupLabelEn: "Data & Standards",
+    group: "interop",
+    groupLabel: "เชื่อมต่อและมาตรฐาน",
+    groupLabelEn: "Interoperability",
   },
 
-  // Administration
+  // ─── Administration ───
   {
     id: "hospitals",
     label: "จัดการเครือข่าย",

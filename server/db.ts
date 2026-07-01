@@ -419,17 +419,429 @@ export async function markNotificationRead(id: number) {
 // ============================================================
 export async function getDashboardStats() {
   const db = await getDb();
-  if (!db) return { hospitals: 0, credentials: 0, patients: 0, referrals: 0 };
+  if (!db) return { hospitals: 0, credentials: 0, patients: 0, referrals: 0, claims: 0, tourists: 0, adapters: 0, adaptersOnline: 0 };
 
   const [hospitalCount] = await db.select({ count: count() }).from(hospitals);
   const [credentialCount] = await db.select({ count: count() }).from(issuedCredentials);
   const [patientCount] = await db.select({ count: count() }).from(users).where(eq(users.systemRole, "patient"));
   const [referralCount] = await db.select({ count: count() }).from(referrals);
+  const [claimCount] = await db.select({ count: count() }).from(claimCases);
+  const [touristCount] = await db.select({ count: count() }).from(internationalCases);
+  const [adapterCount] = await db.select({ count: count() }).from(integrationAdapters);
+  const [adapterOnlineCount] = await db.select({ count: count() }).from(integrationAdapters).where(eq(integrationAdapters.status, "active"));
 
   return {
     hospitals: hospitalCount.count,
     credentials: credentialCount.count,
     patients: patientCount.count,
     referrals: referralCount.count,
+    claims: claimCount.count,
+    tourists: touristCount.count,
+    adapters: adapterCount.count,
+    adaptersOnline: adapterOnlineCount.count,
+  };
+}
+
+// ============================================================
+// IMPORT NEW TABLES
+// ============================================================
+import {
+  patientIdentifiers, InsertPatientIdentifier,
+  mpiMatches,
+  integrationAdapters, InsertIntegrationAdapter,
+  adapterHealthLogs,
+  mappingVersions, InsertMappingVersion,
+  integrationEventLogs,
+  trustRegistry, InsertTrustRegistryEntry,
+  smartHealthLinks, InsertSmartHealthLink,
+  shlAccessLogs,
+  payerAdapters, InsertPayerAdapter,
+  coverageEligibility, InsertCoverageEligibility,
+  claimCases, InsertClaimCase,
+  internationalCases, InsertInternationalCase,
+  travelDocuments, InsertTravelDocument,
+  crossBorderReferrals, InsertCrossBorderReferral,
+} from "../drizzle/schema";
+
+// ============================================================
+// PATIENT IDENTITY / MPI HELPERS
+// ============================================================
+export async function listPatientIdentifiers(patientId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(patientIdentifiers).where(eq(patientIdentifiers.patientId, patientId));
+}
+
+export async function createPatientIdentifier(data: InsertPatientIdentifier) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(patientIdentifiers).values(data);
+  return result[0].insertId;
+}
+
+export async function listMpiMatches(filter?: { status?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  if (filter?.status) {
+    return db.select().from(mpiMatches).where(eq(mpiMatches.matchStatus, filter.status as any)).orderBy(desc(mpiMatches.createdAt)).limit(100);
+  }
+  return db.select().from(mpiMatches).orderBy(desc(mpiMatches.createdAt)).limit(100);
+}
+
+export async function updateMpiMatch(id: number, data: { matchStatus: string; reviewedBy?: number }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(mpiMatches).set({ ...data, reviewedAt: new Date() } as any).where(eq(mpiMatches.id, id));
+}
+
+// ============================================================
+// INTEGRATION ADAPTER HELPERS
+// ============================================================
+export async function listIntegrationAdapters(hospitalId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  if (hospitalId) {
+    return db.select().from(integrationAdapters).where(eq(integrationAdapters.hospitalId, hospitalId));
+  }
+  return db.select().from(integrationAdapters).orderBy(desc(integrationAdapters.createdAt));
+}
+
+export async function createIntegrationAdapter(data: InsertIntegrationAdapter) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(integrationAdapters).values(data);
+  return result[0].insertId;
+}
+
+export async function updateIntegrationAdapter(id: number, data: Partial<InsertIntegrationAdapter>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(integrationAdapters).set(data as any).where(eq(integrationAdapters.id, id));
+}
+
+export async function getIntegrationAdapterById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(integrationAdapters).where(eq(integrationAdapters.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createAdapterHealthLog(data: { adapterId: number; status: string; responseTimeMs?: number; errorMessage?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(adapterHealthLogs).values(data as any);
+}
+
+export async function listAdapterHealthLogs(adapterId: number, limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(adapterHealthLogs).where(eq(adapterHealthLogs.adapterId, adapterId)).orderBy(desc(adapterHealthLogs.checkedAt)).limit(limit);
+}
+
+export async function listMappingVersions(adapterId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(mappingVersions).where(eq(mappingVersions.adapterId, adapterId)).orderBy(desc(mappingVersions.createdAt));
+}
+
+export async function createMappingVersion(data: InsertMappingVersion) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(mappingVersions).values(data);
+  return result[0].insertId;
+}
+
+export async function updateMappingVersion(id: number, data: Partial<InsertMappingVersion>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(mappingVersions).set(data as any).where(eq(mappingVersions.id, id));
+}
+
+export async function listIntegrationEvents(filter?: { adapterId?: number; status?: string; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const limit = filter?.limit || 50;
+  const conditions: any[] = [];
+  if (filter?.adapterId) conditions.push(eq(integrationEventLogs.adapterId, filter.adapterId));
+  if (filter?.status) conditions.push(eq(integrationEventLogs.status, filter.status as any));
+  if (conditions.length > 0) {
+    return db.select().from(integrationEventLogs).where(and(...conditions)).orderBy(desc(integrationEventLogs.createdAt)).limit(limit);
+  }
+  return db.select().from(integrationEventLogs).orderBy(desc(integrationEventLogs.createdAt)).limit(limit);
+}
+
+export async function createIntegrationEvent(data: any) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(integrationEventLogs).values(data);
+}
+
+// ============================================================
+// TRUST REGISTRY HELPERS
+// ============================================================
+export async function listTrustRegistry(filter?: { entityType?: string; isActive?: boolean }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.entityType) conditions.push(eq(trustRegistry.entityType, filter.entityType as any));
+  if (filter?.isActive !== undefined) conditions.push(eq(trustRegistry.isActive, filter.isActive));
+  if (conditions.length > 0) {
+    return db.select().from(trustRegistry).where(and(...conditions)).orderBy(desc(trustRegistry.createdAt));
+  }
+  return db.select().from(trustRegistry).orderBy(desc(trustRegistry.createdAt));
+}
+
+export async function createTrustRegistryEntry(data: InsertTrustRegistryEntry) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(trustRegistry).values(data);
+  return result[0].insertId;
+}
+
+export async function updateTrustRegistryEntry(id: number, data: Partial<InsertTrustRegistryEntry>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(trustRegistry).set(data as any).where(eq(trustRegistry.id, id));
+}
+
+export async function getTrustRegistryByDid(did: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(trustRegistry).where(eq(trustRegistry.did, did)).limit(1);
+  return result[0];
+}
+
+// ============================================================
+// SMART HEALTH LINKS HELPERS
+// ============================================================
+export async function listSmartHealthLinks(patientId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(smartHealthLinks).where(eq(smartHealthLinks.patientId, patientId)).orderBy(desc(smartHealthLinks.createdAt));
+}
+
+export async function createSmartHealthLink(data: InsertSmartHealthLink) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(smartHealthLinks).values(data);
+  return result[0].insertId;
+}
+
+export async function getShlById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(smartHealthLinks).where(eq(smartHealthLinks.id, id)).limit(1);
+  return result[0];
+}
+
+export async function revokeShl(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(smartHealthLinks).set({ status: "revoked", revokedAt: new Date() } as any).where(eq(smartHealthLinks.id, id));
+}
+
+export async function incrementShlAccessCount(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  const shl = await getShlById(id);
+  if (shl) {
+    await db.update(smartHealthLinks).set({ currentAccessCount: shl.currentAccessCount + 1 } as any).where(eq(smartHealthLinks.id, id));
+  }
+}
+
+export async function createShlAccessLog(data: { shlId: number; accessorName?: string; accessorOrg?: string; accessorCountry?: string; ipAddress?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(shlAccessLogs).values(data as any);
+}
+
+export async function listShlAccessLogs(shlId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(shlAccessLogs).where(eq(shlAccessLogs.shlId, shlId)).orderBy(desc(shlAccessLogs.accessedAt));
+}
+
+// ============================================================
+// E-CLAIM / PAYER HELPERS
+// ============================================================
+export async function listPayerAdapters() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(payerAdapters).orderBy(desc(payerAdapters.createdAt));
+}
+
+export async function createPayerAdapter(data: InsertPayerAdapter) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(payerAdapters).values(data);
+  return result[0].insertId;
+}
+
+export async function updatePayerAdapter(id: number, data: Partial<InsertPayerAdapter>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(payerAdapters).set(data as any).where(eq(payerAdapters.id, id));
+}
+
+export async function checkCoverageEligibility(data: InsertCoverageEligibility) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(coverageEligibility).values(data);
+  return result[0].insertId;
+}
+
+export async function listCoverageEligibility(patientId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(coverageEligibility).where(eq(coverageEligibility.patientId, patientId)).orderBy(desc(coverageEligibility.createdAt));
+}
+
+export async function listClaimCases(filter?: { hospitalId?: number; status?: string; patientId?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.hospitalId) conditions.push(eq(claimCases.hospitalId, filter.hospitalId));
+  if (filter?.status) conditions.push(eq(claimCases.status, filter.status as any));
+  if (filter?.patientId) conditions.push(eq(claimCases.patientId, filter.patientId));
+  if (conditions.length > 0) {
+    return db.select().from(claimCases).where(and(...conditions)).orderBy(desc(claimCases.createdAt)).limit(100);
+  }
+  return db.select().from(claimCases).orderBy(desc(claimCases.createdAt)).limit(100);
+}
+
+export async function createClaimCase(data: InsertClaimCase) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(claimCases).values(data);
+  return result[0].insertId;
+}
+
+export async function updateClaimCase(id: number, data: Partial<InsertClaimCase>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(claimCases).set(data as any).where(eq(claimCases.id, id));
+}
+
+export async function getClaimCaseById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(claimCases).where(eq(claimCases.id, id)).limit(1);
+  return result[0];
+}
+
+// ============================================================
+// MEDICAL TOURIST / INTERNATIONAL HELPERS
+// ============================================================
+export async function listInternationalCases(filter?: { status?: string; assignedCoordinatorId?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.status) conditions.push(eq(internationalCases.status, filter.status as any));
+  if (filter?.assignedCoordinatorId) conditions.push(eq(internationalCases.assignedCoordinatorId, filter.assignedCoordinatorId));
+  if (conditions.length > 0) {
+    return db.select().from(internationalCases).where(and(...conditions)).orderBy(desc(internationalCases.createdAt)).limit(100);
+  }
+  return db.select().from(internationalCases).orderBy(desc(internationalCases.createdAt)).limit(100);
+}
+
+export async function createInternationalCase(data: InsertInternationalCase) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(internationalCases).values(data);
+  return result[0].insertId;
+}
+
+export async function updateInternationalCase(id: number, data: Partial<InsertInternationalCase>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(internationalCases).set(data as any).where(eq(internationalCases.id, id));
+}
+
+export async function getInternationalCaseById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(internationalCases).where(eq(internationalCases.id, id)).limit(1);
+  return result[0];
+}
+
+export async function listTravelDocuments(caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(travelDocuments).where(eq(travelDocuments.caseId, caseId)).orderBy(desc(travelDocuments.createdAt));
+}
+
+export async function createTravelDocument(data: InsertTravelDocument) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(travelDocuments).values(data);
+  return result[0].insertId;
+}
+
+export async function updateTravelDocument(id: number, data: Partial<InsertTravelDocument>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(travelDocuments).set(data as any).where(eq(travelDocuments.id, id));
+}
+
+// ============================================================
+// CROSS-BORDER REFERRAL HELPERS
+// ============================================================
+export async function listCrossBorderReferrals(filter?: { referralType?: string; status?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.referralType) conditions.push(eq(crossBorderReferrals.referralType, filter.referralType as any));
+  if (filter?.status) conditions.push(eq(crossBorderReferrals.status, filter.status as any));
+  if (conditions.length > 0) {
+    return db.select().from(crossBorderReferrals).where(and(...conditions)).orderBy(desc(crossBorderReferrals.createdAt)).limit(100);
+  }
+  return db.select().from(crossBorderReferrals).orderBy(desc(crossBorderReferrals.createdAt)).limit(100);
+}
+
+export async function createCrossBorderReferral(data: InsertCrossBorderReferral) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(crossBorderReferrals).values(data);
+  return result[0].insertId;
+}
+
+export async function updateCrossBorderReferral(id: number, data: Partial<InsertCrossBorderReferral>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(crossBorderReferrals).set(data as any).where(eq(crossBorderReferrals.id, id));
+}
+
+export async function getCrossBorderReferralById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(crossBorderReferrals).where(eq(crossBorderReferrals.id, id)).limit(1);
+  return result[0];
+}
+
+// ============================================================
+// ENHANCED DASHBOARD STATS (v2.0)
+// ============================================================
+export async function getExecutiveDashboardStats() {
+  const db = await getDb();
+  if (!db) return { hospitals: 0, credentials: 0, patients: 0, referrals: 0, claims: 0, internationalCases: 0, adapters: 0, shlLinks: 0 };
+
+  const [hospitalCount] = await db.select({ count: count() }).from(hospitals);
+  const [credentialCount] = await db.select({ count: count() }).from(issuedCredentials);
+  const [patientCount] = await db.select({ count: count() }).from(users).where(eq(users.systemRole, "patient"));
+  const [referralCount] = await db.select({ count: count() }).from(referrals);
+  const [claimCount] = await db.select({ count: count() }).from(claimCases);
+  const [intlCount] = await db.select({ count: count() }).from(internationalCases);
+  const [adapterCount] = await db.select({ count: count() }).from(integrationAdapters);
+  const [shlCount] = await db.select({ count: count() }).from(smartHealthLinks);
+
+  return {
+    hospitals: hospitalCount.count,
+    credentials: credentialCount.count,
+    patients: patientCount.count,
+    referrals: referralCount.count,
+    claims: claimCount.count,
+    internationalCases: intlCount.count,
+    adapters: adapterCount.count,
+    shlLinks: shlCount.count,
   };
 }

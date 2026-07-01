@@ -564,6 +564,445 @@ export const appRouter = router({
       return { success: true };
     }),
   }),
+
+  // ============================================================
+  // PATIENT IDENTITY / MPI
+  // ============================================================
+  patientIdentity: router({
+    listIdentifiers: protectedProcedure.input(z.object({ patientId: z.number() })).query(async ({ input }) => {
+      return db.listPatientIdentifiers(input.patientId);
+    }),
+    addIdentifier: protectedProcedure.input(z.object({
+      patientId: z.number(),
+      hospitalId: z.number().optional(),
+      identifierType: z.enum(["thai_id", "passport", "health_id", "hn", "mrn", "carepass_id", "insurance_id"]),
+      identifierValue: z.string().min(1),
+      issuerOrg: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const id = await db.createPatientIdentifier(input as any);
+      return { id };
+    }),
+    listMpiMatches: adminProcedure.input(z.object({ status: z.string().optional() })).query(async ({ input }) => {
+      return db.listMpiMatches(input);
+    }),
+    resolveMpiMatch: adminProcedure.input(z.object({
+      id: z.number(),
+      matchStatus: z.enum(["confirmed", "rejected"]),
+    })).mutation(async ({ ctx, input }) => {
+      await db.updateMpiMatch(input.id, { matchStatus: input.matchStatus, reviewedBy: ctx.user.id });
+      return { success: true };
+    }),
+  }),
+
+  // ============================================================
+  // INTEGRATION & ADAPTER LAYER
+  // ============================================================
+  integration: router({
+    listAdapters: protectedProcedure.input(z.object({ hospitalId: z.number().optional() })).query(async ({ input }) => {
+      return db.listIntegrationAdapters(input.hospitalId);
+    }),
+    getAdapter: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      return db.getIntegrationAdapterById(input.id);
+    }),
+    createAdapter: adminProcedure.input(z.object({
+      hospitalId: z.number(),
+      name: z.string().min(1),
+      systemType: z.enum(["his", "emr", "lis", "ris", "pacs", "erp", "crm", "claim_system", "legacy_db"]),
+      connectorPattern: z.enum(["api_rest", "api_graphql", "hl7v2", "db_view", "cdc", "batch_file", "dicomweb", "portal_adapter"]),
+      authMethod: z.enum(["oauth2", "api_key", "mtls", "basic", "vpn", "none"]).optional(),
+      connectionConfig: z.any().optional(),
+    })).mutation(async ({ input }) => {
+      const id = await db.createIntegrationAdapter(input as any);
+      await db.createAuditEvent({ action: "adapter.created", resourceType: "integration_adapter", resourceId: String(id), details: { name: input.name } });
+      return { id };
+    }),
+    updateAdapter: adminProcedure.input(z.object({
+      id: z.number(),
+      status: z.enum(["active", "inactive", "testing", "error"]).optional(),
+      connectionConfig: z.any().optional(),
+      name: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await db.updateIntegrationAdapter(id, data as any);
+      return { success: true };
+    }),
+    testConnection: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+      // Simulate connection test
+      const adapter = await db.getIntegrationAdapterById(input.id);
+      if (!adapter) throw new TRPCError({ code: "NOT_FOUND" });
+      const healthy = Math.random() > 0.2; // Simulated
+      const responseTime = Math.floor(Math.random() * 500) + 50;
+      await db.createAdapterHealthLog({
+        adapterId: input.id,
+        status: healthy ? "healthy" : "degraded",
+        responseTimeMs: responseTime,
+        errorMessage: healthy ? undefined : "Connection timeout",
+      });
+      await db.updateIntegrationAdapter(input.id, {
+        healthStatus: healthy ? "healthy" : "degraded",
+        lastHealthCheck: new Date(),
+      } as any);
+      return { healthy, responseTimeMs: responseTime };
+    }),
+    healthLogs: protectedProcedure.input(z.object({ adapterId: z.number() })).query(async ({ input }) => {
+      return db.listAdapterHealthLogs(input.adapterId);
+    }),
+    listMappingVersions: protectedProcedure.input(z.object({ adapterId: z.number() })).query(async ({ input }) => {
+      return db.listMappingVersions(input.adapterId);
+    }),
+    createMappingVersion: adminProcedure.input(z.object({
+      adapterId: z.number(),
+      resourceType: z.string().min(1),
+      version: z.string().min(1),
+      mappingConfig: z.any().optional(),
+    })).mutation(async ({ input }) => {
+      const id = await db.createMappingVersion(input as any);
+      return { id };
+    }),
+    publishMappingVersion: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+      await db.updateMappingVersion(input.id, { status: "published", publishedAt: new Date() } as any);
+      return { success: true };
+    }),
+    listEvents: protectedProcedure.input(z.object({
+      adapterId: z.number().optional(),
+      status: z.string().optional(),
+      limit: z.number().optional(),
+    })).query(async ({ input }) => {
+      return db.listIntegrationEvents(input);
+    }),
+  }),
+
+  // ============================================================
+  // TRUST REGISTRY
+  // ============================================================
+  trustRegistry: router({
+    list: protectedProcedure.input(z.object({
+      entityType: z.string().optional(),
+      isActive: z.boolean().optional(),
+    })).query(async ({ input }) => {
+      return db.listTrustRegistry(input);
+    }),
+    create: adminProcedure.input(z.object({
+      entityType: z.enum(["issuer", "verifier", "provider", "payer", "partner_hospital", "foreign_hospital"]),
+      entityName: z.string().min(1),
+      entityNameEn: z.string().optional(),
+      did: z.string().optional(),
+      country: z.string().optional(),
+      jurisdiction: z.string().optional(),
+      credentialTypes: z.any().optional(),
+      contactEmail: z.string().optional(),
+      contactUrl: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const id = await db.createTrustRegistryEntry(input as any);
+      await db.createAuditEvent({ action: "trust_registry.created", resourceType: "trust_registry", resourceId: String(id), details: { entityName: input.entityName } });
+      return { id };
+    }),
+    update: adminProcedure.input(z.object({
+      id: z.number(),
+      trustLevel: z.enum(["verified", "self_declared", "pending", "revoked"]).optional(),
+      isActive: z.boolean().optional(),
+      did: z.string().optional(),
+      contactEmail: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await db.updateTrustRegistryEntry(id, data as any);
+      return { success: true };
+    }),
+    verify: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      await db.updateTrustRegistryEntry(input.id, { trustLevel: "verified", verifiedAt: new Date(), verifiedBy: ctx.user.id } as any);
+      return { success: true };
+    }),
+  }),
+
+  // ============================================================
+  // SMART HEALTH LINKS (SHL)
+  // ============================================================
+  shl: router({
+    list: protectedProcedure.input(z.object({ patientId: z.number() })).query(async ({ input }) => {
+      return db.listSmartHealthLinks(input.patientId);
+    }),
+    create: protectedProcedure.input(z.object({
+      patientId: z.number(),
+      hospitalId: z.number(),
+      purpose: z.enum(["referral", "patient_summary", "discharge", "cross_border", "medical_tourist", "insurance", "self_share"]),
+      scope: z.any().optional(),
+      maxAccessCount: z.number().optional(),
+      expiresInDays: z.number().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const expiresAt = input.expiresInDays ? new Date(Date.now() + input.expiresInDays * 86400000) : undefined;
+      const shlData: any = {
+        patientId: input.patientId,
+        issuedBy: ctx.user.id,
+        hospitalId: input.hospitalId,
+        purpose: input.purpose,
+        scope: input.scope,
+        maxAccessCount: input.maxAccessCount,
+        expiresAt,
+        manifestHash: nanoid(32),
+        shlUrl: `https://shl.trustcare.network/${nanoid(16)}`,
+        qrPayload: `shlink:/${nanoid(64)}`,
+      };
+      const id = await db.createSmartHealthLink(shlData);
+      await db.createAuditEvent({ actorId: ctx.user.id, action: "shl.created", resourceType: "smart_health_link", resourceId: String(id), details: { purpose: input.purpose } });
+      return { id, shlUrl: shlData.shlUrl, qrPayload: shlData.qrPayload };
+    }),
+    revoke: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      await db.revokeShl(input.id);
+      await db.createAuditEvent({ actorId: ctx.user.id, action: "shl.revoked", resourceType: "smart_health_link", resourceId: String(input.id) });
+      return { success: true };
+    }),
+    accessLogs: protectedProcedure.input(z.object({ shlId: z.number() })).query(async ({ input }) => {
+      return db.listShlAccessLogs(input.shlId);
+    }),
+    access: publicProcedure.input(z.object({
+      shlId: z.number(),
+      accessorName: z.string().optional(),
+      accessorOrg: z.string().optional(),
+      accessorCountry: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const shl = await db.getShlById(input.shlId);
+      if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
+      if (shl.status !== "active") throw new TRPCError({ code: "FORBIDDEN", message: "SHL is no longer active" });
+      if (shl.expiresAt && new Date(shl.expiresAt) < new Date()) throw new TRPCError({ code: "FORBIDDEN", message: "SHL has expired" });
+      if (shl.maxAccessCount && shl.currentAccessCount >= shl.maxAccessCount) throw new TRPCError({ code: "FORBIDDEN", message: "SHL access limit reached" });
+      await db.incrementShlAccessCount(input.shlId);
+      await db.createShlAccessLog({ shlId: input.shlId, accessorName: input.accessorName, accessorOrg: input.accessorOrg, accessorCountry: input.accessorCountry, ipAddress: ctx.req?.ip });
+      return { scope: shl.scope, manifestHash: shl.manifestHash };
+    }),
+  }),
+
+  // ============================================================
+  // E-CLAIM CENTER
+  // ============================================================
+  claim: router({
+    listPayers: protectedProcedure.query(async () => {
+      return db.listPayerAdapters();
+    }),
+    createPayer: adminProcedure.input(z.object({
+      name: z.string().min(1),
+      payerType: z.enum(["nhso", "sso", "csmbs", "private_insurance", "corporate", "self_pay"]),
+      apiEndpoint: z.string().optional(),
+      submissionFormat: z.enum(["api", "portal", "batch_file", "email", "rpa"]).optional(),
+    })).mutation(async ({ input }) => {
+      const id = await db.createPayerAdapter(input as any);
+      return { id };
+    }),
+    checkEligibility: protectedProcedure.input(z.object({
+      patientId: z.number(),
+      payerAdapterId: z.number(),
+      memberId: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      // Simulate eligibility check
+      const eligible = Math.random() > 0.15;
+      const data: any = {
+        patientId: input.patientId,
+        payerAdapterId: input.payerAdapterId,
+        memberId: input.memberId,
+        status: eligible ? "eligible" : "ineligible",
+        coverageType: "general",
+        benefits: eligible ? { opd: true, ipd: true, dental: false } : null,
+        validUntil: eligible ? new Date(Date.now() + 30 * 86400000) : null,
+      };
+      const id = await db.checkCoverageEligibility(data);
+      return { id, eligible, benefits: data.benefits };
+    }),
+    listEligibility: protectedProcedure.input(z.object({ patientId: z.number() })).query(async ({ input }) => {
+      return db.listCoverageEligibility(input.patientId);
+    }),
+    listCases: protectedProcedure.input(z.object({
+      hospitalId: z.number().optional(),
+      status: z.string().optional(),
+      patientId: z.number().optional(),
+    })).query(async ({ input }) => {
+      return db.listClaimCases(input);
+    }),
+    getCase: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      return db.getClaimCaseById(input.id);
+    }),
+    createCase: protectedProcedure.input(z.object({
+      patientId: z.number(),
+      hospitalId: z.number(),
+      payerAdapterId: z.number(),
+      encounterRef: z.string().optional(),
+      claimType: z.enum(["opd", "ipd", "dental", "pharmacy", "rehabilitation", "emergency"]),
+      totalAmount: z.string().optional(),
+      diagnosisCodes: z.any().optional(),
+      procedureCodes: z.any().optional(),
+      serviceItems: z.any().optional(),
+    })).mutation(async ({ input }) => {
+      const id = await db.createClaimCase(input as any);
+      return { id };
+    }),
+    updateStatus: protectedProcedure.input(z.object({
+      id: z.number(),
+      status: z.enum(["draft", "validating", "correction_required", "ready_to_submit", "submitted", "accepted", "rejected", "more_info_requested", "appeal", "paid", "closed"]),
+      rejectionReason: z.string().optional(),
+      approvedAmount: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      if (data.status === "submitted") (data as any).submittedAt = new Date();
+      if (data.status === "paid") (data as any).paidAt = new Date();
+      if (data.status === "rejected" || data.status === "accepted") (data as any).respondedAt = new Date();
+      await db.updateClaimCase(id, data as any);
+      await db.createAuditEvent({ actorId: ctx.user.id, action: `claim.${data.status}`, resourceType: "claim_case", resourceId: String(id) });
+      return { success: true };
+    }),
+    validate: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+      // Simulate validation
+      const issues = Math.random() > 0.5 ? [] : [{ field: "diagnosisCodes", message: "Missing primary diagnosis" }];
+      await db.updateClaimCase(input.id, {
+        status: issues.length === 0 ? "ready_to_submit" : "correction_required",
+        validationIssues: issues,
+      } as any);
+      return { valid: issues.length === 0, issues };
+    }),
+  }),
+
+  // ============================================================
+  // MEDICAL TOURIST / INTERNATIONAL PATIENT CENTER
+  // ============================================================
+  international: router({
+    listCases: protectedProcedure.input(z.object({
+      status: z.string().optional(),
+      assignedCoordinatorId: z.number().optional(),
+    })).query(async ({ input }) => {
+      return db.listInternationalCases(input);
+    }),
+    getCase: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      return db.getInternationalCaseById(input.id);
+    }),
+    createCase: protectedProcedure.input(z.object({
+      country: z.string().optional(),
+      language: z.enum(["en", "zh", "ja", "ar", "ru", "ko", "de", "fr", "other"]).optional(),
+      passportNumber: z.string().optional(),
+      passportCountry: z.string().optional(),
+      insuranceProvider: z.string().optional(),
+      insurancePolicyNumber: z.string().optional(),
+      serviceLine: z.string().optional(),
+      preferredBranchId: z.number().optional(),
+      contactEmail: z.string().optional(),
+      contactPhone: z.string().optional(),
+      contactMessenger: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const id = await db.createInternationalCase({ ...input, patientId: ctx.user.id } as any);
+      await notifyOwner({ title: "New Medical Tourist Inquiry", content: `New international case from ${input.country || "unknown"} for ${input.serviceLine || "general"}` });
+      return { id };
+    }),
+    updateStatus: protectedProcedure.input(z.object({
+      id: z.number(),
+      status: z.enum(["inquiry", "profile_created", "documents_uploaded", "identity_verified", "clinical_pre_review", "more_info_requested", "quotation_prepared", "insurance_review", "appointment_confirmed", "arrival_ready", "patient_arrived", "treatment_in_progress", "discharge_prepared", "follow_up_scheduled", "closed"]),
+    })).mutation(async ({ ctx, input }) => {
+      await db.updateInternationalCase(input.id, { status: input.status } as any);
+      await db.createAuditEvent({ actorId: ctx.user.id, action: `international.${input.status}`, resourceType: "international_case", resourceId: String(input.id) });
+      return { success: true };
+    }),
+    updateCase: protectedProcedure.input(z.object({
+      id: z.number(),
+      assignedCoordinatorId: z.number().optional(),
+      assignedInterpreterId: z.number().optional(),
+      quotationAmount: z.string().optional(),
+      quotationCurrency: z.string().optional(),
+      appointmentDate: z.string().optional(),
+      clinicalNotes: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      if (data.appointmentDate) (data as any).appointmentDate = new Date(data.appointmentDate);
+      await db.updateInternationalCase(id, data as any);
+      return { success: true };
+    }),
+    listDocuments: protectedProcedure.input(z.object({ caseId: z.number() })).query(async ({ input }) => {
+      return db.listTravelDocuments(input.caseId);
+    }),
+    addDocument: protectedProcedure.input(z.object({
+      caseId: z.number(),
+      documentType: z.enum(["passport", "insurance_card", "referral_letter", "lab_report", "imaging_report", "medication_list", "medical_certificate", "visa_support_letter", "quotation", "guarantee_letter", "other"]),
+      fileName: z.string().optional(),
+      fileUrl: z.string().optional(),
+      fileKey: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const id = await db.createTravelDocument(input as any);
+      return { id };
+    }),
+    verifyDocument: protectedProcedure.input(z.object({
+      id: z.number(),
+      verificationStatus: z.enum(["verified", "unverified", "rejected"]),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      await db.updateTravelDocument(input.id, {
+        verificationStatus: input.verificationStatus,
+        verifiedBy: ctx.user.id,
+        verifiedAt: new Date(),
+        notes: input.notes,
+      } as any);
+      return { success: true };
+    }),
+  }),
+
+  // ============================================================
+  // CROSS-BORDER REFERRAL
+  // ============================================================
+  crossBorderReferral: router({
+    list: protectedProcedure.input(z.object({
+      referralType: z.string().optional(),
+      status: z.string().optional(),
+    })).query(async ({ input }) => {
+      return db.listCrossBorderReferrals(input);
+    }),
+    getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      return db.getCrossBorderReferralById(input.id);
+    }),
+    create: protectedProcedure.input(z.object({
+      referralId: z.number().optional(),
+      referralType: z.enum(["cross_branch", "cross_border_outbound", "cross_border_inbound", "external_partner"]),
+      partnerOrgId: z.number().optional(),
+      partnerOrgName: z.string().optional(),
+      partnerCountry: z.string().optional(),
+      language: z.enum(["th", "en", "zh", "ja", "other"]).optional(),
+      jurisdiction: z.string().optional(),
+      translationRequired: z.boolean().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const id = await db.createCrossBorderReferral(input as any);
+      await db.createAuditEvent({ actorId: ctx.user.id, action: "cross_border_referral.created", resourceType: "cross_border_referral", resourceId: String(id), details: { referralType: input.referralType } });
+      return { id };
+    }),
+    updateStatus: protectedProcedure.input(z.object({
+      id: z.number(),
+      status: z.enum(["draft", "consent_requested", "consent_granted", "packet_generated", "sent", "acknowledged", "accepted", "rejected", "completed", "counter_referral_received", "closed"]),
+    })).mutation(async ({ ctx, input }) => {
+      await db.updateCrossBorderReferral(input.id, { status: input.status } as any);
+      await db.createAuditEvent({ actorId: ctx.user.id, action: `cross_border_referral.${input.status}`, resourceType: "cross_border_referral", resourceId: String(input.id) });
+      return { success: true };
+    }),
+    generatePacket: protectedProcedure.input(z.object({
+      id: z.number(),
+      patientId: z.number(),
+      hospitalId: z.number(),
+    })).mutation(async ({ ctx, input }) => {
+      // Create SHL for the referral packet
+      const shlData: any = {
+        patientId: input.patientId,
+        issuedBy: ctx.user.id,
+        hospitalId: input.hospitalId,
+        purpose: "cross_border",
+        scope: { type: "referral_packet" },
+        manifestHash: nanoid(32),
+        shlUrl: `https://shl.trustcare.network/${nanoid(16)}`,
+        qrPayload: `shlink:/${nanoid(64)}`,
+      };
+      const shlId = await db.createSmartHealthLink(shlData);
+      await db.updateCrossBorderReferral(input.id, { status: "packet_generated", ipsShlId: shlId } as any);
+      return { shlId, shlUrl: shlData.shlUrl };
+    }),
+  }),
+
+  // ============================================================
+  // EXECUTIVE DASHBOARD
+  // ============================================================
+  executiveDashboard: router({
+    stats: protectedProcedure.query(async () => {
+      return db.getExecutiveDashboardStats();
+    }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

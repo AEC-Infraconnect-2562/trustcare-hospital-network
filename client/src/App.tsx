@@ -17,6 +17,14 @@ import Terminology from "./pages/Terminology";
 import Audit from "./pages/Audit";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
+import ClaimCenter from "./pages/ClaimCenter";
+import International from "./pages/International";
+import CrossBorder from "./pages/CrossBorder";
+import Integration from "./pages/Integration";
+import TrustRegistry from "./pages/TrustRegistry";
+import SmartHealthLinks from "./pages/SmartHealthLinks";
+import ExecutiveDashboard from "./pages/ExecutiveDashboard";
+import PatientIdentity from "./pages/PatientIdentity";
 
 function Router() {
   return (
@@ -29,8 +37,16 @@ function Router() {
       <Route path="/verifier" component={Verifier} />
       <Route path="/consent" component={Consent} />
       <Route path="/referral" component={Referral} />
+      <Route path="/cross-border" component={CrossBorder} />
+      <Route path="/international" component={International} />
+      <Route path="/claim-center" component={ClaimCenter} />
+      <Route path="/integration" component={Integration} />
       <Route path="/fhir-mapping" component={FhirMapping} />
       <Route path="/terminology" component={Terminology} />
+      <Route path="/trust-registry" component={TrustRegistry} />
+      <Route path="/shl" component={SmartHealthLinks} />
+      <Route path="/executive" component={ExecutiveDashboard} />
+      <Route path="/patient-identity" component={PatientIdentity} />
       <Route path="/audit" component={Audit} />
       <Route path="/users" component={Users} />
       <Route path="/settings" component={Settings} />

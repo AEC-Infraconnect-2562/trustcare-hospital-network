@@ -62,4 +62,42 @@
 - [x] All pages rendering correctly verified via screenshots
 
 ## Deployment
-- [ ] Push to GitHub repository (AEC-Infraconnect-2562/tdc-reserve-prototype)
+- [x] Push to GitHub repository (AEC-Infraconnect-2562/trustcare-hospital-network)
+
+## CarePass Network v2.0 Upgrade - New Modules
+
+### Database Schema Additions
+- [x] Claims/E-Claim tables (claim_cases, payer_adapters, coverage_eligibility, claim_packages, claim_validations)
+- [x] Medical Tourist tables (international_cases, travel_documents, quotations, interpreter_assignments)
+- [x] Integration Layer tables (integration_adapters, adapter_health_logs, mapping_versions, event_logs)
+- [x] Trust Registry tables (trust_entries, provider_credentials, partner_hospitals)
+- [x] SHL tables (smart_health_links, shl_access_logs)
+- [x] Patient Identity Link tables (patient_identifiers, mpi_matches)
+- [x] Cross-border referral extensions (referral type, partner org, language, jurisdiction)
+
+### Backend Routers
+- [x] Claim router (eligibility check, pre-auth, claim package, submit, status, rejection/resubmit)
+- [x] Medical Tourist router (inquiry, documents, clinical review, quotation, insurance guarantee, discharge packet)
+- [x] Integration router (adapter registry, health check, test, mapping versions, event trace)
+- [x] Trust Registry router (register/verify issuers, verifiers, partner hospitals, schema versions)
+- [x] SHL router (create, manifest, revoke, access log)
+- [x] Enhanced Referral router (cross-branch packet, cross-border, consent-gated, counter-referral, closed-loop)
+- [x] Patient Identity router (link identifiers, MPI match, branch HN links)
+
+### Navigation & Menu
+- [x] Add Claim Center menu group (ศูนย์เคลม)
+- [x] Add International Patient Center menu (ศูนย์ผู้ป่วยต่างชาติ)
+- [x] Add Integration Console menu (คอนโซลเชื่อมต่อ)
+- [x] Add Trust Registry menu (ทะเบียนความน่าเชื่อถือ)
+- [x] Enhance Referral menu with cross-branch/cross-border sub-items
+- [x] Add Executive Dashboard (แดชบอร์ดผู้บริหาร)
+
+### Frontend Pages
+- [x] Claim Center page (work queue, eligibility, pre-auth, claim package, submission, rejection, payment)
+- [x] Medical Tourist page (inquiry, document intake, clinical review, quotation, appointment, discharge packet, follow-up)
+- [x] Integration Console page (adapter registry, connections, health monitoring, event trace, sandbox)
+- [x] Trust Registry page (issuers, verifiers, partners, schema versions, credential status)
+- [x] SHL Management page (create links, manage expiry, access logs)
+- [x] Enhanced Referral page (cross-branch workflow, cross-border workflow, packet generation, counter-referral)
+- [x] Executive Dashboard page (adoption, referral KPIs, claim metrics, medical tourist metrics, integration health)
+- [x] Patient Identity page (linked identifiers, branch HN/MRN, MPI status)
