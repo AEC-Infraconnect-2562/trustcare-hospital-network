@@ -633,3 +633,19 @@ export const crossBorderReferrals = mysqlTable("cross_border_referrals", {
 
 export type CrossBorderReferral = typeof crossBorderReferrals.$inferSelect;
 export type InsertCrossBorderReferral = typeof crossBorderReferrals.$inferInsert;
+
+// ============================================================
+// USER ADDITIONAL ROLES (Multi-Role Support)
+// ============================================================
+export const userRoles = mysqlTable("user_roles", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  role: varchar("role", { length: 50 }).notNull(), // e.g. issuer_maker, issuer_checker
+  scope: varchar("scope", { length: 100 }), // optional scope like hospitalId or departmentId
+  assignedBy: int("assignedBy"),
+  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
+  expiresAt: timestamp("expiresAt"),
+  isActive: boolean("isActive").default(true).notNull(),
+});
+export type UserRole = typeof userRoles.$inferSelect;
+export type InsertUserRole = typeof userRoles.$inferInsert;

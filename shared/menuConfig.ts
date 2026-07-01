@@ -36,6 +36,18 @@ export const menuItems: MenuItem[] = [
     groupLabelEn: "Overview",
   },
 
+  {
+    id: "executive",
+    label: "แดชบอร์ดผู้บริหาร",
+    labelEn: "Executive Dashboard",
+    icon: "BarChart3",
+    path: "/executive",
+    roles: ["system_admin", "hospital_admin"],
+    group: "overview",
+    groupLabel: "ภาพรวม",
+    groupLabelEn: "Overview",
+  },
+
   // ─── Patient Services ───
   {
     id: "wallet",
@@ -43,7 +55,7 @@ export const menuItems: MenuItem[] = [
     labelEn: "Health Wallet",
     icon: "Wallet",
     path: "/wallet",
-    roles: ["patient"],
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"],
     group: "patient_services",
     groupLabel: "บริการผู้ป่วย",
     groupLabelEn: "Patient Services",
@@ -201,6 +213,17 @@ export const menuItems: MenuItem[] = [
   },
 
   // ─── Administration ───
+  {
+    id: "patient-identity",
+    label: "เชื่อมโยงตัวตน (MPI)",
+    labelEn: "Patient Identity (MPI)",
+    icon: "Fingerprint",
+    path: "/patient-identity",
+    roles: ["system_admin", "hospital_admin", "integration_engineer"],
+    group: "admin",
+    groupLabel: "บริหารระบบ",
+    groupLabelEn: "Administration",
+  },
   {
     id: "hospitals",
     label: "จัดการเครือข่าย",

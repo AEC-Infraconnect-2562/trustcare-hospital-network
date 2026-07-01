@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { trpc } from "@/lib/trpc";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -27,7 +28,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Wallet, ArrowRightLeft, ShieldCheck,
   BadgeCheck, ScanLine, GitBranch, BookOpen, Building2, FileSearch, Users,
   Settings, Moon, Sun, Bell, Globe, Plane, Receipt, Plug, ShieldAlert, Link2,
-  FileJson2,
+  FileJson2, BarChart3, Fingerprint,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -40,7 +41,7 @@ import { Badge } from "./ui/badge";
 const iconMap: Record<string, any> = {
   LayoutDashboard, Wallet, ArrowRightLeft, ShieldCheck, BadgeCheck, ScanLine,
   GitBranch, BookOpen, Building2, FileSearch, Users, Settings, Globe, Plane,
-  Receipt, Plug, ShieldAlert, Link2, FileJson2,
+  Receipt, Plug, ShieldAlert, Link2, FileJson2, BarChart3, Fingerprint,
 };
 
 type SystemRole = "system_admin" | "hospital_admin" | "doctor" | "nurse" | "integration_engineer" | "patient";
@@ -70,7 +71,7 @@ const allMenuItems: MenuItemDef[] = [
   { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient"], group: "overview", groupLabel: "ภาพรวม" },
   { id: "executive", label: "แดชบอร์ดผู้บริหาร", icon: "BarChart3", path: "/executive", roles: ["system_admin", "hospital_admin"], group: "overview", groupLabel: "ภาพรวม" },
   // Patient Services
-  { id: "wallet", label: "กระเป๋าสุขภาพ", icon: "Wallet", path: "/wallet", roles: ["patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
+  { id: "wallet", label: "กระเป๋าสุขภาพ", icon: "Wallet", path: "/wallet", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   { id: "consent", label: "จัดการความยินยอม", icon: "ShieldCheck", path: "/consent", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   { id: "shl", label: "ลิงก์แชร์สุขภาพ", icon: "Link2", path: "/shl", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   // Clinical Services
@@ -96,12 +97,26 @@ const allMenuItems: MenuItemDef[] = [
   { id: "settings", label: "ตั้งค่าระบบ", icon: "Settings", path: "/settings", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
 ];
 
-function getMenuForRole(role: SystemRole) {
-  return allMenuItems.filter(item => item.roles.includes(role));
-}
+// Additional roles that grant access to specific menu items
+const ADDITIONAL_ROLE_MENU_MAP: Record<string, string[]> = {
+  issuer_maker: ["issuer", "verifier"],
+  issuer_checker: ["issuer", "verifier"],
+};
 
-function getGroupedMenu(role: SystemRole) {
-  const items = getMenuForRole(role);
+function getMenuForRole(role: SystemRole, additionalRoles: string[] = []) {
+  return allMenuItems.filter(item => {
+    // Primary role check
+    if (item.roles.includes(role)) return true;
+    // Additional roles check - grant access to specific menus
+    for (const addRole of additionalRoles) {
+      const grantedMenus = ADDITIONAL_ROLE_MENU_MAP[addRole];
+      if (grantedMenus && grantedMenus.includes(item.id)) return true;
+    }
+    return false;
+  });
+}
+function getGroupedMenu(role: SystemRole, additionalRoles: string[] = []) {
+  const items = getMenuForRole(role, additionalRoles);
   const grouped: Record<string, MenuItemDef[]> = {};
   for (const item of items) {
     if (!grouped[item.group]) grouped[item.group] = [];
@@ -174,10 +189,18 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
   const isMobile = useIsMobile();
   const { theme, toggleTheme } = useTheme();
 
-  // Default to system_admin for admin users, patient for others
-  const userRole: SystemRole = (user as any)?.systemRole || (user?.role === "admin" ? "system_admin" : "patient");
-  const grouped = getGroupedMenu(userRole);
+  // Use activeRole from server (respects cookie-based role switching)
+  const systemRole: SystemRole = (user as any)?.systemRole || (user?.role === "admin" ? "system_admin" : "patient");
+  const activeRole: SystemRole = ((user as any)?.activeRole || systemRole) as SystemRole;
+  const additionalRoles: string[] = (user as any)?.additionalRoles || [];
+  const grouped = getGroupedMenu(activeRole, additionalRoles);
   const activeItem = allMenuItems.find(item => item.path === location);
+  // Role switching
+  const availableRolesQuery = trpc.auth.getAvailableRoles.useQuery();
+  const switchRoleMutation = trpc.auth.switchRole.useMutation({
+    onSuccess: () => { window.location.reload(); },
+  });
+  const canSwitchRole = systemRole !== "patient"; // Only staff can switch to patient view
 
   useEffect(() => {
     if (isCollapsed) setIsResizing(false);
@@ -275,12 +298,33 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                     <p className="text-sm font-medium truncate leading-none">{user?.name || "-"}</p>
                     <p className="text-[11px] text-muted-foreground truncate mt-1">
-                      {getRoleLabel(userRole)}
+                      {getRoleLabel(activeRole)}
+                      {activeRole !== systemRole && <span className="ml-1 text-primary">•</span>}
                     </p>
                   </div>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuContent align="end" className="w-56">
+                {canSwitchRole && (
+                  <>
+                    <div className="px-2 py-1.5">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">สลับบทบาท</p>
+                    </div>
+                    {availableRolesQuery.data?.availableRoles.map((r: { role: string; label: string; labelTh: string }) => (
+                      <DropdownMenuItem
+                        key={r.role}
+                        onClick={() => switchRoleMutation.mutate({ role: r.role })}
+                        className={`cursor-pointer ${r.role === activeRole ? "bg-primary/10 text-primary font-medium" : ""}`}
+                        disabled={switchRoleMutation.isPending}
+                      >
+                        <ArrowRightLeft className="mr-2 h-4 w-4" />
+                        <span>{r.labelTh}</span>
+                        {r.role === activeRole && <span className="ml-auto text-xs">✓</span>}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer">
                   {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
                   <span>{theme === "dark" ? "โหมดสว่าง" : "โหมดมืด"}</span>

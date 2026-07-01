@@ -36,6 +36,53 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+
+  // Demo Login Route (bypasses OAuth for testing)
+  app.post("/api/auth/demo-login", async (req, res) => {
+    try {
+      const { openId, activeRole } = req.body;
+      if (!openId || typeof openId !== "string") {
+        return res.status(400).json({ error: "openId is required" });
+      }
+      const { getUserByOpenId } = await import("../db");
+      const user = await getUserByOpenId(openId);
+      if (!user) {
+        return res.status(404).json({ error: "Demo user not found. Please run seed first." });
+      }
+      const { sdk: sdkInstance } = await import("./sdk");
+      const token = await sdkInstance.createSessionToken(user.openId, { name: user.name || "Demo User" });
+      const { getSessionCookieOptions } = await import("./cookies");
+      const { COOKIE_NAME } = await import("../../shared/const");
+      const cookieOptions = getSessionCookieOptions(req);
+      res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 86400000 });
+      // If activeRole is specified (e.g., staff logging in as patient), set it
+      if (activeRole && typeof activeRole === "string") {
+        res.cookie("trustcare_active_role", activeRole, { ...cookieOptions, maxAge: 86400000 });
+      } else {
+        // Clear any previous activeRole cookie
+        res.clearCookie("trustcare_active_role", cookieOptions);
+      }
+      res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.set("Pragma", "no-cache");
+      res.json({ success: true, user, token });
+    } catch (err: any) {
+      console.error("[DemoLogin] Error:", err.message);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  // Seed Route
+  app.post("/api/seed", async (_req, res) => {
+    try {
+      const { seedDatabase } = await import("../seed");
+      await seedDatabase();
+      res.json({ success: true, message: "Database seeded successfully" });
+    } catch (err: any) {
+      console.error("[Seed] Error:", err.message);
+      res.status(500).json({ error: "Seed failed: " + err.message });
+    }
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",

@@ -36,6 +36,13 @@
       "when": 1782899400000,
       "tag": "0004_production_portability_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1782901028346,
+      "tag": "0005_bent_rachel_grey",
+      "breakpoints": true
     }
   ]
 }

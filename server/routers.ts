@@ -27,19 +27,66 @@ import { sha256 } from "./portability/utils";
 
 // Admin-only guard
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== "admin" && (ctx.user as any).systemRole !== "system_admin") {
+  const systemRole = (ctx.user as any).systemRole;
+  const isAdmin = ctx.user.role === "admin" || systemRole === "system_admin" || systemRole === "hospital_admin";
+  if (!isAdmin) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
   }
   return next({ ctx });
 });
 
+// Stricter: only system_admin
+const systemAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  const systemRole = (ctx.user as any).systemRole;
+  if (ctx.user.role !== "admin" && systemRole !== "system_admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "System admin access required" });
+  }
+  return next({ ctx });
+});
+
+// Clinical staff procedure: doctor, nurse, hospital_admin, system_admin
+// Also allows users with issuer_maker or issuer_checker additional roles
+const clinicalProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const systemRole = (ctx.user as any).systemRole;
+  const clinicalRoles = ["system_admin", "hospital_admin", "doctor", "nurse"];
+  if (clinicalRoles.includes(systemRole)) {
+    return next({ ctx });
+  }
+  // Check additional roles for users who have been assigned issuer_maker or issuer_checker
+  const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
+  const issuerRoles = ["issuer_maker", "issuer_checker"];
+  if (additionalRoles.some(r => issuerRoles.includes(r))) {
+    return next({ ctx });
+  }
+  throw new TRPCError({ code: "FORBIDDEN", message: "Clinical staff access required" });
+});
+
+function getRoleLabelTh(role: string): string {
+  const map: Record<string, string> = {
+    system_admin: "ผู้ดูแลระบบ",
+    hospital_admin: "ผู้ดูแลโรงพยาบาล",
+    doctor: "แพทย์",
+    nurse: "พยาบาล",
+    integration_engineer: "วิศวกรระบบ",
+    patient: "ผู้ป่วย",
+  };
+  return map[role] || role;
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(async (opts) => {
+      if (!opts.ctx.user) return null;
+      const additionalRoles = await db.getUserAdditionalRoles(opts.ctx.user.id);
+      // Read activeRole from cookie (defaults to systemRole if not set)
+      const activeRole = opts.ctx.req.cookies?.["trustcare_active_role"] || (opts.ctx.user as any).systemRole || "patient";
+      return { ...opts.ctx.user, additionalRoles, activeRole };
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      ctx.res.clearCookie("trustcare_active_role", { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
     }),
     updateProfile: protectedProcedure.input(z.object({
@@ -50,8 +97,86 @@ export const appRouter = router({
       await db.updateUserProfile(ctx.user.id, input as any);
       return { success: true };
     }),
+    getDemoUsers: publicProcedure.query(async () => {
+      const allUsers = await db.listUsers();
+      // Only return demo users (openId starts with "demo-")
+      const demoUsers = allUsers.filter((u: any) => u.openId?.startsWith("demo-"));
+      // Attach additionalRoles for each user
+      const usersWithRoles = await Promise.all(demoUsers.map(async (u: any) => {
+        const additionalRoles = await db.getUserAdditionalRoles(u.id);
+        return { ...u, additionalRoles };
+      }));
+      return usersWithRoles;
+    }),
+    // Get available roles the current user can switch to
+    getAvailableRoles: protectedProcedure.query(async ({ ctx }) => {
+      const user = ctx.user as any;
+      const systemRole = user.systemRole || "patient";
+      const additionalRoles = await db.getUserAdditionalRoles(user.id);
+      // Everyone can be a patient (their own health wallet)
+      const availableRoles: { role: string; label: string; labelTh: string }[] = [];
+      // Primary role is always available
+      availableRoles.push({ role: systemRole, label: systemRole, labelTh: getRoleLabelTh(systemRole) });
+      // All staff can also act as patient
+      if (systemRole !== "patient") {
+        availableRoles.push({ role: "patient", label: "patient", labelTh: "ผู้ป่วย (ตัวเอง)" });
+      }
+      // Additional roles (issuer_maker, issuer_checker) add more capabilities but don't change the view
+      // They are returned as metadata
+      return { availableRoles, additionalRoles, currentActiveRole: ctx.req.cookies?.["trustcare_active_role"] || systemRole };
+    }),
+    // Switch the active role for the current session
+    switchRole: protectedProcedure.input(z.object({
+      role: z.string(),
+    })).mutation(async ({ ctx, input }) => {
+      const user = ctx.user as any;
+      const systemRole = user.systemRole || "patient";
+      // Validate: user can only switch to their systemRole or "patient"
+      const allowedRoles = [systemRole, "patient"];
+      if (!allowedRoles.includes(input.role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "ไม่สามารถสลับไปบทบาทนี้ได้" });
+      }
+      // Store active role in a cookie (lightweight, no DB change)
+      const cookieOptions = getSessionCookieOptions(ctx.req);
+      ctx.res.cookie("trustcare_active_role", input.role, { ...cookieOptions, maxAge: 86400000 });
+      return { success: true, activeRole: input.role };
+    }),
   }),
-
+    seed: router({
+    run: publicProcedure.mutation(async () => {
+      const { seedDatabase } = await import("./seed");
+      await seedDatabase();
+      return { success: true };
+    }),
+  }),
+  // ============================================================
+  // USER ADDITIONAL ROLES MANAGEMENT
+  // ============================================================
+  userRoles: router({
+    list: adminProcedure.input(z.object({ userId: z.number() })).query(async ({ input }) => {
+      return db.listUserRoles(input.userId);
+    }),
+    assign: adminProcedure.input(z.object({
+      userId: z.number(),
+      role: z.string().min(1),
+      scope: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const id = await db.assignUserRole({
+        userId: input.userId,
+        role: input.role,
+        scope: input.scope,
+        assignedBy: ctx.user.id,
+      });
+      return { id };
+    }),
+    remove: adminProcedure.input(z.object({
+      userId: z.number(),
+      role: z.string().min(1),
+    })).mutation(async ({ input }) => {
+      await db.removeUserRole(input.userId, input.role);
+      return { success: true };
+    }),
+  }),
   // ============================================================
   // HOSPITAL MANAGEMENT
   // ============================================================
@@ -143,7 +268,7 @@ export const appRouter = router({
     })).query(async ({ input }) => {
       return db.listIssuedCredentials(input);
     }),
-    issue: protectedProcedure.input(z.object({
+    issue: clinicalProcedure.input(z.object({
       templateId: z.number(),
       subjectId: z.number(),
       issuerHospitalId: z.number(),
@@ -370,7 +495,7 @@ export const appRouter = router({
     getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
       return db.getReferralById(input.id);
     }),
-    create: protectedProcedure.input(z.object({
+    create: clinicalProcedure.input(z.object({
       patientId: z.number(),
       fromHospitalId: z.number(),
       toHospitalId: z.number(),

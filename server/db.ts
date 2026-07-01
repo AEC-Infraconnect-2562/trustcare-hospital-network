@@ -911,3 +911,40 @@ export async function getExecutiveDashboardStats() {
     shlLinks: shlCount.count,
   };
 }
+
+// ============================================================
+// USER ADDITIONAL ROLES (Multi-Role Support)
+// ============================================================
+import { userRoles } from "../drizzle/schema";
+
+export async function getUserAdditionalRoles(userId: number): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db!.select({ role: userRoles.role })
+    .from(userRoles)
+    .where(and(eq(userRoles.userId, userId), eq(userRoles.isActive, true)));
+  return rows.map(r => r.role);
+}
+
+export async function assignUserRole(data: { userId: number; role: string; scope?: string; assignedBy?: number; expiresAt?: Date }) {
+  const db = await getDb();
+  const [result] = await db!.insert(userRoles).values({
+    userId: data.userId,
+    role: data.role,
+    scope: data.scope || null,
+    assignedBy: data.assignedBy || null,
+    expiresAt: data.expiresAt || null,
+  }).$returningId();
+  return result.id;
+}
+
+export async function removeUserRole(userId: number, role: string) {
+  const db = await getDb();
+  await db!.update(userRoles)
+    .set({ isActive: false })
+    .where(and(eq(userRoles.userId, userId), eq(userRoles.role, role)));
+}
+
+export async function listUserRoles(userId: number) {
+  const db = await getDb();
+  return db!.select().from(userRoles).where(eq(userRoles.userId, userId));
+}

@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,7 @@ export default function PatientIdentity() {
   const pendingCount = (identities.data?.length ?? 0) - confirmedCount;
 
   return (
+    <DashboardLayout>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -301,5 +303,6 @@ export default function PatientIdentity() {
         </Card>
       )}
     </div>
+    </DashboardLayout>
   );
 }

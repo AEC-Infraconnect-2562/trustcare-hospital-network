@@ -139,3 +139,43 @@
 - [ ] Consent Expiry Reminder — แจ้งเตือนผู้ป่วยก่อน consent หมดอายุ 7 วัน
 - [ ] Claim Analytics Dashboard — กราฟวิเคราะห์ claim approval rate, average processing time, top rejection reasons
 - [ ] Cross-border Partner Onboarding Wizard — Wizard สำหรับเพิ่ม partner hospital ต่างประเทศพร้อม trust credential exchange
+
+## v2.1 Upgrade - RU_VC Patterns + Test Users + UX Improvements
+- [ ] Remove Manus OAuth, create test users for all 6 roles with demo login page
+- [ ] Enhance Issuer with Checker/Maker workflow (batch create → approve/reject → issue)
+- [ ] Enhance Wallet with Selective Disclosure/ZKP, QR presentation, access history
+- [ ] Enhance Verifier with camera QR scanning (html5-qrcode)
+- [ ] Add persistent sidebar with breadcrumb navigation and back button on all pages
+- [ ] Move statistics boxes to bottom of pages, reduce size of action boxes at top
+- [ ] Ensure menu visibility matches role permissions correctly
+
+## v2.1.1 - Menu Visibility & Role-Based Access Fix (Current Task)
+- [x] Add missing icons (BarChart3, Fingerprint) to DashboardLayout iconMap
+- [x] Wrap ExecutiveDashboard with DashboardLayout
+- [x] Wrap PatientIdentity with DashboardLayout
+- [x] Add demo login system (seed users, express route, Home.tsx demo login UI)
+- [ ] Add role-based route guard to prevent unauthorized page access
+- [x] Verify menu items match each role's functional permissions in backend
+- [x] Write tests for role-based menu filtering and demo login
+
+## v2.1.2 - Multi-Role Support (Issuer Maker/Checker)
+- [x] Create user_roles table for additional role assignments (issuer_maker, issuer_checker, etc.)
+- [x] Add db helpers: assignUserRole, removeUserRole, getUserAdditionalRoles
+- [x] Update auth.me to return additionalRoles array alongside systemRole
+- [x] Update DashboardLayout menu visibility to check combined roles (systemRole + additionalRoles)
+- [x] Issuer menu visible when user has systemRole in [system_admin, hospital_admin, doctor] OR additionalRoles includes issuer_maker/issuer_checker
+- [x] Update clinicalProcedure/issuer access to check additionalRoles
+- [x] Seed demo users with Maker/Checker assignments (nurse as maker, doctor as checker)
+- [x] Write tests for multi-role menu visibility
+
+## v2.1.3 - Gap Fixes
+- [x] Add automated tests for demo login flow (seed, getDemoUsers, demoLogin route, token/session)
+- [x] Unify menu role definitions: sync shared/menuConfig.ts with DashboardLayout allMenuItems
+
+## v2.1.4 - Role Selection Login (Everyone Can Be Patient)
+- [x] Update Demo Login: show all available roles per user (systemRole + patient for all staff)
+- [x] Add "activeRole" concept in session/context (stored in cookie or localStorage)
+- [x] Add role switcher dropdown in DashboardLayout sidebar footer
+- [x] Update menu visibility to use activeRole (not just systemRole)
+- [x] Backend: add switchRole mutation that validates user can assume the role
+- [x] Update tests for role switching
