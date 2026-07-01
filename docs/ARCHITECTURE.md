@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 3.1 (QR Scanner for VC/VP Verification)
+**Version:** 3.4 (Schema Versioning + Role Policy + Demo Login)
 **Last updated:** 2026-07-01
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -44,7 +44,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        DATABASE (MySQL/TiDB)                         │
-│  35 tables · 9 migrations (0000–0008)                               │
+│  36+ tables · 10 migrations (0000–0009)                             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -154,6 +154,7 @@ portability.issuePrescription → issuePrescriptionVc() → issued_credentials
 ```
 Verifier receives JWT → portability.verify (single VC)
                        → portability.verifyJsonPresentation (VP bundle)
+                       
 Checks performed:
   1. JWT signature verification (HMAC or asymmetric)
   2. Trusted issuer check (Trust Registry)
@@ -162,41 +163,6 @@ Checks performed:
   5. Required credential type check
   6. Clinical priority findings extraction
 ```
-
-### 2.4.1 QR Code Scanner Verification (v3.1)
-
-The Verifier Portal supports two input methods via a tabbed interface:
-
-| Input Method | Description | Backend Endpoint |
-|---|---|---|
-| **Paste Token/JSON** | Manual paste of JWT or JSON VP | `verifier.verify` |
-| **Camera QR Scan** | WebRTC camera scans QR code | `verifier.verifyQrScan` |
-
-The QR Scanner pipeline handles multiple QR payload formats:
-
-```
-QR Code Scanned
-  │
-  ├─ URL format (https://...?token=xxx) → extract token param
-  ├─ Base64-encoded payload → decode to JWT/JSON
-  ├─ Raw JSON VP (starts with '{') → parse & verify
-  └─ Raw JWT (starts with 'eyJ') → verify as VP or VC
-  │
-  ▼
-Same verification pipeline as manual verify
-  │
-  ▼
-Audit event logged: verifier.qr_scan.{camera|file_upload}
-```
-
-**Component:** `client/src/components/QRScanner.tsx` (reusable, uses `html5-qrcode` library)
-
-**Key features:**
-- Real-time camera preview with start/stop controls
-- Supports rear and front cameras (mobile)
-- Auto-verification on successful scan
-- Audit trail distinguishes camera vs file-upload source
-- Graceful fallback for browsers without camera access
 
 ### 2.5 VP (Verifiable Presentation) Creation
 
@@ -242,6 +208,7 @@ Each user has a `credentialEntitlements` JSON field with the structure:
 
 - `"*"` in either array grants access to all 24 document types.
 - Entitlements are checked by `hasCredentialEntitlement(user, key, credentialType)`.
+- Users with `systemRole = "patient"` are never eligible for Maker/Checker privileges. If stale `issuer_maker` / `issuer_checker` rows or credential entitlements exist for a patient user, the auth layer sanitizes them out and user-management updates clear them before persistence.
 
 ### 3.3 Authorization Enforcement
 
@@ -254,6 +221,8 @@ Each user has a `credentialEntitlements` JSON field with the structure:
 | Reseed database | `admin` | Admin-only procedure |
 | Manage trust registry | `system_admin` | Admin procedure |
 | View executive dashboard | Any authenticated | Protected procedure |
+
+Patient-only users cannot submit, review, approve, or issue credentials even if legacy rows in `user_roles` grant `issuer_maker` or `issuer_checker`. Maker/Checker privileges are reserved for hospital workforce/admin users such as doctors, nurses, hospital administrators, system administrators, and explicitly authorized hospital staff.
 
 ### 3.4 Multi-Role Support
 
@@ -433,6 +402,10 @@ The reseed process:
 - Reseeding checks for existing `batchId` in `vc_vp_seed_batches`
 - If `resetExistingSeed = true`, deletes credentials with `urn:trustcare:seed` prefix before reseeding
 - Batch hash is computed from `{patientsPerHospital, hospitals, documents, version}` for deterministic identification
+
+### 6.5 Seed Audit
+
+Admins can run the read-only `portability.auditSeedDb` endpoint, or use the Portability Workbench Seed/DID tab, to verify seed completeness in the active database. The audit compares deterministic seed expectations against persisted data for the latest seed batch, 3 hospital DIDs, generated patients, credential templates, active seed VCs, wallet cards, persisted VPs, source-of-truth connectors, and patient Maker/Checker privilege violations. It does not mutate data; if checks fail, rerun `portability.reseedDb` in the target workspace and clear stale issuer roles from patient users.
 
 ---
 
@@ -701,10 +674,7 @@ trustcare-hospital-network/
 │   └── storage.ts                 ← S3 storage helpers
 ├── client/
 │   ├── src/pages/                 ← 26 page components
-│   ├── src/components/
-│   │   ├── QRScanner.tsx          ← Camera QR scanner (html5-qrcode)
-│   │   ├── DashboardLayout.tsx    ← Sidebar layout with role switcher
-│   │   └── ui/                    ← shadcn/ui components
+│   ├── src/components/            ← Reusable UI components
 │   └── src/lib/trpc.ts            ← tRPC client binding
 ├── shared/
 │   ├── const.ts                   ← Shared constants
@@ -730,30 +700,13 @@ trustcare-hospital-network/
 10. Update `getCardDisplayName()` and `cardTypeForCredential()` in `server/routers.ts`
 
 ### 12.2 Running Tests
+
 ```bash
-pnpm test          # Unit tests (vitest) — includes qrScanner.test.ts
+pnpm test          # Unit tests (vitest)
 pnpm test:e2e      # End-to-end tests
 pnpm build         # Production build
 npx tsc --noEmit   # TypeScript check
 ```
-
-### 12.4 QR Scanner Component Usage
-
-The `QRScanner` component (`client/src/components/QRScanner.tsx`) is reusable across any page that needs QR scanning:
-
-```tsx
-import QRScanner from "@/components/QRScanner";
-
-<QRScanner
-  onScanSuccess={(decodedText) => { /* handle decoded QR data */ }}
-  onScanError={(error) => { /* handle camera/decode errors */ }}
-  fps={10}          // Scan frequency (frames per second)
-  aspectRatio={1.0} // Camera preview aspect ratio
-/>
-```
-
-**Dependencies:** `html5-qrcode` (installed via pnpm)
-**Browser requirements:** WebRTC camera access (HTTPS required in production)
 
 ### 12.3 Reseeding the Database
 
@@ -773,6 +726,148 @@ Requires: admin role
 - Credential revocation is tracked via `credential_status_events`
 - Trust registry verification can be set to `off`, `advisory`, or `required` mode
 - All mutations are logged in `audit_events` with actor, action, and resource details
+
+---
+
+## 14. Role Policy Engine (`shared/rolePolicy.ts`)
+
+The role policy module centralizes all authorization logic for the multi-role system. It is imported by both the backend (routers, DB helpers) and can be shared with frontend for menu visibility calculations.
+
+### 14.1 Core Concepts
+
+| Concept | Description |
+|---------|-------------|
+| `systemRole` | Primary role assigned at user creation (system_admin, hospital_admin, doctor, nurse, integration_engineer, patient) |
+| `additionalRoles` | Supplementary roles from `user_roles` table (issuer_maker, issuer_checker) |
+| `activeRole` | The role the user is currently operating as (stored in cookie `trustcare_active_role`) |
+| `credentialEntitlements` | JSON field on user specifying which VC types they can make/check |
+
+### 14.2 Key Functions
+
+| Function | Purpose |
+|----------|--------|
+| `isPatientRole(systemRole)` | Returns true if role is `patient` or falsy |
+| `canHoldIssuerPrivileges(systemRole)` | Returns true for all non-patient roles |
+| `canActAsCredentialMaker(systemRole, additionalRoles)` | Checks if user can create credential requests |
+| `canActAsCredentialChecker(systemRole, additionalRoles)` | Checks if user can approve/reject requests |
+| `availableRolesForSystemRole(systemRole, additionalRoles)` | Returns all roles a user can switch to |
+| `normalizeActiveRole(systemRole, requested, additionalRoles)` | Validates and returns the effective active role |
+| `sanitizeAdditionalRolesForSystemRole(systemRole, additionalRoles)` | Strips issuer roles from patients |
+| `normalizeCredentialEntitlements(systemRole, entitlements)` | Returns safe entitlements object |
+
+### 14.3 Patient Restriction Rules
+
+Patients are restricted from holding issuer privileges. The following rules are enforced:
+
+1. If `systemRole === 'patient'`, `additionalRoles` are filtered to exclude `issuer_maker` and `issuer_checker`.
+2. `credentialEntitlements.makerTypes` and `checkerTypes` are forced to empty arrays for patients.
+3. Staff users (any non-patient systemRole) can always switch to `patient` activeRole to view the patient wallet.
+4. Patients cannot switch to any staff role even if `additionalRoles` contains staff-level entries.
+
+---
+
+## 15. Demo Login System
+
+The platform uses a demo login system that bypasses Manus OAuth for development and testing purposes. This allows testers to quickly switch between roles without external IdP configuration.
+
+### 15.1 Architecture
+
+```
+┌─────────────────────┐      POST /api/auth/demo-login       ┌──────────────────┐
+│   Landing Page      │ ──────────────────────────────────── │  Express Route   │
+│   (Home.tsx)        │      { openId, activeRole? }         │  server/_core/   │
+│                     │ ◄──────────────────────────────────  │  index.ts        │
+│   Demo User Cards   │      { success, user, token }        │                  │
+└─────────────────────┘                                      └──────────────────┘
+                                                                      │
+                                                                      ▼
+                                                             ┌──────────────────┐
+                                                             │  SDK Session     │
+                                                             │  createSession   │
+                                                             │  Token + Cookie  │
+                                                             └──────────────────┘
+```
+
+### 15.2 Flow
+
+1. Landing page calls `trpc.auth.getDemoUsers.useQuery()` to list all demo users grouped by role.
+2. User clicks a demo user card → `POST /api/auth/demo-login` with `{ openId, activeRole? }`.
+3. Server looks up user by `openId`, creates a session token via `sdk.createSessionToken()`.
+4. Session cookie (`trustcare_session`) is set with 24h expiry.
+5. If `activeRole` is specified (e.g., staff logging in as patient), a separate `trustcare_active_role` cookie is set.
+6. Client redirects to `/dashboard`.
+
+### 15.3 Demo Users (Seeded)
+
+| openId | Name | systemRole | additionalRoles |
+|--------|------|------------|----------------|
+| demo-sysadmin-001 | นพ.สมชาย ระบบดี | system_admin | — |
+| demo-hospadmin-001 | นางวิภา บริหารเก่ง | hospital_admin | — |
+| demo-doctor-001 | นพ.ธนวัฒน์ รักษาดี | doctor | issuer_checker |
+| demo-doctor-002 | พญ.สุภาพร ใจดี | doctor | — |
+| demo-nurse-001 | นางสาวพิมพ์ใจ ดูแลดี | nurse | issuer_maker |
+| demo-nurse-002 | นายอนุชา ช่วยเหลือ | nurse | — |
+| demo-engineer-001 | นายปิยะ เชื่อมต่อดี | integration_engineer | — |
+| demo-patient-001 | นายสมศักดิ์ สุขภาพดี | patient | — |
+| demo-patient-002 | นางสาวนภา แข็งแรง | patient | — |
+| demo-patient-003 | นายวิชัย ใส่ใจสุขภาพ | patient | — |
+
+### 15.4 Profile Photos
+
+All demo users and seed patients have DiceBear avatar URLs assigned (`avatarUrl` column). Avatars use the "notionists" style with the user's `openId` as the deterministic seed, ensuring consistent appearance across sessions.
+
+---
+
+## 16. Audit Seed Database (`portability.auditSeedDb`)
+
+The `auditSeedDb` procedure provides a non-destructive audit of the current seed data state. It calculates what the seed data *should* look like based on the current hospital configuration and patient count, then compares against what exists in the database.
+
+### 16.1 Usage
+
+```
+GET /api/trpc/portability.auditSeedDb?input={"patientsPerHospital":12}
+Requires: admin role
+```
+
+### 16.2 Response Structure
+
+The audit returns a summary object with:
+
+| Field | Description |
+|-------|-------------|
+| `inputHash` | SHA-256 of the seed configuration (hospitals + patients) |
+| `expectedCounts` | What should exist (hospitals, patients, credentials, presentations) |
+| `actualCounts` | What currently exists in the database |
+| `drift` | Differences between expected and actual |
+| `lastBatch` | Metadata from the most recent `vc_vp_seed_batches` entry |
+| `recommendation` | `"up_to_date"` or `"reseed_recommended"` |
+
+This procedure is safe to call repeatedly and does not modify any data. It is used by the admin dashboard to show seed data health status.
+
+---
+
+## 17. Schema Versioning for VC/VP
+
+Credential schemas evolve over time. The schema versioning system tracks which version of a credential schema was used to issue each VC, enabling forward-compatible verification and migration-aware reseeding.
+
+### 17.1 Schema Registry Table (`vc_schema_registry`)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | int (PK) | Auto-increment |
+| credentialType | varchar(100) | e.g., `patient_summary`, `prescription` |
+| version | varchar(20) | Semantic version, e.g., `1.0.0`, `1.1.0` |
+| jsonSchema | JSON | The JSON Schema definition for this version |
+| changelog | text | Human-readable description of changes |
+| isActive | boolean | Whether this is the current active version |
+| createdAt | timestamp | When this version was registered |
+
+### 17.2 Integration Points
+
+1. `issued_credentials.schemaVersion` — Records which schema version was used at issuance time.
+2. `credential_templates.schemaVersion` — The current default version for new issuances.
+3. Verification checks the credential's `schemaVersion` against the registry to apply the correct validation rules.
+4. Reseed uses the latest active schema version for each credential type.
 
 ---
 

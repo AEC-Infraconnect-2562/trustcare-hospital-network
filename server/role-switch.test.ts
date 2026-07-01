@@ -43,6 +43,7 @@ describe("Role Switching & Active Role Menu Visibility", () => {
   function getMenuForRole(role: SystemRole, additionalRoles: string[] = []) {
     return allMenuItems.filter(item => {
       if (item.roles.includes(role)) return true;
+      if (role === "patient") return false;
       for (const addRole of additionalRoles) {
         const grantedMenus = ADDITIONAL_ROLE_MENU_MAP[addRole];
         if (grantedMenus && grantedMenus.includes(item.id)) return true;
@@ -111,6 +112,13 @@ describe("Role Switching & Active Role Menu Visibility", () => {
       const allowedRoles = [systemRole]; // patient can only be patient
       expect(allowedRoles).toHaveLength(1);
       expect(allowedRoles).toContain("patient");
+    });
+
+    it("patient should not receive issuer roles from stale additional role rows", () => {
+      const menus = getMenuForRole("patient", ["issuer_maker", "issuer_checker"]);
+      const menuIds = menus.map(m => m.id);
+      expect(menuIds).not.toContain("issuer");
+      expect(menuIds).not.toContain("verifier");
     });
 
     it("system_admin can switch to patient", () => {

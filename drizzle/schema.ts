@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, json, boolean } from "drizzle-orm/mysql-core";
+import { int, mediumtext, mysqlEnum, mysqlTable, text, timestamp, varchar, json, boolean } from "drizzle-orm/mysql-core";
 
 // ============================================================
 // USER & AUTH
@@ -82,6 +82,7 @@ export const credentialTemplates = mysqlTable("credential_templates", {
   documentSubcategory: varchar("documentSubcategory", { length: 64 }),
   defaultStoragePath: varchar("defaultStoragePath", { length: 500 }),
   validityDays: int("validityDays").default(365),
+  schemaVersion: varchar("schemaVersion", { length: 20 }).default("1.0.0").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -100,7 +101,7 @@ export const issuedCredentials = mysqlTable("issued_credentials", {
   type: mysqlEnum("type", ["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization", "medical_certificate", "prescription", "lab_result", "diagnostic_report", "discharge_summary", "insurance_eligibility", "claim_package", "claim_receipt", "travel_document_verification", "shl_manifest", "pharmacy_dispense", "appointment", "visa_support_letter", "quotation", "guarantee_letter", "mpi_link_certificate", "sync_receipt"]).notNull(),
   status: mysqlEnum("status", ["active", "revoked", "expired", "suspended"]).default("active").notNull(),
   credentialData: json("credentialData"),
-  sdJwtVc: text("sdJwtVc"),
+  sdJwtVc: mediumtext("sdJwtVc"),
   documentCategory: varchar("documentCategory", { length: 64 }),
   documentSubcategory: varchar("documentSubcategory", { length: 64 }),
   storageKey: varchar("storageKey", { length: 500 }),
@@ -110,6 +111,7 @@ export const issuedCredentials = mysqlTable("issued_credentials", {
   revokedAt: timestamp("revokedAt"),
   revocationReason: text("revocationReason"),
   fhirResourceId: varchar("fhirResourceId", { length: 255 }),
+  schemaVersion: varchar("schemaVersion", { length: 20 }).default("1.0.0").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -188,7 +190,7 @@ export const issuedPresentations = mysqlTable("issued_presentations", {
   context: varchar("context", { length: 64 }).notNull(),
   purpose: varchar("purpose", { length: 64 }).notNull(),
   audience: text("audience"),
-  presentationJwt: text("presentationJwt").notNull(),
+  presentationJwt: mediumtext("presentationJwt").notNull(),
   credentialIds: json("credentialIds"),
   credentialRowIds: json("credentialRowIds"),
   verifier: varchar("verifier", { length: 255 }),
@@ -475,7 +477,7 @@ export const mappingVersions = mysqlTable("mapping_versions", {
   id: int("id").autoincrement().primaryKey(),
   adapterId: int("adapterId").notNull(),
   resourceType: varchar("resourceType", { length: 100 }).notNull(),
-  version: varchar("version", { length: 20 }).notNull(),
+  version: varchar("version", { length: 100 }).notNull(),
   mappingConfig: json("mappingConfig"),
   status: mysqlEnum("status", ["draft", "testing", "published", "deprecated"]).default("draft").notNull(),
   approvedBy: int("approvedBy"),
@@ -749,3 +751,19 @@ export const crossBorderReferrals = mysqlTable("cross_border_referrals", {
 
 export type CrossBorderReferral = typeof crossBorderReferrals.$inferSelect;
 export type InsertCrossBorderReferral = typeof crossBorderReferrals.$inferInsert;
+
+// ============================================================
+// VC SCHEMA REGISTRY
+// ============================================================
+export const vcSchemaRegistry = mysqlTable("vc_schema_registry", {
+  id: int("id").autoincrement().primaryKey(),
+  credentialType: varchar("credentialType", { length: 100 }).notNull(),
+  version: varchar("version", { length: 20 }).notNull(),
+  jsonSchema: json("jsonSchema").notNull(),
+  changelog: text("changelog"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type VcSchemaRegistry = typeof vcSchemaRegistry.$inferSelect;
+export type InsertVcSchemaRegistry = typeof vcSchemaRegistry.$inferInsert;

@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { normalizeActiveRole, sanitizeAdditionalRolesForSystemRole } from "@shared/rolePolicy";
 
 // ─── Route Access Configuration ────────────────────────────────────────────
 // Maps each protected route to the roles that can access it.
@@ -52,17 +53,18 @@ const routeAccessConfig: RouteAccess[] = [
 
 function hasAccess(
   path: string,
-  activeRole: SystemRole,
+  activeRole: string,
   additionalRoles: string[]
 ): boolean {
   const config = routeAccessConfig.find(r => r.path === path);
   // If no config found, allow access (public routes like /, /404)
   if (!config) return true;
+  const effectiveAdditionalRoles = activeRole === "patient" ? [] : additionalRoles;
   // Check primary role
-  if (config.roles.includes(activeRole)) return true;
+  if (config.roles.includes(activeRole as SystemRole)) return true;
   // Check additional roles
   if (config.additionalRolesGrant) {
-    for (const addRole of additionalRoles) {
+    for (const addRole of effectiveAdditionalRoles) {
       if (config.additionalRolesGrant.includes(addRole)) return true;
     }
   }
@@ -81,8 +83,8 @@ export default function RoleGuard({ children }: { children: React.ReactNode }) {
 
   // Derive activeRole and additionalRoles from user data
   const systemRole: SystemRole = (user as any)?.systemRole || (user?.role === "admin" ? "system_admin" : "patient");
-  const activeRole: SystemRole = ((user as any)?.activeRole || systemRole) as SystemRole;
-  const additionalRoles: string[] = (user as any)?.additionalRoles || [];
+  const additionalRoles: string[] = sanitizeAdditionalRolesForSystemRole(systemRole, (user as any)?.additionalRoles || []);
+  const activeRole = normalizeActiveRole(systemRole, (user as any)?.activeRole || systemRole, additionalRoles);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -127,14 +129,18 @@ export default function RoleGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function getRoleLabel(role: SystemRole): string {
-  const labels: Record<SystemRole, string> = {
+function getRoleLabel(role: string): string {
+  const labels: Record<string, string> = {
     system_admin: "ผู้ดูแลระบบ",
     hospital_admin: "ผู้ดูแลโรงพยาบาล",
+    maker: "Maker",
+    checker: "Checker",
     doctor: "แพทย์",
     nurse: "พยาบาล",
     integration_engineer: "วิศวกรเชื่อมต่อ",
     patient: "ผู้ป่วย",
+    issuer_maker: "Maker",
+    issuer_checker: "Checker",
   };
   return labels[role] || role;
 }

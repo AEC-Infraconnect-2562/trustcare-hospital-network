@@ -4,6 +4,15 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import {
+  availableRolesForSystemRole,
+  canActAsCredentialChecker,
+  canActAsCredentialMaker,
+  canHoldIssuerPrivileges,
+  normalizeActiveRole,
+  normalizeCredentialEntitlements,
+  sanitizeAdditionalRolesForSystemRole,
+} from "@shared/rolePolicy";
 import * as db from "./db";
 import { nanoid } from "nanoid";
 import { notifyOwner } from "./_core/notification";
@@ -19,6 +28,7 @@ import {
   executeSyncBackPlan,
   generateTrustcareDemoSeed,
   hospitalDidWeb,
+  auditTrustcareVcVpSeedDatabase,
   issueMedicalCertificateVc,
   issueCredential,
   issuePrescriptionVc,
@@ -67,17 +77,28 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
-      const additionalRoles = await db.getUserAdditionalRoles(opts.ctx.user.id);
+      const systemRole = (opts.ctx.user as any).systemRole ?? "patient";
+      const additionalRoles = sanitizeAdditionalRolesForSystemRole(
+        systemRole,
+        (await db.getUserAdditionalRoles(opts.ctx.user.id)).map(r => r.role),
+      );
       const activeRoleCookie = opts.ctx.req.cookies?.["trustcare_active_role"];
-      return { ...opts.ctx.user, additionalRoles: additionalRoles.map(r => r.role), activeRole: activeRoleCookie || (opts.ctx.user as any).systemRole || "patient" };
+      return {
+        ...opts.ctx.user,
+        additionalRoles,
+        activeRole: normalizeActiveRole(systemRole, activeRoleCookie, additionalRoles),
+      };
     }),
     getDemoUsers: publicProcedure.query(async () => {
       return db.getDemoUsers();
     }),
     switchRole: protectedProcedure.input(z.object({ role: z.string() })).mutation(async ({ ctx, input }) => {
       const user = ctx.user as any;
-      const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
-      const allRoles = [user.systemRole, "patient", ...additionalRoles.map((r: any) => r.role)];
+      const additionalRoles = sanitizeAdditionalRolesForSystemRole(
+        user.systemRole,
+        (await db.getUserAdditionalRoles(ctx.user.id)).map((r: any) => r.role),
+      );
+      const allRoles = availableRolesForSystemRole(user.systemRole, additionalRoles);
       if (!allRoles.includes(input.role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "ไม่สามารถสลับไปบทบาทนี้ได้" });
       }
@@ -87,9 +108,11 @@ export const appRouter = router({
     }),
     getAvailableRoles: protectedProcedure.query(async ({ ctx }) => {
       const user = ctx.user as any;
-      const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
-      const roles = new Set([user.systemRole, "patient", ...additionalRoles.map((r: any) => r.role)]);
-      return Array.from(roles);
+      const additionalRoles = sanitizeAdditionalRolesForSystemRole(
+        user.systemRole,
+        (await db.getUserAdditionalRoles(ctx.user.id)).map((r: any) => r.role),
+      );
+      return availableRolesForSystemRole(user.systemRole, additionalRoles);
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -113,7 +136,12 @@ export const appRouter = router({
     run: publicProcedure.mutation(async () => {
       const { seedDatabase } = await import("./seed");
       await seedDatabase();
-      return { success: true };
+      // After seeding base users/hospitals, also seed VC/VP documents
+      const result = await reseedTrustcareVcVpDatabase({
+        patientsPerHospital: 12,
+        resetExistingSeed: true,
+      });
+      return { success: true, vcVpSeed: result };
     }),
   }),
   // ============================================================
@@ -124,19 +152,15 @@ export const appRouter = router({
       return db.listCredentialRequests({ requesterId: ctx.user.id });
     }),
     pendingReviews: protectedProcedure.query(async ({ ctx }) => {
-      const user = ctx.user as any;
-      if (user.systemRole !== "checker" && user.systemRole !== "system_admin" && user.systemRole !== "hospital_admin") {
-        const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
-        if (!additionalRoles.some(r => r.role === "issuer_checker")) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Checker role required" });
-        }
-      }
+      await requireMakerCheckerRole(ctx.user, "checker");
       return db.listCredentialRequests({ status: "pending_review" });
     }),
     myReviews: protectedProcedure.query(async ({ ctx }) => {
+      await requireMakerCheckerRole(ctx.user, "checker");
       return db.listCredentialRequests({ reviewerId: ctx.user.id });
     }),
-    pendingCount: protectedProcedure.query(async () => {
+    pendingCount: protectedProcedure.query(async ({ ctx }) => {
+      await requireMakerCheckerRole(ctx.user, "checker");
       const pending = await db.listCredentialRequests({ status: "pending_review" });
       return pending.length;
     }),
@@ -149,6 +173,7 @@ export const appRouter = router({
       priority: z.enum(["normal", "urgent"]).optional(),
       makerNotes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
+      await requireMakerCheckerRole(ctx.user, "maker");
       const result = await db.createCredentialRequest({
         requesterId: ctx.user.id,
         templateId: input.templateId ?? null,
@@ -169,6 +194,7 @@ export const appRouter = router({
       return result;
     }),
     submitForReview: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      await requireMakerCheckerRole(ctx.user, "maker");
       const request = await db.getCredentialRequestById(input.id);
       if (!request) throw new TRPCError({ code: "NOT_FOUND" });
       if (request.requesterId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
@@ -960,10 +986,20 @@ export const appRouter = router({
         checkerTypes: z.array(z.enum(credentialTypeValues)).optional(),
       }).optional(),
     })).mutation(async ({ input }) => {
+      if (!canHoldIssuerPrivileges(input.systemRole)) {
+        input.credentialEntitlements = { makerTypes: [], checkerTypes: [] };
+        await Promise.all([
+          db.removeUserRole(input.id, "issuer_maker"),
+          db.removeUserRole(input.id, "issuer_checker"),
+        ]);
+      }
+      if ((input.systemRole === "maker" || input.systemRole === "checker") && !input.hospitalId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Maker/Checker users must be linked to a hospital." });
+      }
       await db.updateUserProfile(input.id, {
         systemRole: input.systemRole,
         hospitalId: input.hospitalId,
-        credentialEntitlements: input.credentialEntitlements,
+        credentialEntitlements: normalizeCredentialEntitlements(input.systemRole, input.credentialEntitlements),
       } as any);
       return { success: true };
     }),
@@ -1473,6 +1509,14 @@ export const appRouter = router({
       return db.listVcVpSeedBatches(input?.limit ?? 20);
     }),
 
+    auditSeedDb: adminProcedure.input(z.object({
+      patientsPerHospital: z.number().min(1).max(100).optional(),
+    }).optional()).query(({ input }) => {
+      return auditTrustcareVcVpSeedDatabase({
+        patientsPerHospital: input?.patientsPerHospital,
+      });
+    }),
+
     issuedPresentations: protectedProcedure.input(z.object({
       patientId: z.number().optional(),
       status: z.string().optional(),
@@ -1951,13 +1995,64 @@ export const appRouter = router({
       return db.getExecutiveDashboardStats();
     }),
   }),
+
+  // ============================================================
+  // SCHEMA REGISTRY
+  // ============================================================
+  schemaRegistry: router({
+    register: adminProcedure.input(z.object({
+      credentialType: z.string().min(1),
+      version: z.string().regex(/^\d+\.\d+\.\d+$/, "Must be semver (e.g., 1.0.0)"),
+      jsonSchema: z.any(),
+      changelog: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const result = await db.registerSchema({
+        credentialType: input.credentialType,
+        version: input.version,
+        jsonSchema: input.jsonSchema,
+        changelog: input.changelog || null,
+      });
+      return result;
+    }),
+
+    getActive: protectedProcedure.input(z.object({
+      credentialType: z.string().min(1),
+    })).query(async ({ input }) => {
+      return db.getActiveSchema(input.credentialType);
+    }),
+
+    getByVersion: protectedProcedure.input(z.object({
+      credentialType: z.string().min(1),
+      version: z.string().min(1),
+    })).query(async ({ input }) => {
+      return db.getSchemaByVersion(input.credentialType, input.version);
+    }),
+
+    list: protectedProcedure.input(z.object({
+      credentialType: z.string().optional(),
+    }).optional()).query(async ({ input }) => {
+      return db.listSchemaVersions(input?.credentialType);
+    }),
+
+    validate: protectedProcedure.input(z.object({
+      credentialType: z.string().min(1),
+      schemaVersion: z.string().min(1),
+      credentialData: z.any(),
+    })).mutation(async ({ input }) => {
+      return db.validateCredentialAgainstSchema(
+        input.credentialType,
+        input.schemaVersion,
+        input.credentialData,
+      );
+    }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
 
 // Helper
 function requireMaker(user: any, credentialType: string) {
-  if (user?.systemRole !== "maker") {
+  if (!canActAsCredentialMaker(user?.systemRole, [])) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Document creation requires Maker role." });
   }
   if (!hasCredentialEntitlement(user, "makerTypes", credentialType)) {
@@ -1966,7 +2061,7 @@ function requireMaker(user: any, credentialType: string) {
 }
 
 function requireChecker(user: any, credentialType: string) {
-  if (user?.systemRole !== "checker") {
+  if (!canActAsCredentialChecker(user?.systemRole, [])) {
     throw new TRPCError({ code: "FORBIDDEN", message: "VC issuance requires Checker role." });
   }
   if (!hasCredentialEntitlement(user, "checkerTypes", credentialType)) {
@@ -1978,6 +2073,22 @@ function hasCredentialEntitlement(user: any, key: "makerTypes" | "checkerTypes",
   const entitlements = user?.credentialEntitlements ?? {};
   const allowed = Array.isArray(entitlements[key]) ? entitlements[key] : [];
   return allowed.includes("*") || allowed.includes(credentialType);
+}
+
+async function requireMakerCheckerRole(user: any, mode: "maker" | "checker") {
+  const additionalRoles = sanitizeAdditionalRolesForSystemRole(
+    user?.systemRole,
+    (await db.getUserAdditionalRoles(user.id)).map((role: any) => role.role),
+  );
+  const allowed = mode === "maker"
+    ? canActAsCredentialMaker(user?.systemRole, additionalRoles)
+    : canActAsCredentialChecker(user?.systemRole, additionalRoles);
+  if (!allowed) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: mode === "maker" ? "Maker role required" : "Checker role required",
+    });
+  }
 }
 
 async function submitMakerCredentialRequest(input: {
@@ -2107,6 +2218,20 @@ async function issueCredentialFromRequest(input: {
     });
   }
 
+  // Schema validation enforcement
+  const schemaVersion = "1.0.0";
+  const validationResult = await db.validateCredentialAgainstSchema(
+    request.type,
+    schemaVersion,
+    credential.credential?.credentialSubject ?? documentData,
+  );
+  if (!validationResult.valid && validationResult.errors[0] && !validationResult.errors[0].includes("Schema not found")) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Schema validation failed: ${validationResult.errors.join(", ")}`,
+    });
+  }
+
   const templateId = await resolveTemplateForRequest(request);
   const storage = documentStorageMetadata({
     documentType: request.type,
@@ -2144,6 +2269,7 @@ async function issueCredentialFromRequest(input: {
     issuedAt,
     expiresAt: credential.expiresAt ? new Date(credential.expiresAt) : undefined,
     fhirResourceId: String(credential.credential?.credentialSubject?.fhir?.resourceType ?? request.type),
+    schemaVersion,
   } as any);
   await db.createWalletCard({
     patientId: request.subjectId,

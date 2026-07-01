@@ -20,8 +20,10 @@ import {
   notifications, InsertNotification,
   userRoles, InsertUserRole,
   credentialRequests, InsertCredentialRequest,
+  vcSchemaRegistry, InsertVcSchemaRegistry,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { isIssuerPrivilegeRole, isPatientRole } from "@shared/rolePolicy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1000,6 +1002,10 @@ export async function getExecutiveDashboardStats() {
 export async function assignUserRole(data: InsertUserRole) {
   const db = await getDb();
   if (!db) return;
+  const [user] = await db.select().from(users).where(eq(users.id, data.userId)).limit(1);
+  if (user && isPatientRole((user as any).systemRole) && isIssuerPrivilegeRole(data.role)) {
+    throw new Error("Patient users cannot be assigned Maker/Checker issuer roles.");
+  }
   await db.insert(userRoles).values(data);
 }
 
@@ -1071,5 +1077,85 @@ export async function getCredentialRequestById(id: number) {
 export async function getDemoUsers() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(users).where(sql`${users.loginMethod} = 'demo'`).orderBy(users.id);
+  const demoUsersList = await db.select().from(users).where(sql`${users.loginMethod} = 'demo'`).orderBy(users.id);
+  // Enrich with additional roles from user_roles table
+  const enriched = await Promise.all(demoUsersList.map(async (u) => {
+    const roles = await db.select().from(userRoles).where(and(eq(userRoles.userId, u.id), eq(userRoles.isActive, true)));
+    return {
+      ...u,
+      additionalRoles: roles.map(r => r.role),
+    };
+  }));
+  return enriched;
+}
+
+// ============================================================
+// VC SCHEMA REGISTRY
+// ============================================================
+
+export async function registerSchema(data: InsertVcSchemaRegistry) {
+  const database = await getDb();
+  if (!database) return null;
+  // Deactivate previous active versions of same type
+  await database.update(vcSchemaRegistry)
+    .set({ isActive: false })
+    .where(and(
+      eq(vcSchemaRegistry.credentialType, data.credentialType),
+      eq(vcSchemaRegistry.isActive, true),
+    ));
+  const [result] = await database.insert(vcSchemaRegistry).values(data).$returningId();
+  return result;
+}
+
+export async function getActiveSchema(credentialType: string) {
+  const database = await getDb();
+  if (!database) return null;
+  const [schema] = await database.select().from(vcSchemaRegistry)
+    .where(and(
+      eq(vcSchemaRegistry.credentialType, credentialType),
+      eq(vcSchemaRegistry.isActive, true),
+    ))
+    .limit(1);
+  return schema || null;
+}
+
+export async function getSchemaByVersion(credentialType: string, version: string) {
+  const database = await getDb();
+  if (!database) return null;
+  const [schema] = await database.select().from(vcSchemaRegistry)
+    .where(and(
+      eq(vcSchemaRegistry.credentialType, credentialType),
+      eq(vcSchemaRegistry.version, version),
+    ))
+    .limit(1);
+  return schema || null;
+}
+
+export async function listSchemaVersions(credentialType?: string) {
+  const database = await getDb();
+  if (!database) return [];
+  const conditions = credentialType
+    ? [eq(vcSchemaRegistry.credentialType, credentialType)]
+    : [];
+  return database.select().from(vcSchemaRegistry)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(vcSchemaRegistry.createdAt));
+}
+
+export async function validateCredentialAgainstSchema(credentialType: string, schemaVersion: string, credentialData: unknown): Promise<{ valid: boolean; errors: string[] }> {
+  const schema = await getSchemaByVersion(credentialType, schemaVersion);
+  if (!schema) {
+    return { valid: false, errors: [`Schema not found: ${credentialType}@${schemaVersion}`] };
+  }
+  // Basic JSON Schema validation (structural check)
+  const jsonSchema = schema.jsonSchema as any;
+  const errors: string[] = [];
+  if (jsonSchema && jsonSchema.required && Array.isArray(jsonSchema.required)) {
+    for (const field of jsonSchema.required) {
+      if (!(credentialData as any)?.[field]) {
+        errors.push(`Missing required field: ${field}`);
+      }
+    }
+  }
+  return { valid: errors.length === 0, errors };
 }

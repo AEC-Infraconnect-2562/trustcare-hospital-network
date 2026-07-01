@@ -90,6 +90,32 @@ The `server/portability/` directory is the VC/VP engine. Key rules:
 
 ---
 
+## Role Policy & Patient Restriction Rules
+
+The role policy engine lives in `shared/rolePolicy.ts` and is the single source of truth for authorization decisions. All changes to role-based access must go through this module.
+
+### Patient Restrictions
+
+Patients are fundamentally restricted from issuer-level operations. When implementing features that touch authorization:
+
+1. **Never grant issuer privileges to patients.** The `sanitizeAdditionalRolesForSystemRole()` function strips `issuer_maker` and `issuer_checker` from any user whose `systemRole === 'patient'`.
+2. **Staff can act as patients, but not vice versa.** The `availableRolesForSystemRole()` function always includes `patient` for staff users, but patients cannot assume any staff role.
+3. **Credential entitlements are null for patients.** The `normalizeCredentialEntitlements()` function returns empty arrays for `makerTypes` and `checkerTypes` when the user is a patient.
+4. **Frontend menu visibility must use `activeRole`.** Do not check `systemRole` alone for menu filtering; the user may be a doctor operating as a patient.
+5. **Backend procedures must validate the effective role.** Use `normalizeActiveRole()` in context building to determine the actual operating role.
+
+### Adding New Roles
+
+When adding new system roles or additional roles:
+
+1. Add the role to the appropriate set in `shared/rolePolicy.ts` (`MAKER_SYSTEM_ROLES`, `CHECKER_SYSTEM_ROLES`, etc.)
+2. Update `shared/menuConfig.ts` to define which menu items the new role can see
+3. Update `DashboardLayout.tsx` `allMenuItems` to match
+4. Add seed users for the new role in `server/portability/seedData.ts`
+5. Write tests in `server/role-policy.test.ts`
+
+---
+
 ## Maker/Checker Changes
 
 When modifying the authorization matrix:

@@ -223,3 +223,31 @@
 - [x] Update docs/ARCHITECTURE.md with QR Scanner documentation (Section 2.4.1, 12.4)
 - [x] Update docs/CONTRIBUTING.md with QR Scanner testing requirements
 - [x] Push to GitHub and save checkpoint
+
+## v3.2 - PR #5 Merge + Landing Page Redesign + Demo Login
+- [x] Pull PR #5 changes (shared/rolePolicy.ts, patient restrictions, auditSeedDb)
+- [x] Apply any new DB migrations from PR #5
+- [x] Redesign Landing Page with system description and features overview
+- [x] Add Test Users quick-login cards on Landing Page (bypass Manus OAuth)
+- [x] Bind Seed Data to Test Users by role (admin, doctor, nurse, patient, maker, checker)
+- [x] Ensure demo-login route works without Manus OAuth redirect
+- [x] Verify TypeScript compilation and all tests pass
+- [x] Update ARCHITECTURE.md with rolePolicy, auditSeedDb, and demo-login docs
+- [x] Update CONTRIBUTING.md with patient restriction rules
+
+## v3.3 - Profile Photos for Seed Users
+- [x] Check if users table has avatar/photo field (avatarUrl TEXT column exists)
+- [x] Generate avatar illustrations for 10 demo users (DiceBear Notionists API - deterministic SVG)
+- [x] Generate avatar illustrations for 36 seed patients (DiceBear Notionists API)
+- [x] Bind avatar URLs to user records in DB (direct DiceBear URLs)
+- [x] Display avatars in Home.tsx login cards and DashboardLayout sidebar
+
+## v3.4 - Schema Versioning for VC/VP
+- [x] Add schemaVersion field to issued_credentials and credential_templates
+- [x] Create vc_schema_registry table (type, version, jsonSchema, changelog)
+- [x] Reseed stamps schemaVersion="1.0.0" on all new seed data
+- [x] Schema validation helper (validateCredentialAgainstSchema) with required-field checks
+- [x] Schema registry tRPC router (register, getActive, getByVersion, list, validate)
+- [x] Vitest tests for schema registry (12 tests passing)
+- [x] Enforce schema validation in issuance flow (issuer.issueCredential)
+- [x] Push to GitHub

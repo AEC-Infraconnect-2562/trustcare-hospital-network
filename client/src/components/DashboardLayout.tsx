@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +20,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { getLoginUrl } from "@/const";
+// getLoginUrl removed - DashboardLayout now redirects to / for unauthenticated users
 import { useIsMobile } from "@/hooks/useMobile";
 import { useTheme } from "@/contexts/ThemeContext";
 import {
@@ -129,30 +129,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (loading) return <DashboardLayoutSkeleton />;
 
   if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-primary/5 to-background">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <div className="flex flex-col items-center gap-4">
-            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Building2 className="h-8 w-8 text-primary" />
-            </div>
-            <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Trustcare Hospital Network
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              ระบบจัดการข้อมูลสุขภาพเครือโรงพยาบาล กรุณาเข้าสู่ระบบเพื่อดำเนินการต่อ
-            </p>
-          </div>
-          <Button
-            onClick={() => { window.location.href = getLoginUrl(); }}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
-          >
-            เข้าสู่ระบบ
-          </Button>
-        </div>
-      </div>
-    );
+    // Redirect to landing page which has demo users + system info
+    window.location.href = "/";
+    return <DashboardLayoutSkeleton />;
   }
 
   return (
@@ -268,6 +247,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none">
                   <Avatar className="h-9 w-9 border shrink-0">
+                    {(user as any)?.avatarUrl && <AvatarImage src={(user as any).avatarUrl} alt={user?.name || "User"} />}
                     <AvatarFallback className="text-xs font-medium bg-primary/10 text-primary">
                       {user?.name?.charAt(0).toUpperCase() || "U"}
                     </AvatarFallback>
