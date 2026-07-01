@@ -142,10 +142,10 @@ export default function MakerQueue() {
               templates={templates || []}
               actions={(req: any) => (
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => submitMutation.mutate({ requestId: req.id })} disabled={submitMutation.isPending}>
+                  <Button size="sm" onClick={() => submitMutation.mutate({ id: req.id })} disabled={submitMutation.isPending}>
                     <Send className="h-3 w-3 mr-1" />ส่งตรวจ
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => cancelMutation.mutate({ requestId: req.id })} disabled={cancelMutation.isPending}>
+                  <Button size="sm" variant="outline" onClick={() => cancelMutation.mutate({ id: req.id })} disabled={cancelMutation.isPending}>
                     ยกเลิก
                   </Button>
                 </div>
@@ -245,13 +245,15 @@ function CreateRequestForm({ templates, hospitals, onSuccess }: { templates: any
   return (
     <form onSubmit={e => {
       e.preventDefault();
+      const selectedTemplate = templates.find((t: any) => String(t.id) === form.templateId);
       createMutation.mutate({
         templateId: Number(form.templateId),
         patientId: Number(form.patientId),
-        hospitalId: form.hospitalId ? Number(form.hospitalId) : undefined,
+        hospitalId: form.hospitalId ? Number(form.hospitalId) : 0,
+        credentialType: selectedTemplate?.type || "patient_summary",
         makerNotes: form.makerNotes || undefined,
         priority: form.priority,
-        credentialData: { issuedVia: "maker-checker-workflow", requestedAt: new Date().toISOString() },
+        requestData: { issuedVia: "maker-checker-workflow", requestedAt: new Date().toISOString() },
       });
     }} className="space-y-4">
       <div className="space-y-2">

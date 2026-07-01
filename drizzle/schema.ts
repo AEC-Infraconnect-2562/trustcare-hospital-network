@@ -10,12 +10,13 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  systemRole: mysqlEnum("systemRole", ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient"]).default("patient").notNull(),
+  systemRole: mysqlEnum("systemRole", ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"]).default("patient").notNull(),
   hospitalId: int("hospitalId"),
   departmentId: int("departmentId"),
   thaiId: varchar("thaiId", { length: 13 }),
   phone: varchar("phone", { length: 20 }),
   avatarUrl: text("avatarUrl"),
+  credentialEntitlements: json("credentialEntitlements"),
   preferredLanguage: mysqlEnum("preferredLanguage", ["th", "en"]).default("th").notNull(),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -73,10 +74,13 @@ export const credentialTemplates = mysqlTable("credential_templates", {
   hospitalId: int("hospitalId"),
   name: varchar("name", { length: 255 }).notNull(),
   nameEn: varchar("nameEn", { length: 255 }),
-  type: mysqlEnum("type", ["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization", "medical_certificate", "prescription", "claim_package", "sync_receipt"]).notNull(),
+  type: mysqlEnum("type", ["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization", "medical_certificate", "prescription", "lab_result", "diagnostic_report", "discharge_summary", "insurance_eligibility", "claim_package", "claim_receipt", "travel_document_verification", "shl_manifest", "pharmacy_dispense", "appointment", "visa_support_letter", "quotation", "guarantee_letter", "mpi_link_certificate", "sync_receipt"]).notNull(),
   version: varchar("version", { length: 20 }).default("1.0").notNull(),
   schema: json("schema"),
   fhirResourceType: varchar("fhirResourceType", { length: 100 }),
+  documentCategory: varchar("documentCategory", { length: 64 }),
+  documentSubcategory: varchar("documentSubcategory", { length: 64 }),
+  defaultStoragePath: varchar("defaultStoragePath", { length: 500 }),
   validityDays: int("validityDays").default(365),
   isActive: boolean("isActive").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -93,10 +97,14 @@ export const issuedCredentials = mysqlTable("issued_credentials", {
   issuerId: int("issuerId").notNull(),
   issuerHospitalId: int("issuerHospitalId").notNull(),
   subjectId: int("subjectId").notNull(),
-  type: mysqlEnum("type", ["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization", "medical_certificate", "prescription", "claim_package", "sync_receipt"]).notNull(),
+  type: mysqlEnum("type", ["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization", "medical_certificate", "prescription", "lab_result", "diagnostic_report", "discharge_summary", "insurance_eligibility", "claim_package", "claim_receipt", "travel_document_verification", "shl_manifest", "pharmacy_dispense", "appointment", "visa_support_letter", "quotation", "guarantee_letter", "mpi_link_certificate", "sync_receipt"]).notNull(),
   status: mysqlEnum("status", ["active", "revoked", "expired", "suspended"]).default("active").notNull(),
   credentialData: json("credentialData"),
   sdJwtVc: text("sdJwtVc"),
+  documentCategory: varchar("documentCategory", { length: 64 }),
+  documentSubcategory: varchar("documentSubcategory", { length: 64 }),
+  storageKey: varchar("storageKey", { length: 500 }),
+  searchTags: json("searchTags"),
   issuedAt: timestamp("issuedAt").defaultNow().notNull(),
   expiresAt: timestamp("expiresAt"),
   revokedAt: timestamp("revokedAt"),
@@ -108,6 +116,35 @@ export const issuedCredentials = mysqlTable("issued_credentials", {
 export type IssuedCredential = typeof issuedCredentials.$inferSelect;
 export type InsertIssuedCredential = typeof issuedCredentials.$inferInsert;
 
+export const credentialIssuanceRequests = mysqlTable("credential_issuance_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  requestId: varchar("requestId", { length: 255 }).notNull().unique(),
+  templateId: int("templateId"),
+  issuerHospitalId: int("issuerHospitalId").notNull(),
+  subjectId: int("subjectId").notNull(),
+  type: mysqlEnum("type", ["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization", "medical_certificate", "prescription", "lab_result", "diagnostic_report", "discharge_summary", "insurance_eligibility", "claim_package", "claim_receipt", "travel_document_verification", "shl_manifest", "pharmacy_dispense", "appointment", "visa_support_letter", "quotation", "guarantee_letter", "mpi_link_certificate", "sync_receipt"]).notNull(),
+  status: mysqlEnum("status", ["draft", "submitted", "changes_requested", "approved", "rejected", "issued", "cancelled"]).default("submitted").notNull(),
+  makerId: int("makerId").notNull(),
+  checkerId: int("checkerId"),
+  makerRole: varchar("makerRole", { length: 64 }),
+  checkerRole: varchar("checkerRole", { length: 64 }),
+  holderDid: varchar("holderDid", { length: 512 }),
+  issuerDid: varchar("issuerDid", { length: 512 }),
+  documentData: json("documentData"),
+  canonicalReview: json("canonicalReview"),
+  checkerNotes: text("checkerNotes"),
+  issuedCredentialId: varchar("issuedCredentialId", { length: 255 }),
+  issuedCredentialRowId: int("issuedCredentialRowId"),
+  submittedAt: timestamp("submittedAt").defaultNow().notNull(),
+  checkedAt: timestamp("checkedAt"),
+  issuedAt: timestamp("issuedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CredentialIssuanceRequest = typeof credentialIssuanceRequests.$inferSelect;
+export type InsertCredentialIssuanceRequest = typeof credentialIssuanceRequests.$inferInsert;
+
 // ============================================================
 // PATIENT WALLET
 // ============================================================
@@ -115,10 +152,11 @@ export const walletCards = mysqlTable("wallet_cards", {
   id: int("id").autoincrement().primaryKey(),
   patientId: int("patientId").notNull(),
   credentialId: int("credentialId").notNull(),
-  cardType: mysqlEnum("cardType", ["allergy", "medication", "patient_summary", "consent", "identity", "immunization", "referral", "medical_certificate", "prescription", "claim", "sync_receipt"]).notNull(),
+  cardType: mysqlEnum("cardType", ["allergy", "medication", "patient_summary", "consent", "identity", "immunization", "referral", "medical_certificate", "prescription", "lab_result", "diagnostic_report", "discharge_summary", "coverage", "claim", "travel_document", "shl_manifest", "pharmacy_dispense", "appointment", "visa_support_letter", "quotation", "guarantee_letter", "mpi_link_certificate", "sync_receipt"]).notNull(),
   displayName: varchar("displayName", { length: 255 }).notNull(),
   displayNameEn: varchar("displayNameEn", { length: 255 }),
   issuerHospitalName: varchar("issuerHospitalName", { length: 255 }),
+  documentCategory: varchar("documentCategory", { length: 64 }),
   cardColor: varchar("cardColor", { length: 7 }).default("#2563eb"),
   isPinned: boolean("isPinned").default(false).notNull(),
   lastPresentedAt: timestamp("lastPresentedAt"),
@@ -141,6 +179,27 @@ export const presentationHistory = mysqlTable("presentation_history", {
 });
 
 export type PresentationHistory = typeof presentationHistory.$inferSelect;
+
+export const issuedPresentations = mysqlTable("issued_presentations", {
+  id: int("id").autoincrement().primaryKey(),
+  presentationId: varchar("presentationId", { length: 255 }).notNull().unique(),
+  patientId: int("patientId").notNull(),
+  holderDid: varchar("holderDid", { length: 512 }).notNull(),
+  context: varchar("context", { length: 64 }).notNull(),
+  purpose: varchar("purpose", { length: 64 }).notNull(),
+  audience: text("audience"),
+  presentationJwt: text("presentationJwt").notNull(),
+  credentialIds: json("credentialIds"),
+  credentialRowIds: json("credentialRowIds"),
+  verifier: varchar("verifier", { length: 255 }),
+  status: mysqlEnum("status", ["active", "expired", "revoked"]).default("active").notNull(),
+  expiresAt: timestamp("expiresAt"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type IssuedPresentation = typeof issuedPresentations.$inferSelect;
+export type InsertIssuedPresentation = typeof issuedPresentations.$inferInsert;
 
 // ============================================================
 // CONSENT MANAGEMENT
@@ -276,6 +335,24 @@ export const auditEvents = mysqlTable("audit_events", {
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type InsertAuditEvent = typeof auditEvents.$inferInsert;
 
+export const vcVpSeedBatches = mysqlTable("vc_vp_seed_batches", {
+  id: int("id").autoincrement().primaryKey(),
+  batchId: varchar("batchId", { length: 255 }).notNull().unique(),
+  sourceKit: varchar("sourceKit", { length: 255 }).notNull(),
+  inputHash: varchar("inputHash", { length: 128 }).notNull(),
+  patientsPerHospital: int("patientsPerHospital").notNull(),
+  generatedCredentialCount: int("generatedCredentialCount").default(0).notNull(),
+  generatedPresentationCount: int("generatedPresentationCount").default(0).notNull(),
+  status: mysqlEnum("status", ["running", "completed", "failed"]).default("running").notNull(),
+  startedBy: int("startedBy"),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+  summary: json("summary"),
+});
+
+export type VcVpSeedBatch = typeof vcVpSeedBatches.$inferSelect;
+export type InsertVcVpSeedBatch = typeof vcVpSeedBatches.$inferInsert;
+
 export const notifications = mysqlTable("notifications", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId"),
@@ -290,6 +367,45 @@ export const notifications = mysqlTable("notifications", {
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
+
+// ============================================================
+// USER ADDITIONAL ROLES (Multi-Role Support)
+// ============================================================
+export const userRoles = mysqlTable("user_roles", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  role: varchar("role", { length: 64 }).notNull(),
+  scope: varchar("scope", { length: 255 }),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type UserRole = typeof userRoles.$inferSelect;
+export type InsertUserRole = typeof userRoles.$inferInsert;
+
+// ============================================================
+// CREDENTIAL REQUESTS (Maker/Checker Workflow v2.2)
+// ============================================================
+export const credentialRequests = mysqlTable("credential_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  requesterId: int("requesterId").notNull(),
+  templateId: int("templateId"),
+  patientId: int("patientId").notNull(),
+  hospitalId: int("hospitalId").notNull(),
+  credentialType: varchar("credentialType", { length: 128 }).notNull(),
+  status: mysqlEnum("status", ["draft", "pending_review", "approved", "rejected", "issued", "cancelled"]).default("draft").notNull(),
+  requestData: json("requestData"),
+  reviewerId: int("reviewerId"),
+  reviewComment: text("reviewComment"),
+  issuedCredentialId: int("issuedCredentialId"),
+  priority: mysqlEnum("priority", ["normal", "urgent"]).default("normal").notNull(),
+  makerNotes: text("makerNotes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CredentialRequest = typeof credentialRequests.$inferSelect;
+export type InsertCredentialRequest = typeof credentialRequests.$inferInsert;
 
 // ============================================================
 // PATIENT IDENTITY LINKS (MPI)
@@ -633,45 +749,3 @@ export const crossBorderReferrals = mysqlTable("cross_border_referrals", {
 
 export type CrossBorderReferral = typeof crossBorderReferrals.$inferSelect;
 export type InsertCrossBorderReferral = typeof crossBorderReferrals.$inferInsert;
-
-// ============================================================
-// USER ADDITIONAL ROLES (Multi-Role Support)
-// ============================================================
-export const userRoles = mysqlTable("user_roles", {
-  id: int("id").autoincrement().primaryKey(),
-  userId: int("userId").notNull(),
-  role: varchar("role", { length: 50 }).notNull(), // e.g. issuer_maker, issuer_checker
-  scope: varchar("scope", { length: 100 }), // optional scope like hospitalId or departmentId
-  assignedBy: int("assignedBy"),
-  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
-  expiresAt: timestamp("expiresAt"),
-  isActive: boolean("isActive").default(true).notNull(),
-});
-export type UserRole = typeof userRoles.$inferSelect;
-export type InsertUserRole = typeof userRoles.$inferInsert;
-
-// ============================================================
-// CREDENTIAL REQUESTS (Maker/Checker Workflow)
-// ============================================================
-export const credentialRequests = mysqlTable("credential_requests", {
-  id: int("id").autoincrement().primaryKey(),
-  requestNumber: varchar("requestNumber", { length: 50 }).notNull().unique(),
-  templateId: int("templateId").notNull(),
-  patientId: int("patientId").notNull(),
-  hospitalId: int("hospitalId"),
-  makerId: int("makerId").notNull(),
-  checkerId: int("checkerId"),
-  status: mysqlEnum("status", ["draft", "pending_review", "approved", "rejected", "issued", "cancelled"]).default("draft").notNull(),
-  credentialData: json("credentialData"), // The actual credential payload prepared by maker
-  makerNotes: text("makerNotes"),
-  checkerComment: text("checkerComment"),
-  issuedCredentialId: int("issuedCredentialId"), // Link to issued_credentials after approval
-  priority: mysqlEnum("priority", ["normal", "urgent"]).default("normal").notNull(),
-  submittedAt: timestamp("submittedAt"),
-  reviewedAt: timestamp("reviewedAt"),
-  issuedAt: timestamp("issuedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-export type CredentialRequest = typeof credentialRequests.$inferSelect;
-export type InsertCredentialRequest = typeof credentialRequests.$inferInsert;

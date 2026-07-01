@@ -1,5 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,15 +9,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { trpc } from "@/lib/trpc";
-import { BadgeCheck, Plus, FileText, Ban, Clock } from "lucide-react";
+import { BadgeCheck, Plus, FileText, Ban, Clock, ClipboardCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 const typeLabels: Record<string, string> = {
-  medical_certificate: "Medical Certificate",
-  prescription: "Prescription",
-  claim_package: "Claim Package",
-  sync_receipt: "Sync Receipt",
   patient_identity: "บัตรประจำตัวผู้ป่วย",
   consent_receipt: "ใบรับรองความยินยอม",
   patient_summary: "สรุปข้อมูลผู้ป่วย",
@@ -25,6 +21,23 @@ const typeLabels: Record<string, string> = {
   medication_summary: "สรุปยาที่ใช้",
   referral_vc: "ใบส่งต่อ",
   immunization: "ประวัติวัคซีน",
+  medical_certificate: "ใบรับรองแพทย์",
+  prescription: "ใบสั่งยา",
+  lab_result: "ผลตรวจห้องปฏิบัติการ",
+  diagnostic_report: "รายงานวินิจฉัย",
+  discharge_summary: "สรุปจำหน่าย",
+  insurance_eligibility: "ตรวจสอบสิทธิประกัน",
+  claim_package: "ชุดเอกสาร E-Claim",
+  claim_receipt: "ใบรับเรื่องเคลม",
+  travel_document_verification: "เอกสารยืนยันเพื่อเดินทาง",
+  shl_manifest: "Smart Health Link Manifest",
+  pharmacy_dispense: "จ่ายยา",
+  appointment: "ใบนัดหมาย",
+  visa_support_letter: "หนังสือประกอบวีซ่า",
+  quotation: "ใบเสนอราคา",
+  guarantee_letter: "หนังสือรับรองค่าใช้จ่าย",
+  mpi_link_certificate: "ใบรับรองการเชื่อม MPI",
+  sync_receipt: "หลักฐาน Sync กลับ HIS",
 };
 
 const statusLabels: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
@@ -34,9 +47,18 @@ const statusLabels: Record<string, { label: string; variant: "default" | "second
   suspended: { label: "ระงับ", variant: "secondary" },
 };
 
+const requestStatusLabels: Record<string, { label: string; variant: "default" | "secondary" | "destructive" }> = {
+  submitted: { label: "รอ Checker", variant: "secondary" },
+  changes_requested: { label: "ขอแก้ไข", variant: "secondary" },
+  approved: { label: "อนุมัติแล้ว", variant: "secondary" },
+  issued: { label: "ออก VC แล้ว", variant: "default" },
+  rejected: { label: "ปฏิเสธ", variant: "destructive" },
+};
+
 export default function Issuer() {
   const { data: credentials, isLoading, refetch } = trpc.credential.list.useQuery({});
   const { data: templates } = trpc.credential.templates.useQuery({});
+  const { data: requests, refetch: refetchRequests } = trpc.credential.issuanceRequests.useQuery({ limit: 50 });
   const [issueOpen, setIssueOpen] = useState(false);
   const [revokeId, setRevokeId] = useState<number | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
@@ -52,15 +74,15 @@ export default function Issuer() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">ออกใบรับรอง</h1>
-            <p className="text-muted-foreground text-sm mt-1">VC Issuer Portal — ออกและจัดการ Verifiable Credentials</p>
+            <p className="text-muted-foreground text-sm mt-1">VC Issuer Portal - Maker ส่งคำขอ และ Checker ออก Verifiable Credentials จริง</p>
           </div>
           <Dialog open={issueOpen} onOpenChange={setIssueOpen}>
             <DialogTrigger asChild>
-              <Button><Plus className="h-4 w-4 mr-2" />ออกใบรับรองใหม่</Button>
+              <Button><Plus className="h-4 w-4 mr-2" />สร้างคำขอ VC</Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
-              <DialogHeader><DialogTitle>ออกใบรับรองใหม่</DialogTitle></DialogHeader>
-              <IssueCredentialForm templates={templates || []} onSuccess={() => { setIssueOpen(false); refetch(); }} />
+              <DialogHeader><DialogTitle>สร้างคำขอออก VC</DialogTitle></DialogHeader>
+              <IssueCredentialForm templates={templates || []} onSuccess={() => { setIssueOpen(false); refetchRequests(); }} />
             </DialogContent>
           </Dialog>
         </div>
@@ -68,6 +90,7 @@ export default function Issuer() {
         <Tabs defaultValue="issued">
           <TabsList>
             <TabsTrigger value="issued" className="gap-2"><BadgeCheck className="h-3.5 w-3.5" />ใบรับรองที่ออก</TabsTrigger>
+            <TabsTrigger value="requests" className="gap-2"><ClipboardCheck className="h-3.5 w-3.5" />คำขอ Maker/Checker</TabsTrigger>
             <TabsTrigger value="templates" className="gap-2"><FileText className="h-3.5 w-3.5" />เทมเพลต</TabsTrigger>
           </TabsList>
 
@@ -114,6 +137,47 @@ export default function Issuer() {
                   <div className="flex flex-col items-center py-16">
                     <BadgeCheck className="h-12 w-12 text-muted-foreground/30 mb-4" />
                     <p className="text-muted-foreground">ยังไม่มีใบรับรองที่ออก</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="requests" className="mt-4">
+            <Card>
+              <CardContent className="p-0">
+                {requests && requests.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>ประเภท</TableHead>
+                        <TableHead>Request ID</TableHead>
+                        <TableHead>Maker</TableHead>
+                        <TableHead>Checker</TableHead>
+                        <TableHead>สถานะ</TableHead>
+                        <TableHead>วันที่ส่ง</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {requests.map((request: any) => {
+                        const status = requestStatusLabels[request.status] || requestStatusLabels.submitted;
+                        return (
+                          <TableRow key={request.id}>
+                            <TableCell className="font-medium text-sm">{typeLabels[request.type] || request.type}</TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">{request.requestId?.slice(0, 32)}...</TableCell>
+                            <TableCell className="text-sm">{request.makerRole || request.makerId || "-"}</TableCell>
+                            <TableCell className="text-sm">{request.checkerRole || request.checkerId || "-"}</TableCell>
+                            <TableCell><Badge variant={status.variant} className="text-[10px]">{status.label}</Badge></TableCell>
+                            <TableCell className="text-sm">{request.submittedAt ? new Date(request.submittedAt).toLocaleDateString("th-TH") : "-"}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="flex flex-col items-center py-16">
+                    <ClipboardCheck className="h-12 w-12 text-muted-foreground/30 mb-4" />
+                    <p className="text-muted-foreground">ยังไม่มีคำขอจาก Maker</p>
                   </div>
                 )}
               </CardContent>
@@ -171,13 +235,13 @@ function IssueCredentialForm({ templates, onSuccess }: { templates: any[]; onSuc
   const [form, setForm] = useState({ templateId: "", subjectId: "", type: "patient_identity" as string, issuerHospitalId: "1" });
   const { data: hospitals } = trpc.hospital.list.useQuery();
   const issueMutation = trpc.credential.issue.useMutation({
-    onSuccess: () => { toast.success("ออกใบรับรองสำเร็จ"); onSuccess(); },
+    onSuccess: () => { toast.success("ส่งคำขอให้ Checker ตรวจและออก VC แล้ว"); onSuccess(); },
     onError: (e) => toast.error(e.message),
   });
 
   return (
     <form onSubmit={e => { e.preventDefault(); issueMutation.mutate({
-      templateId: Number(form.templateId) || 1,
+      templateId: Number(form.templateId) || undefined,
       subjectId: Number(form.subjectId),
       type: form.type as any,
       issuerHospitalId: Number(form.issuerHospitalId),
@@ -189,6 +253,21 @@ function IssueCredentialForm({ templates, onSuccess }: { templates: any[]; onSuc
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
             {Object.entries(typeLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>เทมเพลต</Label>
+        <Select value={form.templateId} onValueChange={v => setForm(p => ({ ...p, templateId: v }))}>
+          <SelectTrigger><SelectValue placeholder="เลือกเทมเพลต หรือให้ระบบใช้ค่าเริ่มต้น" /></SelectTrigger>
+          <SelectContent>
+            {templates
+              .filter((template: any) => template.type === form.type)
+              .map((template: any) => (
+                <SelectItem key={template.id} value={String(template.id)}>
+                  {template.name} v{template.version}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
       </div>
@@ -206,7 +285,7 @@ function IssueCredentialForm({ templates, onSuccess }: { templates: any[]; onSuc
         </Select>
       </div>
       <Button type="submit" className="w-full" disabled={issueMutation.isPending}>
-        {issueMutation.isPending ? "กำลังออกใบรับรอง..." : "ออกใบรับรอง"}
+        {issueMutation.isPending ? "กำลังส่งคำขอ..." : "ส่งคำขอให้ Checker"}
       </Button>
     </form>
   );

@@ -36,10 +36,23 @@ export type TrustcareCredentialType =
   | "AllergyAlertCredential"
   | "MedicationSummaryCredential"
   | "ReferralCredential"
+  | "ImmunizationCredential"
   | "CoverageEligibilityCredential"
   | "MedicalCertificateCredential"
   | "PrescriptionCredential"
+  | "LabResultCredential"
+  | "DiagnosticReportCredential"
+  | "DischargeSummaryCredential"
   | "ClaimPackageCredential"
+  | "ClaimReceiptCredential"
+  | "TravelDocumentVerificationCredential"
+  | "ShlManifestCredential"
+  | "PharmacyDispenseCredential"
+  | "AppointmentCredential"
+  | "VisaSupportLetterCredential"
+  | "QuotationCredential"
+  | "GuaranteeLetterCredential"
+  | "MpiLinkCertificateCredential"
   | "SyncReceiptCredential";
 
 export type DataQualitySeverity = "error" | "warning";

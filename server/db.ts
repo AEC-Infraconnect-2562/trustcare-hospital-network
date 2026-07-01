@@ -6,7 +6,9 @@ import {
   departments, InsertDepartment,
   credentialTemplates, InsertCredentialTemplate,
   issuedCredentials, InsertIssuedCredential,
+  credentialIssuanceRequests, InsertCredentialIssuanceRequest,
   walletCards, InsertWalletCard,
+  issuedPresentations, InsertIssuedPresentation,
   presentationHistory,
   consentPolicies, InsertConsentPolicy,
   consentRecords, InsertConsentRecord,
@@ -14,7 +16,9 @@ import {
   fhirFieldMappings, InsertFhirFieldMapping,
   terminologyMappings, InsertTerminologyMapping,
   auditEvents, InsertAuditEvent,
+  vcVpSeedBatches, InsertVcVpSeedBatch,
   notifications, InsertNotification,
+  userRoles, InsertUserRole,
   credentialRequests, InsertCredentialRequest,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -172,7 +176,7 @@ export async function createCredentialTemplate(data: InsertCredentialTemplate) {
 // ============================================================
 // ISSUED CREDENTIAL HELPERS
 // ============================================================
-export async function listIssuedCredentials(filters?: { hospitalId?: number; subjectId?: number; type?: string; status?: string }) {
+export async function listIssuedCredentials(filters?: { hospitalId?: number; subjectId?: number; type?: string; status?: string; documentCategory?: string }) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
@@ -180,6 +184,7 @@ export async function listIssuedCredentials(filters?: { hospitalId?: number; sub
   if (filters?.subjectId) conditions.push(eq(issuedCredentials.subjectId, filters.subjectId));
   if (filters?.type) conditions.push(eq(issuedCredentials.type, filters.type as any));
   if (filters?.status) conditions.push(eq(issuedCredentials.status, filters.status as any));
+  if (filters?.documentCategory) conditions.push(eq(issuedCredentials.documentCategory, filters.documentCategory));
   if (conditions.length > 0) {
     return db.select().from(issuedCredentials).where(and(...conditions)).orderBy(desc(issuedCredentials.issuedAt));
   }
@@ -210,6 +215,42 @@ export async function getCredentialById(id: number) {
   return result[0];
 }
 
+export async function listCredentialIssuanceRequests(filters?: { hospitalId?: number; subjectId?: number; status?: string; makerId?: number; checkerId?: number; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters?.hospitalId) conditions.push(eq(credentialIssuanceRequests.issuerHospitalId, filters.hospitalId));
+  if (filters?.subjectId) conditions.push(eq(credentialIssuanceRequests.subjectId, filters.subjectId));
+  if (filters?.status) conditions.push(eq(credentialIssuanceRequests.status, filters.status as any));
+  if (filters?.makerId) conditions.push(eq(credentialIssuanceRequests.makerId, filters.makerId));
+  if (filters?.checkerId) conditions.push(eq(credentialIssuanceRequests.checkerId, filters.checkerId));
+  const limit = filters?.limit ?? 100;
+  if (conditions.length > 0) {
+    return db.select().from(credentialIssuanceRequests).where(and(...conditions)).orderBy(desc(credentialIssuanceRequests.createdAt)).limit(limit);
+  }
+  return db.select().from(credentialIssuanceRequests).orderBy(desc(credentialIssuanceRequests.createdAt)).limit(limit);
+}
+
+export async function createCredentialIssuanceRequest(data: InsertCredentialIssuanceRequest) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(credentialIssuanceRequests).values(data);
+  return result[0].insertId;
+}
+
+export async function getCredentialIssuanceRequestById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(credentialIssuanceRequests).where(eq(credentialIssuanceRequests.id, id)).limit(1);
+  return result[0];
+}
+
+export async function updateCredentialIssuanceRequest(id: number, data: Partial<InsertCredentialIssuanceRequest>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(credentialIssuanceRequests).set(data as any).where(eq(credentialIssuanceRequests.id, id));
+}
+
 // ============================================================
 // WALLET CARD HELPERS
 // ============================================================
@@ -223,6 +264,26 @@ export async function createWalletCard(data: InsertWalletCard) {
   const db = await getDb();
   if (!db) return;
   const result = await db.insert(walletCards).values(data);
+  return result[0].insertId;
+}
+
+export async function listIssuedPresentations(filter?: { patientId?: number; status?: string; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filter?.patientId) conditions.push(eq(issuedPresentations.patientId, filter.patientId));
+  if (filter?.status) conditions.push(eq(issuedPresentations.status, filter.status as any));
+  const limit = filter?.limit ?? 50;
+  if (conditions.length > 0) {
+    return db.select().from(issuedPresentations).where(and(...conditions)).orderBy(desc(issuedPresentations.createdAt)).limit(limit);
+  }
+  return db.select().from(issuedPresentations).orderBy(desc(issuedPresentations.createdAt)).limit(limit);
+}
+
+export async function createIssuedPresentation(data: InsertIssuedPresentation) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(issuedPresentations).values(data);
   return result[0].insertId;
 }
 
@@ -389,6 +450,19 @@ export async function createAuditEvent(data: InsertAuditEvent) {
   const db = await getDb();
   if (!db) return;
   await db.insert(auditEvents).values(data);
+}
+
+export async function listVcVpSeedBatches(limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(vcVpSeedBatches).orderBy(desc(vcVpSeedBatches.startedAt)).limit(limit);
+}
+
+export async function createVcVpSeedBatch(data: InsertVcVpSeedBatch) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(vcVpSeedBatches).values(data);
+  return result[0].insertId;
 }
 
 // ============================================================
@@ -737,6 +811,13 @@ export async function listPayerAdapters() {
   return db.select().from(payerAdapters).orderBy(desc(payerAdapters.createdAt));
 }
 
+export async function getPayerAdapterById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(payerAdapters).where(eq(payerAdapters.id, id)).limit(1);
+  return result[0];
+}
+
 export async function createPayerAdapter(data: InsertPayerAdapter) {
   const db = await getDb();
   if (!db) return;
@@ -914,206 +995,81 @@ export async function getExecutiveDashboardStats() {
 }
 
 // ============================================================
-// USER ADDITIONAL ROLES (Multi-Role Support)
+// USER ROLES (Multi-Role Support)
 // ============================================================
-import { userRoles } from "../drizzle/schema";
-
-export async function getUserAdditionalRoles(userId: number): Promise<string[]> {
+export async function assignUserRole(data: InsertUserRole) {
   const db = await getDb();
-  const rows = await db!.select({ role: userRoles.role })
-    .from(userRoles)
-    .where(and(eq(userRoles.userId, userId), eq(userRoles.isActive, true)));
-  return rows.map(r => r.role);
-}
-
-export async function assignUserRole(data: { userId: number; role: string; scope?: string; assignedBy?: number; expiresAt?: Date }) {
-  const db = await getDb();
-  const [result] = await db!.insert(userRoles).values({
-    userId: data.userId,
-    role: data.role,
-    scope: data.scope || null,
-    assignedBy: data.assignedBy || null,
-    expiresAt: data.expiresAt || null,
-  }).$returningId();
-  return result.id;
+  if (!db) return;
+  await db.insert(userRoles).values(data);
 }
 
 export async function removeUserRole(userId: number, role: string) {
   const db = await getDb();
-  await db!.update(userRoles)
-    .set({ isActive: false })
-    .where(and(eq(userRoles.userId, userId), eq(userRoles.role, role)));
+  if (!db) return;
+  await db.delete(userRoles).where(and(eq(userRoles.userId, userId), eq(userRoles.role, role)));
 }
 
-export async function listUserRoles(userId: number) {
+export async function getUserAdditionalRoles(userId: number) {
   const db = await getDb();
-  return db!.select().from(userRoles).where(eq(userRoles.userId, userId));
+  if (!db) return [];
+  return db.select().from(userRoles).where(and(eq(userRoles.userId, userId), eq(userRoles.isActive, true)));
 }
-
 
 // ============================================================
-// CREDENTIAL REQUESTS (Maker/Checker Workflow)
+// NOTIFICATION HELPERS (Maker/Checker)
 // ============================================================
-
-export async function generateRequestNumber(): Promise<string> {
-  const db = await getDb();
-  const [row] = await db!.select({ cnt: count() }).from(credentialRequests);
-  const seq = (row?.cnt || 0) + 1;
-  const now = new Date();
-  const yy = now.getFullYear().toString().slice(-2);
-  const mm = (now.getMonth() + 1).toString().padStart(2, "0");
-  return `REQ-${yy}${mm}-${seq.toString().padStart(5, "0")}`;
-}
-
-export async function createCredentialRequest(data: {
-  templateId: number;
-  patientId: number;
-  hospitalId?: number;
-  makerId: number;
-  credentialData?: any;
-  makerNotes?: string;
-  priority?: "normal" | "urgent";
-}) {
-  const db = await getDb();
-  const requestNumber = await generateRequestNumber();
-  const [result] = await db!.insert(credentialRequests).values({
-    requestNumber,
-    templateId: data.templateId,
-    patientId: data.patientId,
-    hospitalId: data.hospitalId || null,
-    makerId: data.makerId,
-    credentialData: data.credentialData || null,
-    makerNotes: data.makerNotes || null,
-    priority: data.priority || "normal",
-    status: "draft",
-  }).$returningId();
-  return { id: result.id, requestNumber };
-}
-
-export async function submitRequestForReview(requestId: number) {
-  const db = await getDb();
-  await db!.update(credentialRequests)
-    .set({ status: "pending_review", submittedAt: new Date() })
-    .where(eq(credentialRequests.id, requestId));
-}
-
-export async function approveRequest(requestId: number, checkerId: number, comment?: string) {
-  const db = await getDb();
-  await db!.update(credentialRequests)
-    .set({
-      status: "approved",
-      checkerId,
-      checkerComment: comment || null,
-      reviewedAt: new Date(),
-    })
-    .where(eq(credentialRequests.id, requestId));
-}
-
-export async function rejectRequest(requestId: number, checkerId: number, comment: string) {
-  const db = await getDb();
-  await db!.update(credentialRequests)
-    .set({
-      status: "rejected",
-      checkerId,
-      checkerComment: comment,
-      reviewedAt: new Date(),
-    })
-    .where(eq(credentialRequests.id, requestId));
-}
-
-export async function markRequestIssued(requestId: number, issuedCredentialId: number) {
-  const db = await getDb();
-  await db!.update(credentialRequests)
-    .set({
-      status: "issued",
-      issuedCredentialId,
-      issuedAt: new Date(),
-    })
-    .where(eq(credentialRequests.id, requestId));
-}
-
-export async function getCredentialRequestById(requestId: number) {
-  const db = await getDb();
-  const [row] = await db!.select().from(credentialRequests).where(eq(credentialRequests.id, requestId));
-  return row || null;
-}
-
-export async function listCredentialRequestsByMaker(makerId: number) {
-  const db = await getDb();
-  return db!.select().from(credentialRequests)
-    .where(eq(credentialRequests.makerId, makerId))
-    .orderBy(desc(credentialRequests.createdAt));
-}
-
-export async function listPendingReviewRequests(hospitalId?: number) {
-  const db = await getDb();
-  if (hospitalId) {
-    return db!.select().from(credentialRequests)
-      .where(and(eq(credentialRequests.status, "pending_review"), eq(credentialRequests.hospitalId, hospitalId)))
-      .orderBy(desc(credentialRequests.submittedAt));
-  }
-  return db!.select().from(credentialRequests)
-    .where(eq(credentialRequests.status, "pending_review"))
-    .orderBy(desc(credentialRequests.submittedAt));
-}
-
-export async function listCredentialRequestsByChecker(checkerId: number) {
-  const db = await getDb();
-  return db!.select().from(credentialRequests)
-    .where(eq(credentialRequests.checkerId, checkerId))
-    .orderBy(desc(credentialRequests.reviewedAt));
-}
-
-export async function updateCredentialRequestDraft(requestId: number, data: {
-  credentialData?: any;
-  makerNotes?: string;
-  templateId?: number;
-  patientId?: number;
-  priority?: "normal" | "urgent";
-}) {
-  const db = await getDb();
-  const updateData: any = {};
-  if (data.credentialData !== undefined) updateData.credentialData = data.credentialData;
-  if (data.makerNotes !== undefined) updateData.makerNotes = data.makerNotes;
-  if (data.templateId !== undefined) updateData.templateId = data.templateId;
-  if (data.patientId !== undefined) updateData.patientId = data.patientId;
-  if (data.priority !== undefined) updateData.priority = data.priority;
-  await db!.update(credentialRequests)
-    .set(updateData)
-    .where(and(eq(credentialRequests.id, requestId), eq(credentialRequests.status, "draft")));
-}
-
-export async function cancelCredentialRequest(requestId: number) {
-  const db = await getDb();
-  await db!.update(credentialRequests)
-    .set({ status: "cancelled" })
-    .where(eq(credentialRequests.id, requestId));
-}
-
-export async function countPendingReviewRequests(hospitalId?: number) {
-  const db = await getDb();
-  if (hospitalId) {
-    const [row] = await db!.select({ cnt: count() }).from(credentialRequests)
-      .where(and(eq(credentialRequests.status, "pending_review"), eq(credentialRequests.hospitalId, hospitalId)));
-    return row?.cnt || 0;
-  }
-  const [row] = await db!.select({ cnt: count() }).from(credentialRequests)
-    .where(eq(credentialRequests.status, "pending_review"));
-  return row?.cnt || 0;
-}
-
-
 export async function markAllNotificationsRead(userId: number) {
   const db = await getDb();
-  await db!.update(notifications)
-    .set({ isRead: true })
-    .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+  if (!db) return;
+  await db.update(notifications).set({ isRead: true }).where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
 }
 
-export async function getUnreadNotificationCount(userId: number): Promise<number> {
+export async function getUnreadNotificationCount(userId: number) {
   const db = await getDb();
-  const [row] = await db!.select({ cnt: count() })
-    .from(notifications)
-    .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
-  return row?.cnt || 0;
+  if (!db) return 0;
+  const [result] = await db.select({ count: sql<number>`count(*)` }).from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+  return result?.count ?? 0;
+}
+
+// ============================================================
+// CREDENTIAL REQUESTS (Maker/Checker Workflow v2.2)
+// ============================================================
+export async function listCredentialRequests(filters?: { requesterId?: number; hospitalId?: number; status?: string; reviewerId?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters?.requesterId) conditions.push(eq(credentialRequests.requesterId, filters.requesterId));
+  if (filters?.hospitalId) conditions.push(eq(credentialRequests.hospitalId, filters.hospitalId));
+  if (filters?.status) conditions.push(eq(credentialRequests.status, filters.status as any));
+  if (filters?.reviewerId) conditions.push(eq(credentialRequests.reviewerId, filters.reviewerId));
+  return db.select().from(credentialRequests).where(conditions.length ? and(...conditions) : undefined).orderBy(sql`${credentialRequests.createdAt} DESC`);
+}
+
+export async function createCredentialRequest(data: InsertCredentialRequest) {
+  const db = await getDb();
+  if (!db) return;
+  const [result] = await db.insert(credentialRequests).values(data).$returningId();
+  return result;
+}
+
+export async function updateCredentialRequest(id: number, data: Partial<InsertCredentialRequest>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(credentialRequests).set(data).where(eq(credentialRequests.id, id));
+}
+
+export async function getCredentialRequestById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.select().from(credentialRequests).where(eq(credentialRequests.id, id));
+  return result ?? null;
+}
+
+// ============================================================
+// DEMO USERS
+// ============================================================
+export async function getDemoUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(users).where(sql`${users.loginMethod} = 'demo'`).orderBy(users.id);
 }

@@ -1,5 +1,4 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { trpc } from "@/lib/trpc";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -28,7 +27,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Wallet, ArrowRightLeft, ShieldCheck,
   BadgeCheck, ScanLine, GitBranch, BookOpen, Building2, FileSearch, Users,
   Settings, Moon, Sun, Bell, Globe, Plane, Receipt, Plug, ShieldAlert, Link2,
-  FileJson2, BarChart3, Fingerprint, FilePlus, ClipboardCheck,
+  FileJson2,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -41,11 +40,10 @@ import { Badge } from "./ui/badge";
 const iconMap: Record<string, any> = {
   LayoutDashboard, Wallet, ArrowRightLeft, ShieldCheck, BadgeCheck, ScanLine,
   GitBranch, BookOpen, Building2, FileSearch, Users, Settings, Globe, Plane,
-  Receipt, Plug, ShieldAlert, Link2, FileJson2, BarChart3, Fingerprint,
-  FilePlus, ClipboardCheck,
+  Receipt, Plug, ShieldAlert, Link2, FileJson2,
 };
 
-type SystemRole = "system_admin" | "hospital_admin" | "doctor" | "nurse" | "integration_engineer" | "patient";
+type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
 
 interface MenuItemDef {
   id: string;
@@ -69,10 +67,10 @@ const menuGroups = [
 
 const allMenuItems: MenuItemDef[] = [
   // Overview
-  { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient"], group: "overview", groupLabel: "ภาพรวม" },
+  { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "overview", groupLabel: "ภาพรวม" },
   { id: "executive", label: "แดชบอร์ดผู้บริหาร", icon: "BarChart3", path: "/executive", roles: ["system_admin", "hospital_admin"], group: "overview", groupLabel: "ภาพรวม" },
   // Patient Services
-  { id: "wallet", label: "กระเป๋าสุขภาพ", icon: "Wallet", path: "/wallet", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
+  { id: "wallet", label: "กระเป๋าสุขภาพ", icon: "Wallet", path: "/wallet", roles: ["patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   { id: "consent", label: "จัดการความยินยอม", icon: "ShieldCheck", path: "/consent", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   { id: "shl", label: "ลิงก์แชร์สุขภาพ", icon: "Link2", path: "/shl", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   // Clinical Services
@@ -80,16 +78,14 @@ const allMenuItems: MenuItemDef[] = [
   { id: "cross-border", label: "ส่งต่อข้ามเครือข่าย", icon: "Globe", path: "/cross-border", roles: ["system_admin", "hospital_admin", "doctor"], group: "clinical", groupLabel: "บริการทางคลินิก" },
   { id: "international", label: "ผู้ป่วยต่างชาติ", icon: "Plane", path: "/international", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "clinical", groupLabel: "บริการทางคลินิก" },
   // Digital Credentials
-  { id: "issuer", label: "ออกใบรับรอง", icon: "BadgeCheck", path: "/issuer", roles: ["system_admin", "hospital_admin", "doctor"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
-  { id: "maker-queue", label: "สร้างคำขอ VC (Maker)", icon: "FilePlus", path: "/maker-queue", roles: ["system_admin", "hospital_admin", "doctor"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
-  { id: "checker-queue", label: "ตรวจสอบคำขอ (Checker)", icon: "ClipboardCheck", path: "/checker-queue", roles: ["system_admin"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
-  { id: "verifier", label: "ตรวจสอบใบรับรอง", icon: "ScanLine", path: "/verifier", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
+  { id: "issuer", label: "ออกใบรับรอง", icon: "BadgeCheck", path: "/issuer", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
+  { id: "verifier", label: "ตรวจสอบใบรับรอง", icon: "ScanLine", path: "/verifier", roles: ["system_admin", "hospital_admin", "checker", "doctor", "nurse"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
   { id: "trust-registry", label: "ทะเบียนความน่าเชื่อถือ", icon: "ShieldAlert", path: "/trust-registry", roles: ["system_admin", "hospital_admin"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
   // Claims & Finance
   { id: "claim-center", label: "ศูนย์เคลม", icon: "Receipt", path: "/claim-center", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "claims", groupLabel: "เคลมและการเงิน" },
   // Interoperability
   { id: "integration", label: "เชื่อมต่อระบบ HIS", icon: "Plug", path: "/integration", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
-  { id: "portability", label: "Portability Layer", icon: "FileJson2", path: "/portability", roles: ["system_admin", "hospital_admin", "doctor", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
+  { id: "portability", label: "Portability Layer", icon: "FileJson2", path: "/portability", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
   { id: "fhir-mapping", label: "แผนที่ข้อมูล FHIR", icon: "GitBranch", path: "/fhir-mapping", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
   { id: "terminology", label: "จับคู่รหัสมาตรฐาน", icon: "BookOpen", path: "/terminology", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
   // Administration
@@ -100,26 +96,12 @@ const allMenuItems: MenuItemDef[] = [
   { id: "settings", label: "ตั้งค่าระบบ", icon: "Settings", path: "/settings", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
 ];
 
-// Additional roles that grant access to specific menu items
-const ADDITIONAL_ROLE_MENU_MAP: Record<string, string[]> = {
-  issuer_maker: ["issuer", "maker-queue", "verifier"],
-  issuer_checker: ["issuer", "checker-queue", "maker-queue", "verifier"],
-};
-
-function getMenuForRole(role: SystemRole, additionalRoles: string[] = []) {
-  return allMenuItems.filter(item => {
-    // Primary role check
-    if (item.roles.includes(role)) return true;
-    // Additional roles check - grant access to specific menus
-    for (const addRole of additionalRoles) {
-      const grantedMenus = ADDITIONAL_ROLE_MENU_MAP[addRole];
-      if (grantedMenus && grantedMenus.includes(item.id)) return true;
-    }
-    return false;
-  });
+function getMenuForRole(role: SystemRole) {
+  return allMenuItems.filter(item => item.roles.includes(role));
 }
-function getGroupedMenu(role: SystemRole, additionalRoles: string[] = []) {
-  const items = getMenuForRole(role, additionalRoles);
+
+function getGroupedMenu(role: SystemRole) {
+  const items = getMenuForRole(role);
   const grouped: Record<string, MenuItemDef[]> = {};
   for (const item of items) {
     if (!grouped[item.group]) grouped[item.group] = [];
@@ -192,18 +174,10 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
   const isMobile = useIsMobile();
   const { theme, toggleTheme } = useTheme();
 
-  // Use activeRole from server (respects cookie-based role switching)
-  const systemRole: SystemRole = (user as any)?.systemRole || (user?.role === "admin" ? "system_admin" : "patient");
-  const activeRole: SystemRole = ((user as any)?.activeRole || systemRole) as SystemRole;
-  const additionalRoles: string[] = (user as any)?.additionalRoles || [];
-  const grouped = getGroupedMenu(activeRole, additionalRoles);
+  // Default to system_admin for admin users, patient for others
+  const userRole: SystemRole = (user as any)?.systemRole || (user?.role === "admin" ? "system_admin" : "patient");
+  const grouped = getGroupedMenu(userRole);
   const activeItem = allMenuItems.find(item => item.path === location);
-  // Role switching
-  const availableRolesQuery = trpc.auth.getAvailableRoles.useQuery();
-  const switchRoleMutation = trpc.auth.switchRole.useMutation({
-    onSuccess: () => { window.location.reload(); },
-  });
-  const canSwitchRole = systemRole !== "patient"; // Only staff can switch to patient view
 
   useEffect(() => {
     if (isCollapsed) setIsResizing(false);
@@ -301,33 +275,12 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                     <p className="text-sm font-medium truncate leading-none">{user?.name || "-"}</p>
                     <p className="text-[11px] text-muted-foreground truncate mt-1">
-                      {getRoleLabel(activeRole)}
-                      {activeRole !== systemRole && <span className="ml-1 text-primary">•</span>}
+                      {getRoleLabel(userRole)}
                     </p>
                   </div>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {canSwitchRole && (
-                  <>
-                    <div className="px-2 py-1.5">
-                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">สลับบทบาท</p>
-                    </div>
-                    {availableRolesQuery.data?.availableRoles.map((r: { role: string; label: string; labelTh: string }) => (
-                      <DropdownMenuItem
-                        key={r.role}
-                        onClick={() => switchRoleMutation.mutate({ role: r.role })}
-                        className={`cursor-pointer ${r.role === activeRole ? "bg-primary/10 text-primary font-medium" : ""}`}
-                        disabled={switchRoleMutation.isPending}
-                      >
-                        <ArrowRightLeft className="mr-2 h-4 w-4" />
-                        <span>{r.labelTh}</span>
-                        {r.role === activeRole && <span className="ml-auto text-xs">✓</span>}
-                      </DropdownMenuItem>
-                    ))}
-                    <DropdownMenuSeparator />
-                  </>
-                )}
+              <DropdownMenuContent align="end" className="w-52">
                 <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer">
                   {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
                   <span>{theme === "dark" ? "โหมดสว่าง" : "โหมดมืด"}</span>
@@ -355,17 +308,9 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
               <SidebarTrigger className="h-9 w-9 rounded-lg" />
               <span className="text-sm font-medium">{activeItem?.label ?? "เมนู"}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <NotificationBell />
-              <button onClick={toggleTheme} className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-accent">
-                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-        )}
-        {!isMobile && (
-          <div className="flex border-b h-12 items-center justify-end bg-background/95 px-4 backdrop-blur sticky top-0 z-40">
-            <NotificationBell />
+            <button onClick={toggleTheme} className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-accent">
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
           </div>
         )}
         <main className="flex-1 p-4 md:p-6">{children}</main>
@@ -378,74 +323,12 @@ function getRoleLabel(role: SystemRole): string {
   const map: Record<SystemRole, string> = {
     system_admin: "ผู้ดูแลระบบ",
     hospital_admin: "ผู้ดูแลโรงพยาบาล",
+    maker: "Maker",
+    checker: "Checker",
     doctor: "แพทย์",
     nurse: "พยาบาล",
     integration_engineer: "วิศวกรระบบ",
     patient: "ผู้ป่วย",
   };
   return map[role] || role;
-}
-
-function NotificationBell() {
-  const { data: unreadData } = trpc.notification.unreadCount.useQuery(undefined, { refetchInterval: 15000 });
-  const { data: notifications, refetch } = trpc.notification.list.useQuery(undefined, { refetchInterval: 15000 });
-  const markAllRead = trpc.notification.markAllRead.useMutation({ onSuccess: () => refetch() });
-  const [open, setOpen] = useState(false);
-  const unreadCount = unreadData?.count || 0;
-
-  const typeIcons: Record<string, string> = {
-    vc_request_created: "📝",
-    vc_submitted_for_review: "📤",
-    vc_approved: "✅",
-    vc_rejected: "❌",
-    vc_issued: "🎉",
-    system: "🔔",
-    referral_update: "🔄",
-    consent_request: "📋",
-  };
-
-  return (
-    <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild>
-        <button className="relative h-9 w-9 flex items-center justify-center rounded-lg hover:bg-accent transition-colors">
-          <Bell className="h-4 w-4" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
-              {unreadCount > 99 ? "99+" : unreadCount}
-            </span>
-          )}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
-        <div className="flex items-center justify-between px-3 py-2 border-b">
-          <span className="text-sm font-semibold">การแจ้งเตือน</span>
-          {unreadCount > 0 && (
-            <button
-              onClick={() => markAllRead.mutate()}
-              className="text-xs text-primary hover:underline"
-            >
-              อ่านทั้งหมด
-            </button>
-          )}
-        </div>
-        {!notifications?.length ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">ไม่มีการแจ้งเตือน</div>
-        ) : (
-          notifications.slice(0, 20).map((n: any) => (
-            <DropdownMenuItem key={n.id} className={`flex flex-col items-start gap-1 px-3 py-2 cursor-default ${!n.isRead ? "bg-primary/5" : ""}`}>
-              <div className="flex items-center gap-2 w-full">
-                <span className="text-base">{typeIcons[n.type] || "🔔"}</span>
-                <span className="text-sm font-medium flex-1 truncate">{n.title}</span>
-                {!n.isRead && <span className="h-2 w-2 rounded-full bg-primary shrink-0" />}
-              </div>
-              {n.message && <p className="text-xs text-muted-foreground line-clamp-2 pl-7">{n.message}</p>}
-              <span className="text-[10px] text-muted-foreground pl-7">
-                {new Date(n.createdAt).toLocaleString("th-TH", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-              </span>
-            </DropdownMenuItem>
-          ))
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }

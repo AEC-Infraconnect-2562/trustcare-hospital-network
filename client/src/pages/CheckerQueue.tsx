@@ -63,10 +63,10 @@ export default function CheckerQueue() {
   const handleAction = () => {
     if (!reviewDialog.request) return;
     if (reviewDialog.action === "approve") {
-      approveMutation.mutate({ requestId: reviewDialog.request.id, comment: comment || undefined });
+      approveMutation.mutate({ id: reviewDialog.request.id, comment: comment || undefined });
     } else if (reviewDialog.action === "reject") {
       if (!comment.trim()) { toast.error("กรุณาระบุเหตุผลในการปฏิเสธ"); return; }
-      rejectMutation.mutate({ requestId: reviewDialog.request.id, comment });
+      rejectMutation.mutate({ id: reviewDialog.request.id, comment });
     }
   };
 
@@ -78,10 +78,10 @@ export default function CheckerQueue() {
             <h1 className="text-2xl font-semibold tracking-tight">ตรวจสอบคำขอ VC (Checker)</h1>
             <p className="text-muted-foreground text-sm mt-1">ตรวจสอบและอนุมัติ/ปฏิเสธคำขอออกใบรับรองดิจิทัล</p>
           </div>
-          {pendingCount && pendingCount.count > 0 && (
+          {typeof pendingCount === "number" && pendingCount > 0 && (
             <Badge variant="destructive" className="text-sm px-3 py-1">
               <AlertTriangle className="h-4 w-4 mr-1" />
-              {pendingCount.count} คำขอรอตรวจสอบ
+              {pendingCount} คำขอรอตรวจสอบ
             </Badge>
           )}
         </div>
