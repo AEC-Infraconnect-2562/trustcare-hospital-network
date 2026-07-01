@@ -50,6 +50,7 @@ const ADDITIONAL_ROLE_MENU_MAP: Record<string, string[]> = {
 function getMenuForRole(role: SystemRole, additionalRoles: string[] = []) {
   return allMenuItems.filter(item => {
     if (item.roles.includes(role)) return true;
+    if (role === "patient") return false;
     for (const addRole of additionalRoles) {
       const grantedMenus = ADDITIONAL_ROLE_MENU_MAP[addRole];
       if (grantedMenus && grantedMenus.includes(item.id)) return true;
@@ -173,13 +174,13 @@ describe("Multi-Role Menu Visibility", () => {
   });
 
   describe("Patient with issuer_maker additional role (edge case)", () => {
-    it("should see issuer and verifier menus in addition to patient services", () => {
+    it("should still be limited to patient services", () => {
       const items = getMenuForRole("patient", ["issuer_maker"]);
       const ids = items.map(i => i.id);
       expect(ids).toContain("dashboard");
       expect(ids).toContain("wallet");
-      expect(ids).toContain("issuer"); // Granted by issuer_maker
-      expect(ids).toContain("verifier"); // Granted by issuer_maker
+      expect(ids).not.toContain("issuer");
+      expect(ids).not.toContain("verifier");
     });
   });
 });
@@ -189,6 +190,7 @@ describe("Clinical Procedure Access Control", () => {
   const issuerAdditionalRoles = ["issuer_maker", "issuer_checker"];
 
   function canAccessClinical(systemRole: string, additionalRoles: string[] = []): boolean {
+    if (systemRole === "patient") return false;
     if (clinicalRoles.includes(systemRole)) return true;
     return additionalRoles.some(r => issuerAdditionalRoles.includes(r));
   }
@@ -221,7 +223,7 @@ describe("Clinical Procedure Access Control", () => {
     expect(canAccessClinical("integration_engineer", ["issuer_maker"])).toBe(true);
   });
 
-  it("patient WITH issuer_checker CAN access clinical procedures", () => {
-    expect(canAccessClinical("patient", ["issuer_checker"])).toBe(true);
+  it("patient WITH issuer_checker CANNOT access clinical procedures", () => {
+    expect(canAccessClinical("patient", ["issuer_checker"])).toBe(false);
   });
 });

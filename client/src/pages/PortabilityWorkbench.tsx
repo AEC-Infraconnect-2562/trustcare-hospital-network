@@ -78,6 +78,7 @@ export default function PortabilityWorkbench() {
   const didDocs = trpc.portability.didDocuments.useQuery({ hospitalCode: "TCC", patientSeed: "P001", carepassId: "CP-TH-2026-000001" });
   const connectors = trpc.portability.sourceTruthConnectors.useQuery();
   const seedBatches = trpc.portability.seedBatches.useQuery({ limit: 10 });
+  const seedAudit = trpc.portability.auditSeedDb.useQuery({ patientsPerHospital: 12 }, { enabled: false });
   const issuedPresentations = trpc.portability.issuedPresentations.useQuery({ limit: 10 });
   const issuanceRequests = trpc.credential.issuanceRequests.useQuery({ limit: 10 });
   const reviewCsv = trpc.portability.reviewCsvImport.useMutation({
@@ -301,9 +302,11 @@ export default function PortabilityWorkbench() {
                 <CardContent className="space-y-3">
                   <div className="grid gap-2 sm:grid-cols-2">
                     <Button disabled={reseedDb.isPending} onClick={() => reseedDb.mutate({ patientsPerHospital: 12, resetExistingSeed: true })}>Reseed DB VC/VP</Button>
+                    <Button variant="outline" disabled={seedAudit.isFetching} onClick={() => seedAudit.refetch()}>Audit Seed DB</Button>
                     <Button variant="outline" onClick={() => seedBatches.refetch()}>Refresh Batches</Button>
                   </div>
                   <ResultCard title="Reseed Result" data={reseedDb.data} compact />
+                  <ResultCard title="Seed Audit" data={seedAudit.data} compact />
                   <ResultCard title="Seed Batches" data={seedBatches.data} compact />
                 </CardContent>
               </Card>

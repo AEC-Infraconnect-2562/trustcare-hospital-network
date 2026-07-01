@@ -208,6 +208,7 @@ Each user has a `credentialEntitlements` JSON field with the structure:
 
 - `"*"` in either array grants access to all 24 document types.
 - Entitlements are checked by `hasCredentialEntitlement(user, key, credentialType)`.
+- Users with `systemRole = "patient"` are never eligible for Maker/Checker privileges. If stale `issuer_maker` / `issuer_checker` rows or credential entitlements exist for a patient user, the auth layer sanitizes them out and user-management updates clear them before persistence.
 
 ### 3.3 Authorization Enforcement
 
@@ -220,6 +221,8 @@ Each user has a `credentialEntitlements` JSON field with the structure:
 | Reseed database | `admin` | Admin-only procedure |
 | Manage trust registry | `system_admin` | Admin procedure |
 | View executive dashboard | Any authenticated | Protected procedure |
+
+Patient-only users cannot submit, review, approve, or issue credentials even if legacy rows in `user_roles` grant `issuer_maker` or `issuer_checker`. Maker/Checker privileges are reserved for hospital workforce/admin users such as doctors, nurses, hospital administrators, system administrators, and explicitly authorized hospital staff.
 
 ### 3.4 Multi-Role Support
 
@@ -399,6 +402,10 @@ The reseed process:
 - Reseeding checks for existing `batchId` in `vc_vp_seed_batches`
 - If `resetExistingSeed = true`, deletes credentials with `urn:trustcare:seed` prefix before reseeding
 - Batch hash is computed from `{patientsPerHospital, hospitals, documents, version}` for deterministic identification
+
+### 6.5 Seed Audit
+
+Admins can run the read-only `portability.auditSeedDb` endpoint, or use the Portability Workbench Seed/DID tab, to verify seed completeness in the active database. The audit compares deterministic seed expectations against persisted data for the latest seed batch, 3 hospital DIDs, generated patients, credential templates, active seed VCs, wallet cards, persisted VPs, source-of-truth connectors, and patient Maker/Checker privilege violations. It does not mutate data; if checks fail, rerun `portability.reseedDb` in the target workspace and clear stale issuer roles from patient users.
 
 ---
 

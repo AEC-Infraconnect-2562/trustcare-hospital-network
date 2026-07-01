@@ -1,4 +1,4 @@
-import { and, eq, like } from "drizzle-orm";
+import { and, count, desc, eq, inArray, like, sql } from "drizzle-orm";
 import {
   auditEvents,
   credentialTemplates,
@@ -10,6 +10,7 @@ import {
   mappingVersions,
   patientIdentifiers,
   trustRegistry,
+  userRoles,
   users,
   vcVpSeedBatches,
   walletCards,
@@ -241,6 +242,115 @@ export async function reseedTrustcareVcVpDatabase(input: {
       patientDid: patientDidKey("TCC:P001:CP-TH-2026-000001"),
       presentationId: presentations[0]?.id,
     },
+  };
+}
+
+export async function auditTrustcareVcVpSeedDatabase(input: {
+  patientsPerHospital?: number;
+} = {}): Promise<JsonRecord> {
+  const db = await getDb();
+  if (!db) {
+    throw new Error("DATABASE_URL is required to audit TrustCare VC/VP seed records.");
+  }
+
+  const latestBatch = await db.select().from(vcVpSeedBatches)
+    .where(like(vcVpSeedBatches.batchId, `${SEED_PREFIX}:batch:%`))
+    .orderBy(desc(vcVpSeedBatches.startedAt))
+    .limit(1);
+  const patientsPerHospital = input.patientsPerHospital ?? latestBatch[0]?.patientsPerHospital ?? 12;
+  const expectedSeed = generateTrustcareDemoSeed({ patientsPerHospital });
+  const expectedHospitalCodes = (expectedSeed.hospitals as JsonRecord[]).map((hospital) => String(hospital.code));
+  const expectedConnectorNames = sourceTruthConnectors().map((connector) => String(connector.name));
+
+  const hospitalRows = await db.select().from(hospitals).where(inArray(hospitals.code, expectedHospitalCodes));
+  const seedPatientRows = await db.select().from(users).where(like(users.openId, "seed-patient-%"));
+  const seedStaffRows = await db.select().from(users).where(sql`${users.openId} like 'seed-maker-%' or ${users.openId} like 'seed-checker-%' or ${users.openId} like 'seed-issuer-%'`);
+  const sourceTruthRows = await db.select().from(integrationAdapters).where(inArray(integrationAdapters.name, expectedConnectorNames));
+  const hospitalIds = hospitalRows.map((hospital) => hospital.id);
+  const patientIds = seedPatientRows.map((patient) => patient.id);
+
+  const [templateCount] = hospitalIds.length > 0
+    ? await db.select({ value: count() }).from(credentialTemplates).where(inArray(credentialTemplates.hospitalId, hospitalIds))
+    : [{ value: 0 }];
+  const [credentialCount] = await db.select({ value: count() }).from(issuedCredentials)
+    .where(and(like(issuedCredentials.credentialId, `${SEED_PREFIX}:vc:%`), eq(issuedCredentials.status, "active" as any)));
+  const [walletCount] = await db.select({ value: count() }).from(walletCards)
+    .innerJoin(issuedCredentials, eq(walletCards.credentialId, issuedCredentials.id))
+    .where(and(like(issuedCredentials.credentialId, `${SEED_PREFIX}:vc:%`), eq(issuedCredentials.status, "active" as any)));
+  const [presentationCount] = await db.select({ value: count() }).from(issuedPresentations)
+    .where(and(like(issuedPresentations.presentationId, `${SEED_PREFIX}:vp:%`), eq(issuedPresentations.status, "active" as any)));
+  const [identifierCount] = patientIds.length > 0
+    ? await db.select({ value: count() }).from(patientIdentifiers).where(inArray(patientIdentifiers.patientId, patientIds))
+    : [{ value: 0 }];
+  const credentialTypes = await db.select({ type: issuedCredentials.type, value: count() }).from(issuedCredentials)
+    .where(and(like(issuedCredentials.credentialId, `${SEED_PREFIX}:vc:%`), eq(issuedCredentials.status, "active" as any)))
+    .groupBy(issuedCredentials.type);
+  const patientIssuerRoleViolations = await db.select({
+    userId: users.id,
+    openId: users.openId,
+    role: userRoles.role,
+  }).from(userRoles)
+    .innerJoin(users, eq(userRoles.userId, users.id))
+    .where(and(
+      eq(users.systemRole, "patient" as any),
+      eq(userRoles.isActive, true),
+      inArray(userRoles.role, ["issuer_maker", "issuer_checker"]),
+    ));
+  const patientEntitlementViolations = seedPatientRows
+    .filter((patient) => hasIssuerEntitlements(patient.credentialEntitlements))
+    .map((patient) => ({ id: patient.id, openId: patient.openId }));
+
+  const checks = [
+    checkCount("completed seed batch", 1, latestBatch[0]?.status === "completed" ? 1 : 0),
+    checkCount("hospitals", Number((expectedSeed.counts as JsonRecord).hospitals), hospitalRows.length),
+    checkCount("seed patients", Number((expectedSeed.counts as JsonRecord).patients), seedPatientRows.length),
+    checkCount("credential templates", Object.keys(DOCUMENT_TYPE_LABELS).length * expectedHospitalCodes.length, Number(templateCount?.value ?? 0)),
+    checkCount("active seed credentials", Number((expectedSeed.counts as JsonRecord).documents), Number(credentialCount?.value ?? 0)),
+    checkCount("wallet cards for seed credentials", Number((expectedSeed.counts as JsonRecord).documents), Number(walletCount?.value ?? 0)),
+    checkCount("active seed presentations", Number((expectedSeed.counts as JsonRecord).vpScenarios), Number(presentationCount?.value ?? 0)),
+    checkCount("source of truth connectors", expectedConnectorNames.length, sourceTruthRows.length),
+    checkCount("patient issuer-role violations", 0, patientIssuerRoleViolations.length),
+    checkCount("patient entitlement violations", 0, patientEntitlementViolations.length),
+  ];
+  const didChecks = {
+    hospitalDidWeb: hospitalRows.every((hospital) => String(hospital.did ?? "").startsWith("did:web:")),
+    patientDidKeyIdentifiers: seedPatientRows.length === 0
+      ? false
+      : Number(identifierCount?.value ?? 0) >= seedPatientRows.length,
+  };
+
+  return {
+    ok: checks.every((check) => check.ok) && didChecks.hospitalDidWeb && didChecks.patientDidKeyIdentifiers,
+    checkedAt: new Date().toISOString(),
+    latestBatch: latestBatch[0] ?? null,
+    expected: expectedSeed.counts,
+    actual: {
+      hospitals: hospitalRows.length,
+      seedPatients: seedPatientRows.length,
+      seedStaff: seedStaffRows.length,
+      credentialTemplates: Number(templateCount?.value ?? 0),
+      activeSeedCredentials: Number(credentialCount?.value ?? 0),
+      walletCardsForSeedCredentials: Number(walletCount?.value ?? 0),
+      activeSeedPresentations: Number(presentationCount?.value ?? 0),
+      patientIdentifiers: Number(identifierCount?.value ?? 0),
+      sourceTruthConnectors: sourceTruthRows.length,
+      credentialTypes: Object.fromEntries(credentialTypes.map((row) => [row.type, Number(row.value)])),
+    },
+    checks,
+    didChecks,
+    violations: {
+      patientIssuerRoles: patientIssuerRoleViolations,
+      patientCredentialEntitlements: patientEntitlementViolations,
+      missingHospitalCodes: expectedHospitalCodes.filter((code) => !hospitalRows.some((hospital) => hospital.code === code)),
+      missingSourceTruthConnectors: expectedConnectorNames.filter((name) => !sourceTruthRows.some((adapter) => adapter.name === name)),
+    },
+    remediation: checks.every((check) => check.ok)
+      ? []
+      : [
+          "Run portability.reseedDb with { patientsPerHospital, resetExistingSeed: true } in the Manus workspace.",
+          "Remove issuer_maker/issuer_checker rows for users whose systemRole is patient.",
+          "Clear credentialEntitlements for users whose systemRole is patient.",
+        ],
   };
 }
 
@@ -1047,4 +1157,21 @@ function medicationNameForPatient(patient: JsonRecord): string {
   if (first === "I10") return "Amlodipine 5mg";
   if (first === "J45") return "Salbutamol inhaler";
   return "Paracetamol 500mg";
+}
+
+function checkCount(name: string, expected: number, actual: number) {
+  return {
+    name,
+    expected,
+    actual,
+    ok: actual === expected,
+    delta: actual - expected,
+  };
+}
+
+function hasIssuerEntitlements(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const entitlements = value as { makerTypes?: unknown; checkerTypes?: unknown };
+  return (Array.isArray(entitlements.makerTypes) && entitlements.makerTypes.length > 0)
+    || (Array.isArray(entitlements.checkerTypes) && entitlements.checkerTypes.length > 0);
 }
