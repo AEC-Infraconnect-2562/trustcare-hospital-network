@@ -109,3 +109,24 @@
   - Extended credential enums: medical_certificate, prescription, claim_package, sync_receipt
   - E2E test + unit tests (12 tests passing)
   - GitHub Actions CI (advisory, non-blocking)
+- [x] PR #2 merged: Finish portability sync-back hardening
+  - executeSyncBackPlan deterministic execution (accepted/rejected/queued_for_review)
+  - SyncReceiptCredential issuance with ACK/readback/checksum evidence
+  - tRPC portability.executeSyncBack endpoint
+  - Workbench "Execute Sync and Issue Receipt VC" button
+  - CI fix (pnpm version from packageManager), analytics script conditional injection
+  - Unit + E2E tests updated (13 tests total)
+
+## Future Enhancements (Backlog)
+- [ ] Demo Seed Data — สร้าง script เพิ่มโรงพยาบาลตัวอย่าง 3-5 แห่ง พร้อมผู้ป่วย, VC, Consent, Referral ตัวอย่างเพื่อทดสอบ flow ข้ามโรงพยาบาลได้ทันที
+- [ ] Real-time Notification Center — หน้า Notification รวมการแจ้งเตือนทั้งหมด (referral ใหม่, VC หมดอายุ, claim ถูกปฏิเสธ) แบบ role-based
+- [ ] Camera QR Scanner — ใช้ WebRTC เปิดกล้องใน Verifier Portal ให้แพทย์สแกน QR จาก Wallet ของผู้ป่วยได้จริงโดยไม่ต้องพิมพ์ token
+- [ ] Biometric Confirmation (WebAuthn) — เพิ่ม fingerprint/face unlock ก่อนแสดง QR ใน Patient Wallet
+- [ ] Offline-first Patient Wallet — เก็บ Health Cards ใน IndexedDB ให้ผู้ป่วยแสดง QR ได้แม้ไม่มี internet
+- [ ] Multi-language Support (EN/TH toggle) — เพิ่ม i18n สำหรับ Medical Tourist ที่ไม่อ่านภาษาไทย
+- [ ] PDF Export สำหรับ Clinical Summary — ให้ผู้ป่วยดาวน์โหลด Patient Summary เป็น PDF ได้
+- [ ] Integration Adapter SDK — สร้าง SDK/template สำหรับเชื่อมต่อ HIS ที่ใช้ HL7v2, FHIR REST, หรือ Legacy DB
+- [ ] Automated Data Quality Scoring — คำนวณ DQI score อัตโนมัติจาก FHIR validation rules
+- [ ] Consent Expiry Reminder — แจ้งเตือนผู้ป่วยก่อน consent หมดอายุ 7 วัน
+- [ ] Claim Analytics Dashboard — กราฟวิเคราะห์ claim approval rate, average processing time, top rejection reasons
+- [ ] Cross-border Partner Onboarding Wizard — Wizard สำหรับเพิ่ม partner hospital ต่างประเทศพร้อม trust credential exchange
