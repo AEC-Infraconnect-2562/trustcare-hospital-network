@@ -7,6 +7,16 @@ import { TRPCError } from "@trpc/server";
 import * as db from "./db";
 import { nanoid } from "nanoid";
 import { notifyOwner } from "./_core/notification";
+import {
+  canonicalizeHisPayload,
+  createPortabilityPacket,
+  createSyncBackPlan,
+  issueMedicalCertificateVc,
+  issuePrescriptionVc,
+  RECOMMENDED_SYNC_TARGETS,
+  verifyCredential,
+  verifyPresentation,
+} from "./portability";
 
 // Admin-only guard
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -110,7 +120,7 @@ export const appRouter = router({
       hospitalId: z.number().optional(),
       name: z.string().min(1),
       nameEn: z.string().optional(),
-      type: z.enum(["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization"]),
+      type: z.enum(["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization", "medical_certificate", "prescription", "claim_package", "sync_receipt"]),
       fhirResourceType: z.string().optional(),
       validityDays: z.number().optional(),
       schema: z.any().optional(),
@@ -130,7 +140,7 @@ export const appRouter = router({
       templateId: z.number(),
       subjectId: z.number(),
       issuerHospitalId: z.number(),
-      type: z.enum(["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization"]),
+      type: z.enum(["patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization", "medical_certificate", "prescription", "claim_package", "sync_receipt"]),
       credentialData: z.any(),
       expiresAt: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
@@ -163,7 +173,11 @@ export const appRouter = router({
                   input.type === "patient_summary" ? "patient_summary" :
                   input.type === "allergy_alert" ? "allergy" :
                   input.type === "medication_summary" ? "medication" :
-                  input.type === "referral_vc" ? "referral" : "immunization",
+                  input.type === "referral_vc" ? "referral" :
+                  input.type === "medical_certificate" ? "medical_certificate" :
+                  input.type === "prescription" ? "prescription" :
+                  input.type === "claim_package" ? "claim" :
+                  input.type === "sync_receipt" ? "sync_receipt" : "immunization",
         displayName: getCardDisplayName(input.type),
         displayNameEn: input.type.replace(/_/g, " "),
       });
@@ -226,16 +240,38 @@ export const appRouter = router({
       token: z.string().optional(),
       vpUrl: z.string().optional(),
     })).mutation(async ({ input }) => {
-      // In production: validate SD-JWT VP, check revocation status, verify issuer DID
-      // For now: simulate verification result
-      const isValid = !!input.token || !!input.vpUrl;
-      const trustLevel = isValid ? "green" : "red";
+      const presented = input.vpUrl || input.token;
+      if (presented?.startsWith("eyJ")) {
+        const result = await verifyPresentation({ jwt: presented });
+        if (result.verified || result.credentials.length > 0) {
+          return {
+            trustLevel: result.trustLevel,
+            verified: result.verified,
+            issuer: result.credentials[0]?.issuer?.name ?? result.credentials[0]?.issuer?.id ?? "Unknown issuer",
+            holderDid: result.holderDid,
+            credentials: result.credentials,
+            warnings: result.warnings,
+            errors: result.errors,
+          };
+        }
+        const credentialResult = await verifyCredential({ jwt: presented });
+        return {
+          trustLevel: credentialResult.trustLevel,
+          verified: credentialResult.verified,
+          issuer: credentialResult.issuer,
+          credential: credentialResult.credential,
+          warnings: credentialResult.warnings,
+          errors: credentialResult.errors,
+        };
+      }
+      const isValid = !!presented;
       return {
-        trustLevel,
+        trustLevel: isValid ? "yellow" : "red",
         verified: isValid,
-        issuer: "Trustcare Central Hospital",
+        issuer: "Trustcare verifier token bridge",
         issuedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+        warnings: isValid ? ["Legacy token accepted only as a bridge; prefer JWT VP from Patient Data Portability Layer."] : [],
+        errors: isValid ? [] : ["No token or presentation was supplied."],
       };
     }),
   }),
@@ -996,6 +1032,251 @@ export const appRouter = router({
   }),
 
   // ============================================================
+  // PATIENT DATA PORTABILITY LAYER
+  // ============================================================
+  portability: router({
+    canonicalizeHis: protectedProcedure.input(z.object({
+      sourceFormat: z.enum(["db_view", "csv", "hl7v2", "rest_api", "fhir_native", "document"]),
+      payload: z.any(),
+      sourceSystem: z.string().min(1),
+      sourceOrganizationId: z.string().min(1),
+      sourceOrganizationName: z.string().optional(),
+      mapperVersion: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const result = canonicalizeHisPayload(input);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "portability.fhir.canonicalized",
+        resourceType: "fhir_bundle",
+        resourceId: result.summary.bundleHash,
+        details: { sourceFormat: input.sourceFormat, issues: result.issues },
+      });
+      return result;
+    }),
+
+    createPacket: protectedProcedure.input(z.object({
+      context: z.enum(["treatment", "cross_branch_referral", "cross_border", "e_claim", "medical_tourist", "emergency", "self_share"]),
+      hisInput: z.object({
+        sourceFormat: z.enum(["db_view", "csv", "hl7v2", "rest_api", "fhir_native", "document"]),
+        payload: z.any(),
+        sourceSystem: z.string().min(1),
+        sourceOrganizationId: z.string().min(1),
+        sourceOrganizationName: z.string().optional(),
+        mapperVersion: z.string().optional(),
+      }),
+      consent: z.object({
+        id: z.string(),
+        patientId: z.string(),
+        purpose: z.enum(["treatment", "referral", "claim", "insurance", "public_health", "research", "emergency", "medical_tourism"]),
+        requesterId: z.string(),
+        requesterRole: z.string(),
+        grantedToOrganizationId: z.string().optional(),
+        scopes: z.array(z.string()),
+        status: z.enum(["granted", "revoked", "expired"]),
+        grantedAt: z.string(),
+        expiresAt: z.string().optional(),
+        vcCredentialId: z.string().optional(),
+      }).optional(),
+      requestedScopes: z.array(z.string()).optional(),
+      issuer: z.object({
+        id: z.string(),
+        name: z.string(),
+        did: z.string(),
+        country: z.string().optional(),
+        trustDomain: z.string().optional(),
+      }).optional(),
+      holderDid: z.string().optional(),
+      audience: z.string().optional(),
+      breakGlassReason: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const packet = await createPortabilityPacket({
+        context: input.context,
+        hisInput: input.hisInput,
+        issuer: input.issuer ?? defaultIssuerProfile(),
+        holderDid: input.holderDid ?? defaultHolderDid(ctx.user.id),
+        requesterId: String(ctx.user.id),
+        requesterRole: (ctx.user as any).systemRole ?? ctx.user.role,
+        consent: input.consent as any,
+        requestedScopes: input.requestedScopes,
+        audience: input.audience,
+        breakGlassReason: input.breakGlassReason,
+      });
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "portability.packet.created",
+        resourceType: "verifiable_presentation",
+        resourceId: packet.presentation.id,
+        details: { context: input.context, credentialIds: packet.outboundCredentials.map((credential) => credential.id), policy: packet.policyDecision },
+        isBreakGlass: packet.policyDecision.requiresBreakGlass,
+      });
+      return packet;
+    }),
+
+    issueMedicalCertificate: protectedProcedure.input(z.object({
+      issuer: z.object({
+        id: z.string(),
+        name: z.string(),
+        did: z.string(),
+        country: z.string().optional(),
+        trustDomain: z.string().optional(),
+      }).optional(),
+      holderDid: z.string().optional(),
+      patient: z.object({ id: z.string(), name: z.string() }).passthrough(),
+      practitioner: z.object({ id: z.string(), name: z.string() }).passthrough(),
+      organization: z.object({ id: z.string(), name: z.string() }).passthrough(),
+      diagnosisText: z.string().optional(),
+      fitnessForWork: z.enum(["fit", "unfit", "restricted"]).optional(),
+      recommendations: z.array(z.string()).optional(),
+      validFrom: z.string().optional(),
+      validUntil: z.string().optional(),
+      audience: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const credential = await issueMedicalCertificateVc({
+        issuer: input.issuer ?? defaultIssuerProfile(),
+        holderDid: input.holderDid ?? defaultHolderDid(ctx.user.id),
+        patient: input.patient,
+        practitioner: input.practitioner,
+        organization: input.organization,
+        diagnosisText: input.diagnosisText,
+        fitnessForWork: input.fitnessForWork,
+        recommendations: input.recommendations,
+        validFrom: input.validFrom,
+        validUntil: input.validUntil,
+        audience: input.audience,
+      });
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "portability.medical_certificate.issued",
+        resourceType: "verifiable_credential",
+        resourceId: credential.id,
+        details: { type: credential.type, digest: credential.digest },
+      });
+      return credential;
+    }),
+
+    issuePrescription: protectedProcedure.input(z.object({
+      issuer: z.object({
+        id: z.string(),
+        name: z.string(),
+        did: z.string(),
+        country: z.string().optional(),
+        trustDomain: z.string().optional(),
+      }).optional(),
+      holderDid: z.string().optional(),
+      patient: z.object({ id: z.string(), name: z.string() }).passthrough(),
+      prescriber: z.object({ id: z.string(), name: z.string() }).passthrough(),
+      organization: z.object({ id: z.string(), name: z.string() }).passthrough(),
+      medications: z.array(z.object({
+        code: z.string().optional(),
+        codeSystem: z.string().optional(),
+        name: z.string().min(1),
+        doseText: z.string().optional(),
+        quantity: z.string().optional(),
+        daysSupply: z.number().optional(),
+        instructions: z.string().optional(),
+        repeatsAllowed: z.number().optional(),
+      })).min(1),
+      authoredOn: z.string().optional(),
+      substitutionAllowed: z.boolean().optional(),
+      repeatsAllowed: z.number().optional(),
+      dispenseWindowDays: z.number().optional(),
+      audience: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const credential = await issuePrescriptionVc({
+        issuer: input.issuer ?? defaultIssuerProfile(),
+        holderDid: input.holderDid ?? defaultHolderDid(ctx.user.id),
+        patient: input.patient,
+        prescriber: input.prescriber,
+        organization: input.organization,
+        medications: input.medications,
+        authoredOn: input.authoredOn,
+        substitutionAllowed: input.substitutionAllowed,
+        repeatsAllowed: input.repeatsAllowed,
+        dispenseWindowDays: input.dispenseWindowDays,
+        audience: input.audience,
+      });
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "portability.prescription.issued",
+        resourceType: "verifiable_credential",
+        resourceId: credential.id,
+        details: { type: credential.type, digest: credential.digest },
+      });
+      return credential;
+    }),
+
+    verify: publicProcedure.input(z.object({
+      jwt: z.string().min(1),
+      kind: z.enum(["credential", "presentation"]).default("presentation"),
+      trustedIssuers: z.array(z.string()).optional(),
+      revokedCredentialIds: z.array(z.string()).optional(),
+      audience: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      if (input.kind === "credential") {
+        return verifyCredential({
+          jwt: input.jwt,
+          trustedIssuers: input.trustedIssuers,
+          revokedCredentialIds: input.revokedCredentialIds,
+          audience: input.audience,
+        });
+      }
+      return verifyPresentation({
+        jwt: input.jwt,
+        trustedIssuers: input.trustedIssuers,
+        revokedCredentialIds: input.revokedCredentialIds,
+        audience: input.audience,
+      });
+    }),
+
+    syncTargets: protectedProcedure.query(() => {
+      return RECOMMENDED_SYNC_TARGETS;
+    }),
+
+    planSyncBack: protectedProcedure.input(z.object({
+      target: z.object({
+        id: z.string(),
+        name: z.string(),
+        kind: z.enum(["fhir_rest", "hl7v2", "db_view", "rest_api", "csv_batch", "manual_queue"]),
+        writeMode: z.enum(["system_of_record", "system_of_reference", "mirror_only"]),
+        supportedResources: z.array(z.string()),
+        supportsTransactions: z.boolean(),
+        supportsVersionCheck: z.boolean(),
+        idempotencyStrategy: z.enum(["business_key", "source_event_id", "content_hash"]),
+      }),
+      operation: z.enum(["create", "update", "upsert", "append", "revoke"]),
+      resource: z.any(),
+      sourceEventId: z.string().min(1),
+      patientBusinessKey: z.string().min(1),
+      expectedVersion: z.string().optional(),
+      reason: z.string().min(1),
+    })).mutation(async ({ ctx, input }) => {
+      const plan = createSyncBackPlan({
+        target: input.target,
+        operation: input.operation,
+        resource: input.resource,
+        sourceEventId: input.sourceEventId,
+        patientBusinessKey: input.patientBusinessKey,
+        expectedVersion: input.expectedVersion,
+        reason: input.reason,
+        actorId: String(ctx.user.id),
+      });
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "portability.sync_back.planned",
+        resourceType: "sync_back_plan",
+        resourceId: plan.id,
+        details: { status: plan.status, targetId: plan.targetId, issues: plan.issues },
+      });
+      return plan;
+    }),
+  }),
+
+  // ============================================================
   // EXECUTIVE DASHBOARD
   // ============================================================
   executiveDashboard: router({
@@ -1009,6 +1290,13 @@ export type AppRouter = typeof appRouter;
 
 // Helper
 function getCardDisplayName(type: string): string {
+  const extendedNames: Record<string, string> = {
+    medical_certificate: "Medical Certificate",
+    prescription: "Prescription",
+    claim_package: "Claim Package",
+    sync_receipt: "Sync Receipt",
+  };
+  if (extendedNames[type]) return extendedNames[type];
   const map: Record<string, string> = {
     patient_identity: "บัตรประจำตัวผู้ป่วย",
     consent_receipt: "ใบรับรองความยินยอม",
@@ -1019,4 +1307,18 @@ function getCardDisplayName(type: string): string {
     immunization: "ประวัติวัคซีน",
   };
   return map[type] || type;
+}
+
+function defaultIssuerProfile() {
+  return {
+    id: "trustcare-network",
+    name: "Trustcare Hospital Network",
+    did: "did:web:trustcare.network",
+    country: "TH",
+    trustDomain: "trustcare-network",
+  };
+}
+
+function defaultHolderDid(userId: number) {
+  return `did:key:trustcare-patient-${userId}`;
 }

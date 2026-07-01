@@ -167,6 +167,17 @@ export const menuItems: MenuItem[] = [
     groupLabelEn: "Interoperability",
   },
   {
+    id: "portability",
+    label: "Patient Data Portability",
+    labelEn: "Portability Layer",
+    icon: "FileJson2",
+    path: "/portability",
+    roles: ["system_admin", "hospital_admin", "doctor", "integration_engineer"],
+    group: "interop",
+    groupLabel: "Interoperability",
+    groupLabelEn: "Interoperability",
+  },
+  {
     id: "fhir-mapping",
     label: "แผนที่ข้อมูล FHIR",
     labelEn: "FHIR Mapping",

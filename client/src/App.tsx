@@ -25,6 +25,7 @@ import TrustRegistry from "./pages/TrustRegistry";
 import SmartHealthLinks from "./pages/SmartHealthLinks";
 import ExecutiveDashboard from "./pages/ExecutiveDashboard";
 import PatientIdentity from "./pages/PatientIdentity";
+import PortabilityWorkbench from "./pages/PortabilityWorkbench";
 
 function Router() {
   return (
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/shl" component={SmartHealthLinks} />
       <Route path="/executive" component={ExecutiveDashboard} />
       <Route path="/patient-identity" component={PatientIdentity} />
+      <Route path="/portability" component={PortabilityWorkbench} />
       <Route path="/audit" component={Audit} />
       <Route path="/users" component={Users} />
       <Route path="/settings" component={Settings} />
