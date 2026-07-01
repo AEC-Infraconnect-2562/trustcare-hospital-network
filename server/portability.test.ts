@@ -3,8 +3,10 @@ import {
   canonicalizeHisPayload,
   createPortabilityPacket,
   createSyncBackPlan,
+  executeSyncBackPlan,
   issueMedicalCertificateVc,
   issuePrescriptionVc,
+  issueSyncReceiptVc,
   RECOMMENDED_SYNC_TARGETS,
   verifyCredential,
   verifyPresentation,
@@ -131,7 +133,7 @@ describe("Patient Data Portability Layer", () => {
     expect((await verifyCredential({ jwt: prescription.jwt })).verified).toBe(true);
   });
 
-  it("plans idempotent sync-back to legacy targets", () => {
+  it("plans idempotent sync-back to legacy targets and issues a receipt VC", async () => {
     const target = RECOMMENDED_SYNC_TARGETS.find((item) => item.kind === "fhir_rest")!;
     const plan = createSyncBackPlan({
       target,
@@ -155,5 +157,20 @@ describe("Patient Data Portability Layer", () => {
     expect(plan.idempotencyKey).toHaveLength(64);
     expect(plan.consistencyKey).toHaveLength(64);
     expect(plan.preconditions.some((item) => item.type === "optimistic_version")).toBe(true);
+
+    const execution = executeSyncBackPlan(plan, { actorId: "doctor-demo" });
+    expect(execution.status).toBe("accepted");
+    expect(execution.targetReference).toBe("MedicationRequest/rx-demo-001");
+    expect(execution.consistency.matched).toBe(true);
+
+    const receipt = await issueSyncReceiptVc({
+      issuer,
+      holderDid: "did:key:patient-demo",
+      subjectId: "patient-demo",
+      plan,
+      execution,
+    });
+    expect(receipt.type).toBe("SyncReceiptCredential");
+    expect((await verifyCredential({ jwt: receipt.jwt })).verified).toBe(true);
   });
 });

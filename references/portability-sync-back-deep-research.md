@@ -148,7 +148,7 @@ The current PR adds:
 - `server/portability/vc.ts`: signed VC/VP issuance and verification.
 - `server/portability/clinicalDocuments.ts`: medical certificate and prescription FHIR evidence builders.
 - `server/portability/policy.ts`: purpose-based consent/data-minimization decisions.
-- `server/portability/syncBack.ts`: sync-back target definitions and consistency plan generation.
+- `server/portability/syncBack.ts`: sync-back target definitions, consistency plan generation, deterministic adapter execution boundary, ACK/readback modeling, and receipt resources.
 - `portability` tRPC router and `/portability` UI workbench.
 
-The next production hardening step is adapter-specific execution workers. The PR intentionally stops at deterministic planning and signed receipts so CI/E2E can validate behavior without connecting to real hospital systems.
+The implementation now closes the sandbox loop from plan to deterministic execution to `SyncReceiptCredential`, so CI/E2E can validate VC issuance and consistency checks without connecting to real hospital systems. The next deployment hardening step is replacing deterministic adapter execution with site-specific workers for each HIS, HL7 broker, and legacy database target, while preserving the same idempotency, ACK, readback, reconciliation, and receipt VC contract.
