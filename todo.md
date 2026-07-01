@@ -154,7 +154,7 @@
 - [x] Wrap ExecutiveDashboard with DashboardLayout
 - [x] Wrap PatientIdentity with DashboardLayout
 - [x] Add demo login system (seed users, express route, Home.tsx demo login UI)
-- [ ] Add role-based route guard to prevent unauthorized page access
+- [x] Add role-based route guard to prevent unauthorized page access
 - [x] Verify menu items match each role's functional permissions in backend
 - [x] Write tests for role-based menu filtering and demo login
 

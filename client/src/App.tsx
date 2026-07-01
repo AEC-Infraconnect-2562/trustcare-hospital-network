@@ -28,6 +28,7 @@ import PatientIdentity from "./pages/PatientIdentity";
 import PortabilityWorkbench from "./pages/PortabilityWorkbench";
 import MakerQueue from "./pages/MakerQueue";
 import CheckerQueue from "./pages/CheckerQueue";
+import RoleGuard from "./components/RoleGuard";
 
 function Router() {
   return (
@@ -68,7 +69,9 @@ function App() {
       <ThemeProvider defaultTheme="light" switchable>
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <RoleGuard>
+            <Router />
+          </RoleGuard>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
