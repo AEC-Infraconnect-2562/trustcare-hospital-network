@@ -42,6 +42,7 @@ function hasAccess(path: string, activeRole: SystemRole, additionalRoles: string
   const config = routeAccessConfig.find(r => r.path === path);
   if (!config) return true;
   if (config.roles.includes(activeRole)) return true;
+  if (activeRole === "patient") return false;
   if (config.additionalRolesGrant) {
     for (const addRole of additionalRoles) {
       if (config.additionalRolesGrant.includes(addRole)) return true;
@@ -155,6 +156,12 @@ describe("RoleGuard - Route Access Control", () => {
       expect(hasAccess("/issuer", "patient")).toBe(false);
       expect(hasAccess("/maker-queue", "patient")).toBe(false);
       expect(hasAccess("/checker-queue", "patient")).toBe(false);
+    });
+
+    it("patient with stale issuer roles still cannot access issuer routes", () => {
+      expect(hasAccess("/issuer", "patient", ["issuer_maker"])).toBe(false);
+      expect(hasAccess("/maker-queue", "patient", ["issuer_maker"])).toBe(false);
+      expect(hasAccess("/checker-queue", "patient", ["issuer_checker"])).toBe(false);
     });
 
     it("integration_engineer with issuer_maker can access issuer routes", () => {

@@ -4,6 +4,15 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import {
+  availableRolesForSystemRole,
+  canActAsCredentialChecker,
+  canActAsCredentialMaker,
+  canHoldIssuerPrivileges,
+  normalizeActiveRole,
+  normalizeCredentialEntitlements,
+  sanitizeAdditionalRolesForSystemRole,
+} from "@shared/rolePolicy";
 import * as db from "./db";
 import { nanoid } from "nanoid";
 import { notifyOwner } from "./_core/notification";
@@ -19,6 +28,7 @@ import {
   executeSyncBackPlan,
   generateTrustcareDemoSeed,
   hospitalDidWeb,
+  auditTrustcareVcVpSeedDatabase,
   issueMedicalCertificateVc,
   issueCredential,
   issuePrescriptionVc,
@@ -67,17 +77,28 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
-      const additionalRoles = await db.getUserAdditionalRoles(opts.ctx.user.id);
+      const systemRole = (opts.ctx.user as any).systemRole ?? "patient";
+      const additionalRoles = sanitizeAdditionalRolesForSystemRole(
+        systemRole,
+        (await db.getUserAdditionalRoles(opts.ctx.user.id)).map(r => r.role),
+      );
       const activeRoleCookie = opts.ctx.req.cookies?.["trustcare_active_role"];
-      return { ...opts.ctx.user, additionalRoles: additionalRoles.map(r => r.role), activeRole: activeRoleCookie || (opts.ctx.user as any).systemRole || "patient" };
+      return {
+        ...opts.ctx.user,
+        additionalRoles,
+        activeRole: normalizeActiveRole(systemRole, activeRoleCookie, additionalRoles),
+      };
     }),
     getDemoUsers: publicProcedure.query(async () => {
       return db.getDemoUsers();
     }),
     switchRole: protectedProcedure.input(z.object({ role: z.string() })).mutation(async ({ ctx, input }) => {
       const user = ctx.user as any;
-      const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
-      const allRoles = [user.systemRole, "patient", ...additionalRoles.map((r: any) => r.role)];
+      const additionalRoles = sanitizeAdditionalRolesForSystemRole(
+        user.systemRole,
+        (await db.getUserAdditionalRoles(ctx.user.id)).map((r: any) => r.role),
+      );
+      const allRoles = availableRolesForSystemRole(user.systemRole, additionalRoles);
       if (!allRoles.includes(input.role)) {
         throw new TRPCError({ code: "FORBIDDEN", message: "ไม่สามารถสลับไปบทบาทนี้ได้" });
       }
@@ -87,9 +108,11 @@ export const appRouter = router({
     }),
     getAvailableRoles: protectedProcedure.query(async ({ ctx }) => {
       const user = ctx.user as any;
-      const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
-      const roles = new Set([user.systemRole, "patient", ...additionalRoles.map((r: any) => r.role)]);
-      return Array.from(roles);
+      const additionalRoles = sanitizeAdditionalRolesForSystemRole(
+        user.systemRole,
+        (await db.getUserAdditionalRoles(ctx.user.id)).map((r: any) => r.role),
+      );
+      return availableRolesForSystemRole(user.systemRole, additionalRoles);
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -124,19 +147,15 @@ export const appRouter = router({
       return db.listCredentialRequests({ requesterId: ctx.user.id });
     }),
     pendingReviews: protectedProcedure.query(async ({ ctx }) => {
-      const user = ctx.user as any;
-      if (user.systemRole !== "checker" && user.systemRole !== "system_admin" && user.systemRole !== "hospital_admin") {
-        const additionalRoles = await db.getUserAdditionalRoles(ctx.user.id);
-        if (!additionalRoles.some(r => r.role === "issuer_checker")) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Checker role required" });
-        }
-      }
+      await requireMakerCheckerRole(ctx.user, "checker");
       return db.listCredentialRequests({ status: "pending_review" });
     }),
     myReviews: protectedProcedure.query(async ({ ctx }) => {
+      await requireMakerCheckerRole(ctx.user, "checker");
       return db.listCredentialRequests({ reviewerId: ctx.user.id });
     }),
-    pendingCount: protectedProcedure.query(async () => {
+    pendingCount: protectedProcedure.query(async ({ ctx }) => {
+      await requireMakerCheckerRole(ctx.user, "checker");
       const pending = await db.listCredentialRequests({ status: "pending_review" });
       return pending.length;
     }),
@@ -149,6 +168,7 @@ export const appRouter = router({
       priority: z.enum(["normal", "urgent"]).optional(),
       makerNotes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
+      await requireMakerCheckerRole(ctx.user, "maker");
       const result = await db.createCredentialRequest({
         requesterId: ctx.user.id,
         templateId: input.templateId ?? null,
@@ -169,6 +189,7 @@ export const appRouter = router({
       return result;
     }),
     submitForReview: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      await requireMakerCheckerRole(ctx.user, "maker");
       const request = await db.getCredentialRequestById(input.id);
       if (!request) throw new TRPCError({ code: "NOT_FOUND" });
       if (request.requesterId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
@@ -182,6 +203,7 @@ export const appRouter = router({
       return { success: true };
     }),
     cancelRequest: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      await requireMakerCheckerRole(ctx.user, "maker");
       const request = await db.getCredentialRequestById(input.id);
       if (!request) throw new TRPCError({ code: "NOT_FOUND" });
       if (request.requesterId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
@@ -189,6 +211,7 @@ export const appRouter = router({
       return { success: true };
     }),
     approve: protectedProcedure.input(z.object({ id: z.number(), comment: z.string().optional() })).mutation(async ({ ctx, input }) => {
+      await requireMakerCheckerRole(ctx.user, "checker");
       const request = await db.getCredentialRequestById(input.id);
       if (!request) throw new TRPCError({ code: "NOT_FOUND" });
       if (request.requesterId === ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "ไม่สามารถอนุมัติคำขอตัวเองได้" });
@@ -214,6 +237,7 @@ export const appRouter = router({
       return { success: true };
     }),
     reject: protectedProcedure.input(z.object({ id: z.number(), comment: z.string() })).mutation(async ({ ctx, input }) => {
+      await requireMakerCheckerRole(ctx.user, "checker");
       const request = await db.getCredentialRequestById(input.id);
       if (!request) throw new TRPCError({ code: "NOT_FOUND" });
       await db.updateCredentialRequest(input.id, { status: "rejected", reviewerId: ctx.user.id, reviewComment: input.comment });
@@ -863,10 +887,20 @@ export const appRouter = router({
         checkerTypes: z.array(z.enum(credentialTypeValues)).optional(),
       }).optional(),
     })).mutation(async ({ input }) => {
+      if (!canHoldIssuerPrivileges(input.systemRole)) {
+        input.credentialEntitlements = { makerTypes: [], checkerTypes: [] };
+        await Promise.all([
+          db.removeUserRole(input.id, "issuer_maker"),
+          db.removeUserRole(input.id, "issuer_checker"),
+        ]);
+      }
+      if ((input.systemRole === "maker" || input.systemRole === "checker") && !input.hospitalId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Maker/Checker users must be linked to a hospital." });
+      }
       await db.updateUserProfile(input.id, {
         systemRole: input.systemRole,
         hospitalId: input.hospitalId,
-        credentialEntitlements: input.credentialEntitlements,
+        credentialEntitlements: normalizeCredentialEntitlements(input.systemRole, input.credentialEntitlements),
       } as any);
       return { success: true };
     }),
@@ -1376,6 +1410,14 @@ export const appRouter = router({
       return db.listVcVpSeedBatches(input?.limit ?? 20);
     }),
 
+    auditSeedDb: adminProcedure.input(z.object({
+      patientsPerHospital: z.number().min(1).max(100).optional(),
+    }).optional()).query(({ input }) => {
+      return auditTrustcareVcVpSeedDatabase({
+        patientsPerHospital: input?.patientsPerHospital,
+      });
+    }),
+
     issuedPresentations: protectedProcedure.input(z.object({
       patientId: z.number().optional(),
       status: z.string().optional(),
@@ -1860,7 +1902,7 @@ export type AppRouter = typeof appRouter;
 
 // Helper
 function requireMaker(user: any, credentialType: string) {
-  if (user?.systemRole !== "maker") {
+  if (!canActAsCredentialMaker(user?.systemRole, [])) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Document creation requires Maker role." });
   }
   if (!hasCredentialEntitlement(user, "makerTypes", credentialType)) {
@@ -1869,7 +1911,7 @@ function requireMaker(user: any, credentialType: string) {
 }
 
 function requireChecker(user: any, credentialType: string) {
-  if (user?.systemRole !== "checker") {
+  if (!canActAsCredentialChecker(user?.systemRole, [])) {
     throw new TRPCError({ code: "FORBIDDEN", message: "VC issuance requires Checker role." });
   }
   if (!hasCredentialEntitlement(user, "checkerTypes", credentialType)) {
@@ -1881,6 +1923,22 @@ function hasCredentialEntitlement(user: any, key: "makerTypes" | "checkerTypes",
   const entitlements = user?.credentialEntitlements ?? {};
   const allowed = Array.isArray(entitlements[key]) ? entitlements[key] : [];
   return allowed.includes("*") || allowed.includes(credentialType);
+}
+
+async function requireMakerCheckerRole(user: any, mode: "maker" | "checker") {
+  const additionalRoles = sanitizeAdditionalRolesForSystemRole(
+    user?.systemRole,
+    (await db.getUserAdditionalRoles(user.id)).map((role: any) => role.role),
+  );
+  const allowed = mode === "maker"
+    ? canActAsCredentialMaker(user?.systemRole, additionalRoles)
+    : canActAsCredentialChecker(user?.systemRole, additionalRoles);
+  if (!allowed) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: mode === "maker" ? "Maker role required" : "Checker role required",
+    });
+  }
 }
 
 async function submitMakerCredentialRequest(input: {

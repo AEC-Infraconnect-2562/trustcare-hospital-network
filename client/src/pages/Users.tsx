@@ -10,6 +10,7 @@ import { trpc } from "@/lib/trpc";
 import { Edit3, Shield, User, Users as UsersIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { canHoldIssuerPrivileges } from "@shared/rolePolicy";
 
 const roleLabels: Record<string, string> = {
   system_admin: "ผู้ดูแลระบบ",
@@ -72,6 +73,7 @@ export default function Users() {
       checkerTypes: user.credentialEntitlements?.checkerTypes ?? [],
     });
   };
+  const canEditIssuerPrivileges = canHoldIssuerPrivileges(form.systemRole);
 
   return (
     <DashboardLayout>
@@ -136,7 +138,12 @@ export default function Users() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>System Role</Label>
-                <Select value={form.systemRole} onValueChange={(value) => setForm((prev: any) => ({ ...prev, systemRole: value }))}>
+                <Select value={form.systemRole} onValueChange={(value) => setForm((prev: any) => ({
+                  ...prev,
+                  systemRole: value,
+                  makerTypes: canHoldIssuerPrivileges(value) ? prev.makerTypes : [],
+                  checkerTypes: canHoldIssuerPrivileges(value) ? prev.checkerTypes : [],
+                }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(roleLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
@@ -159,12 +166,20 @@ export default function Users() {
               title="Maker document permissions"
               values={form.makerTypes ?? []}
               onChange={(values) => setForm((prev: any) => ({ ...prev, makerTypes: values }))}
+              disabled={!canEditIssuerPrivileges}
             />
             <EntitlementPicker
               title="Checker document permissions"
               values={form.checkerTypes ?? []}
               onChange={(values) => setForm((prev: any) => ({ ...prev, checkerTypes: values }))}
+              disabled={!canEditIssuerPrivileges}
             />
+
+            {!canEditIssuerPrivileges && (
+              <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                ผู้ป่วยไม่มีสิทธิเป็น Maker/Checker และระบบจะล้างสิทธิเอกสาร VC เมื่อบันทึก
+              </p>
+            )}
 
             <Button
               className="w-full"
@@ -174,8 +189,8 @@ export default function Users() {
                 systemRole: form.systemRole,
                 hospitalId: form.hospitalId === "none" ? undefined : Number(form.hospitalId),
                 credentialEntitlements: {
-                  makerTypes: form.makerTypes ?? [],
-                  checkerTypes: form.checkerTypes ?? [],
+                  makerTypes: canEditIssuerPrivileges ? form.makerTypes ?? [] : [],
+                  checkerTypes: canEditIssuerPrivileges ? form.checkerTypes ?? [] : [],
                 },
               })}
             >
@@ -188,7 +203,7 @@ export default function Users() {
   );
 }
 
-function EntitlementPicker({ title, values, onChange }: { title: string; values: string[]; onChange: (values: string[]) => void }) {
+function EntitlementPicker({ title, values, onChange, disabled = false }: { title: string; values: string[]; onChange: (values: string[]) => void; disabled?: boolean }) {
   const setAll = () => onChange(documentTypes.map(([value]) => value));
   const clear = () => onChange([]);
   const toggle = (value: string) => onChange(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
@@ -197,14 +212,14 @@ function EntitlementPicker({ title, values, onChange }: { title: string; values:
       <div className="flex items-center justify-between gap-2">
         <Label>{title}</Label>
         <div className="flex gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={setAll}>ทั้งหมด</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={clear}>ล้าง</Button>
+          <Button type="button" size="sm" variant="outline" onClick={setAll} disabled={disabled}>ทั้งหมด</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={clear} disabled={disabled}>ล้าง</Button>
         </div>
       </div>
       <div className="grid max-h-[260px] gap-2 overflow-auto rounded-md border p-3 sm:grid-cols-2 lg:grid-cols-3">
         {documentTypes.map(([value, label]) => (
-          <label key={value} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
-            <input type="checkbox" checked={values.includes(value)} onChange={() => toggle(value)} />
+          <label key={value} className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-sm ${disabled ? "opacity-50" : "hover:bg-muted"}`}>
+            <input type="checkbox" checked={values.includes(value)} onChange={() => toggle(value)} disabled={disabled} />
             <span>{label}</span>
           </label>
         ))}

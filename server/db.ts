@@ -22,6 +22,7 @@ import {
   credentialRequests, InsertCredentialRequest,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { isIssuerPrivilegeRole, isPatientRole } from "@shared/rolePolicy";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -1000,6 +1001,10 @@ export async function getExecutiveDashboardStats() {
 export async function assignUserRole(data: InsertUserRole) {
   const db = await getDb();
   if (!db) return;
+  const [user] = await db.select().from(users).where(eq(users.id, data.userId)).limit(1);
+  if (user && isPatientRole(user.systemRole) && isIssuerPrivilegeRole(data.role)) {
+    throw new Error("Patient users cannot be assigned Maker/Checker issuer roles.");
+  }
   await db.insert(userRoles).values(data);
 }
 
