@@ -546,6 +546,9 @@ import {
   credentialStatusEvents, InsertCredentialStatusEvent,
   syncReconciliationJobs, InsertSyncReconciliationJob,
   trustRegistry, InsertTrustRegistryEntry,
+  taoTrustedIssuers, InsertTaoTrustedIssuer,
+  taoTrustedVerifiers, InsertTaoTrustedVerifier,
+  taoTrustPolicies, InsertTaoTrustPolicy,
   smartHealthLinks, InsertSmartHealthLink,
   shlFiles, InsertShlFile,
   shlManifestVersions, InsertShlManifestVersion,
@@ -770,6 +773,104 @@ export async function getTrustRegistryByDid(did: string) {
   return result[0];
 }
 
+// ============================================================
+// TAO TRUST FRAMEWORK HELPERS
+// ============================================================
+export async function listTaoIssuers(filter?: { trustLevel?: string; organizationType?: string; trustAnchor?: string; isActive?: boolean }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.trustLevel) conditions.push(eq(taoTrustedIssuers.trustLevel, filter.trustLevel as any));
+  if (filter?.organizationType) conditions.push(eq(taoTrustedIssuers.organizationType, filter.organizationType as any));
+  if (filter?.trustAnchor) conditions.push(eq(taoTrustedIssuers.trustAnchor, filter.trustAnchor as any));
+  if (filter?.isActive !== undefined) conditions.push(eq(taoTrustedIssuers.isActive, filter.isActive));
+  if (conditions.length > 0) return db.select().from(taoTrustedIssuers).where(and(...conditions)).orderBy(desc(taoTrustedIssuers.createdAt));
+  return db.select().from(taoTrustedIssuers).orderBy(desc(taoTrustedIssuers.createdAt));
+}
+export async function createTaoIssuer(data: InsertTaoTrustedIssuer) {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.insert(taoTrustedIssuers).values(data);
+  return result[0].insertId;
+}
+export async function updateTaoIssuer(id: number, data: Partial<InsertTaoTrustedIssuer>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(taoTrustedIssuers).set(data as any).where(eq(taoTrustedIssuers.id, id));
+}
+export async function getTaoIssuerByDid(did: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(taoTrustedIssuers).where(eq(taoTrustedIssuers.did, did)).limit(1);
+  return result[0];
+}
+export async function listTaoVerifiers(filter?: { trustLevel?: string; organizationType?: string; isActive?: boolean }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.trustLevel) conditions.push(eq(taoTrustedVerifiers.trustLevel, filter.trustLevel as any));
+  if (filter?.organizationType) conditions.push(eq(taoTrustedVerifiers.organizationType, filter.organizationType as any));
+  if (filter?.isActive !== undefined) conditions.push(eq(taoTrustedVerifiers.isActive, filter.isActive));
+  if (conditions.length > 0) return db.select().from(taoTrustedVerifiers).where(and(...conditions)).orderBy(desc(taoTrustedVerifiers.createdAt));
+  return db.select().from(taoTrustedVerifiers).orderBy(desc(taoTrustedVerifiers.createdAt));
+}
+export async function createTaoVerifier(data: InsertTaoTrustedVerifier) {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.insert(taoTrustedVerifiers).values(data);
+  return result[0].insertId;
+}
+export async function updateTaoVerifier(id: number, data: Partial<InsertTaoTrustedVerifier>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(taoTrustedVerifiers).set(data as any).where(eq(taoTrustedVerifiers.id, id));
+}
+export async function listTaoPolicies(filter?: { credentialType?: string; enforcementMode?: string; isActive?: boolean }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.credentialType) conditions.push(eq(taoTrustPolicies.credentialType, filter.credentialType));
+  if (filter?.enforcementMode) conditions.push(eq(taoTrustPolicies.enforcementMode, filter.enforcementMode as any));
+  if (filter?.isActive !== undefined) conditions.push(eq(taoTrustPolicies.isActive, filter.isActive));
+  if (conditions.length > 0) return db.select().from(taoTrustPolicies).where(and(...conditions)).orderBy(desc(taoTrustPolicies.createdAt));
+  return db.select().from(taoTrustPolicies).orderBy(desc(taoTrustPolicies.createdAt));
+}
+export async function createTaoPolicy(data: InsertTaoTrustPolicy) {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.insert(taoTrustPolicies).values(data);
+  return result[0].insertId;
+}
+export async function updateTaoPolicy(id: number, data: Partial<InsertTaoTrustPolicy>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(taoTrustPolicies).set(data as any).where(eq(taoTrustPolicies.id, id));
+}
+export async function checkIssuerTrust(issuerDid: string, credentialType: string): Promise<{ trusted: boolean; level: string; anchor: string; reason?: string }> {
+  const issuer = await getTaoIssuerByDid(issuerDid);
+  if (!issuer || !issuer.isActive) return { trusted: false, level: 'unknown', anchor: 'none', reason: 'Issuer not found in TAO registry' };
+  if (issuer.trustLevel === 'revoked' || issuer.trustLevel === 'suspended') return { trusted: false, level: issuer.trustLevel, anchor: issuer.trustAnchor, reason: `Issuer is ${issuer.trustLevel}` };
+  const db2 = await getDb();
+  if (!db2) return { trusted: false, level: issuer.trustLevel, anchor: issuer.trustAnchor, reason: 'DB unavailable' };
+  const policies = await db2.select().from(taoTrustPolicies).where(and(eq(taoTrustPolicies.credentialType, credentialType), eq(taoTrustPolicies.isActive, true)));
+  if (policies.length === 0) return { trusted: true, level: issuer.trustLevel, anchor: issuer.trustAnchor };
+  const policy = policies[0];
+  if (policy.enforcementMode === 'off') return { trusted: true, level: issuer.trustLevel, anchor: issuer.trustAnchor };
+  const levelHierarchy = ['accredited', 'recognized', 'self_declared', 'any'];
+  const requiredIdx = levelHierarchy.indexOf(policy.requiredTrustLevel);
+  const issuerIdx = levelHierarchy.indexOf(issuer.trustLevel);
+  if (issuerIdx > requiredIdx && policy.requiredTrustLevel !== 'any') {
+    const reason = `Issuer trust level '${issuer.trustLevel}' below required '${policy.requiredTrustLevel}'`;
+    if (policy.enforcementMode === 'strict') return { trusted: false, level: issuer.trustLevel, anchor: issuer.trustAnchor, reason };
+    return { trusted: true, level: issuer.trustLevel, anchor: issuer.trustAnchor, reason };
+  }
+  if (policy.requiredTrustAnchor !== 'any' && issuer.trustAnchor !== policy.requiredTrustAnchor) {
+    const reason = `Issuer trust anchor '${issuer.trustAnchor}' does not match required '${policy.requiredTrustAnchor}'`;
+    if (policy.enforcementMode === 'strict') return { trusted: false, level: issuer.trustLevel, anchor: issuer.trustAnchor, reason };
+    return { trusted: true, level: issuer.trustLevel, anchor: issuer.trustAnchor, reason };
+  }
+  return { trusted: true, level: issuer.trustLevel, anchor: issuer.trustAnchor };
+}
 // ============================================================
 // SMART HEALTH LINKS HELPERS
 // ============================================================

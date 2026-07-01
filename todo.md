@@ -143,7 +143,7 @@
 ## v2.1 Upgrade - RU_VC Patterns + Test Users + UX Improvements
 - [x] Create test users for all 6 roles with demo login page (completed in v2.1.1; Manus OAuth retained as optional alongside demo-login)
 - [x] Enhance Issuer with Checker/Maker workflow (batch create → approve/reject → issue) (completed in v2.2)
-- [ ] Enhance Wallet with Selective Disclosure/ZKP, QR presentation, access history
+- [x] Enhance Wallet with Selective Disclosure/ZKP, QR presentation, access history
 - [x] Enhance Verifier with camera QR scanning (html5-qrcode) (completed in v3.1)
 - [x] Add persistent sidebar with back button on all guarded pages (completed in v2.1.1 DashboardLayout + RoleGuard back button; breadcrumb is backlog)
 - [ ] Move statistics boxes to bottom of pages, reduce size of action boxes at top
@@ -280,28 +280,42 @@
 ## v4.0 - Issuer Detail + Wallet UX + Consent & Trust Registry Redesign
 
 ### Issuer & Wallet Enhancement (from RU_VC patterns)
-- [ ] Add clickable credential rows in Issuer → opens detail page/dialog
-- [ ] Credential detail view shows VP data, issuer info, status, QR code
-- [ ] Make Wallet visible to all roles (not just patient)
-- [ ] Wallet card detail dialog with gradient header, VP info, QR generation
-- [ ] Wallet share/present flow with selective disclosure option
-- [ ] Enhance Verifier QR scanner UX (camera + paste modes already exist)
+- [x] Add clickable credential rows in Issuer → opens detail page/dialog
+- [x] Credential detail view shows VP data, issuer info, status, QR code
+- [x] Make Wallet visible to all roles (not just patient)
+- [x] Wallet card detail dialog with gradient header, VP info, QR generation
+- [x] Wallet share/present flow with selective disclosure option
+- [x] Enhance Verifier QR scanner UX (camera + paste modes already exist)
 
 ### Contextual Consent Redesign (from spec)
-- [ ] Remove sidebar-only layout, create full consent management page
-- [ ] ConsentBanner component for inline consent collection
-- [ ] ConsentGate wrapper component for conditional rendering
-- [ ] useConsent hook for programmatic consent checks
-- [ ] Consent API: grant, revoke, check, history endpoints
-- [ ] Consent types: treatment, referral, research, marketing, data_sharing
-- [ ] Consent audit trail with timestamps and actor info
+- [x] Remove sidebar-only layout, create full consent management page
+- [x] ConsentBanner component for inline consent collection
+- [x] ConsentGate wrapper component for conditional rendering
+- [x] useConsent hook for programmatic consent checks
+- [x] Consent API: grant, revoke, check, history endpoints (existing router retained)
+- [x] Consent types: treatment, referral, research, marketing, data_sharing (existing)
+- [x] Consent audit trail with timestamps and actor info (existing)
 
 ### TAO Trust Registry Redesign (from spec)
-- [ ] Create tao_trusted_issuers table (DID, name, status, trust_level, accreditation)
-- [ ] Create tao_trusted_verifiers table
-- [ ] Create tao_trust_policies table (credential_type → required trust level)
-- [ ] Migration for new TAO tables
-- [ ] Trust Registry UI with tabs: Issuers, Verifiers, Policies
-- [ ] Trust level badges (accredited, recognized, self-declared)
-- [ ] Integration with verification flow (check issuer trust level)
-- [ ] Seed TAO trust data for 3 hospitals
+- [x] Create tao_trusted_issuers table (DID, name, status, trust_level, accreditation)
+- [x] Create tao_trusted_verifiers table
+- [x] Create tao_trust_policies table (credential_type → required trust level)
+- [x] Migration for new TAO tables
+- [x] Trust Registry UI with tabs: Issuers, Verifiers, Policies
+- [x] Trust level badges (accredited, recognized, self-declared)
+- [x] Integration with verification flow (check issuer trust level)
+- [x] Seed TAO trust data for 3 hospitals
+
+### Wallet Category Navigation (Apple-style)
+- [x] Add wallet.cardsByCategory tRPC endpoint (grouped by documentCategory)
+- [x] Rewrite Wallet.tsx with category sidebar/tabs navigation (9 categories)
+- [x] Show superseded/revoked credentials in History section
+- [x] Category icons and Thai labels from DOCUMENT_CATEGORY_LABELS
+- [x] Add DOCUMENT_CATEGORIES to shared/const.ts
+
+### VC Uniqueness Research & Singleton Enforcement
+- [x] Research which VC types should be unique (singleton) per patient
+- [x] Document findings in VC_UNIQUENESS_RULES.md
+- [x] Implement singleton enforcement in issuer.issueCredentialFromRequest
+- [x] Auto-revoke previous credential when re-issuing singleton types
+- [x] Store revoked credentials with superseded_by reference

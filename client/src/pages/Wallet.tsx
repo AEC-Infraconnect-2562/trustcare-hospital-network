@@ -3,18 +3,27 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
+import { DOCUMENT_CATEGORIES, type DocumentCategory } from "@shared/const";
 import {
-  AlertTriangle, BadgeCheck, CalendarDays, CreditCard, FileBadge, FileCheck2, FileText, Globe2,
-  History, Landmark, Link2, Microscope, PackageCheck, Pill, Printer, QrCode, ReceiptText,
-  RefreshCcw, ScanLine, Shield, Syringe, User, Wallet as WalletIcon, Eye, Share2,
+  AlertTriangle, ArrowRightLeft, BadgeCheck, CalendarDays, CreditCard, Eye,
+  FileBadge, FileCheck2, FileText, Globe2, History, Landmark, Link2, Microscope,
+  PackageCheck, Pill, Printer, QrCode, ReceiptText, RefreshCcw, ScanLine,
+  Shield, Share2, Syringe, User, Wallet as WalletIcon,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import QRCode from "qrcode";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+
+const categoryIconMap: Record<string, any> = {
+  User, FileText, Pill, Microscope, ArrowRightLeft, ReceiptText, Globe2, RefreshCcw, CalendarDays,
+};
 
 const cardTypeConfig: Record<string, { icon: any; bgGradient: string; label: string }> = {
   allergy: { icon: AlertTriangle, bgGradient: "from-red-500 to-red-700", label: "แจ้งเตือนการแพ้" },
@@ -43,8 +52,11 @@ const cardTypeConfig: Record<string, { icon: any; bgGradient: string; label: str
 };
 
 export default function Wallet() {
-  const { data: cards, isLoading } = trpc.wallet.cards.useQuery();
+  const { data: grouped, isLoading } = trpc.wallet.cardsByCategory.useQuery();
+  const { data: superseded, isLoading: supersededLoading } = trpc.wallet.superseded.useQuery();
   const { data: history, isLoading: histLoading } = trpc.wallet.history.useQuery();
+
+  const [activeCategory, setActiveCategory] = useState<DocumentCategory | "all">("all");
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [qrMode, setQrMode] = useState(false);
@@ -61,6 +73,26 @@ export default function Wallet() {
     onError: (error) => toast.error(error.message),
   });
 
+  const categoryCounts = useMemo(() => {
+    if (!grouped) return {};
+    const counts: Record<string, number> = {};
+    for (const [cat, cards] of Object.entries(grouped)) {
+      counts[cat] = (cards as any[]).length;
+    }
+    return counts;
+  }, [grouped]);
+
+  const displayCards = useMemo(() => {
+    if (!grouped) return [];
+    if (activeCategory === "all") return Object.values(grouped).flat();
+    return (grouped as any)[activeCategory] || [];
+  }, [grouped, activeCategory]);
+
+  const totalCards = useMemo(() => {
+    if (!grouped) return 0;
+    return Object.values(grouped).flat().length;
+  }, [grouped]);
+
   const handleCardClick = useCallback((card: any) => {
     setSelectedCard(card);
     setQrMode(false);
@@ -69,181 +101,190 @@ export default function Wallet() {
     setDetailOpen(true);
   }, []);
 
+  const [shareOpen, setShareOpen] = useState(false);
+  const [disclosureFields, setDisclosureFields] = useState<Record<string, boolean>>({});
+
   const handleGenerateQR = useCallback(() => {
-    if (selectedCard) {
-      presentMutation.mutate({ cardId: selectedCard.id });
-    }
+    if (selectedCard) presentMutation.mutate({ cardId: selectedCard.id });
   }, [selectedCard, presentMutation]);
 
-  const handlePrintQR = useCallback(() => {
-    window.print();
-    toast.info("กำลังพิมพ์ VP QR");
-  }, []);
+  const handleShareClick = useCallback(() => {
+    if (!selectedCard) return;
+    const data = selectedCard.credentialData || {};
+    const fields: Record<string, boolean> = {};
+    Object.keys(data).forEach(k => { fields[k] = true; });
+    setDisclosureFields(fields);
+    setShareOpen(true);
+  }, [selectedCard]);
+
+  const handleShareConfirm = useCallback(() => {
+    const selectedFields = Object.entries(disclosureFields).filter(([, v]) => v).map(([k]) => k);
+    if (selectedFields.length === 0) { toast.error("กรุณาเลือกข้อมูลอย่างน้อย 1 รายการ"); return; }
+    toast.success(`แชร์ข้อมูล ${selectedFields.length} รายการ (Selective Disclosure)`);
+    setShareOpen(false);
+    if (selectedCard) presentMutation.mutate({ cardId: selectedCard.id });
+  }, [disclosureFields, selectedCard, presentMutation]);
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-3">
-            <WalletIcon className="h-6 w-6 text-primary" />
-            กระเป๋าสุขภาพ
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">Health Wallet — เก็บ Verifiable Credentials และสร้าง VP QR เพื่อแสดงต่อ Verifier</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <WalletIcon className="h-6 w-6 text-primary" />กระเป๋าสุขภาพ
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">Health Cards ทั้งหมด {totalCards} ใบ • {Object.keys(categoryCounts).length} หมวดหมู่</p>
+          </div>
+          <Badge variant="outline" className="text-xs"><CreditCard className="h-3 w-3 mr-1" />{totalCards} Cards</Badge>
         </div>
 
-        <Tabs defaultValue="cards">
-          <TabsList>
-            <TabsTrigger value="cards" className="gap-2"><CreditCard className="h-3.5 w-3.5" />การ์ดสุขภาพ</TabsTrigger>
-            <TabsTrigger value="history" className="gap-2"><History className="h-3.5 w-3.5" />ประวัติการแสดง</TabsTrigger>
+        <Tabs defaultValue="cards" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="cards">Health Cards</TabsTrigger>
+            <TabsTrigger value="superseded">ประวัติ (Superseded)</TabsTrigger>
+            <TabsTrigger value="history">การแสดงข้อมูล</TabsTrigger>
           </TabsList>
 
           <TabsContent value="cards" className="mt-4">
             {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-44 rounded-xl" />)}
-              </div>
-            ) : cards && cards.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {cards.map((card: any) => {
-                  const config = cardTypeConfig[card.cardType] || cardTypeConfig.identity;
-                  const Icon = config.icon;
-                  return (
-                    <button
-                      key={card.id}
-                      onClick={() => handleCardClick(card)}
-                      className={`relative rounded-xl p-5 text-left text-white shadow-lg hover:shadow-xl transition-all duration-200 bg-gradient-to-br ${config.bgGradient} hover:-translate-y-1 active:scale-[0.97]`}
-                      style={{ minHeight: "160px" }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm shrink-0">
-                            <Icon className="h-5 w-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <h3 className="font-semibold text-sm truncate">{card.displayName}</h3>
-                            <p className="text-xs opacity-80 truncate">{card.issuerHospitalName || "TrustCare Network"}</p>
-                          </div>
-                        </div>
-                        {card.isPinned && <Badge className="bg-white/20 text-white border-0 text-[10px]">ปักหมุด</Badge>}
-                      </div>
-                      <div className="mt-8 flex items-end justify-between gap-4">
-                        <div className="min-w-0">
-                          <p className="text-[10px] opacity-60 uppercase tracking-wider">Category</p>
-                          <p className="text-xs opacity-90 truncate">{card.documentCategory || card.cardType}</p>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-white/80">
-                          <QrCode className="h-4 w-4" />
-                          <span className="text-[10px] uppercase tracking-wider">VP</span>
-                        </div>
-                      </div>
-                      {/* Decorative watermark */}
-                      <div className="absolute top-3 right-3 opacity-10">
-                        <Icon className="h-16 w-16" />
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <Skeleton className="h-[400px]" />
+                <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-40" />)}
+                </div>
               </div>
             ) : (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-16">
-                  <WalletIcon className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                  <p className="text-muted-foreground">ยังไม่มี Health Card ในกระเป๋า</p>
-                  <p className="text-xs text-muted-foreground mt-1">เมื่อโรงพยาบาลออก VC ให้คุณ การ์ดจะปรากฏที่นี่</p>
-                </CardContent>
-              </Card>
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div className="lg:col-span-1">
+                  <Card className="sticky top-4">
+                    <CardContent className="p-3">
+                      <ScrollArea className="max-h-[500px]">
+                        <div className="space-y-1">
+                          <button onClick={() => setActiveCategory("all")} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-sm transition-all duration-150 ${activeCategory === "all" ? "bg-primary text-primary-foreground shadow-sm" : "hover:bg-muted"}`}>
+                            <span className="flex items-center gap-2"><WalletIcon className="h-4 w-4" /><span className="font-medium">ทั้งหมด</span></span>
+                            <Badge variant="secondary" className="text-[10px] h-5 min-w-[24px] justify-center">{totalCards}</Badge>
+                          </button>
+                          <Separator className="my-2" />
+                          {(Object.entries(DOCUMENT_CATEGORIES) as [DocumentCategory, typeof DOCUMENT_CATEGORIES[DocumentCategory]][]).map(([key, cat]) => {
+                            const count = categoryCounts[key] || 0;
+                            if (count === 0) return null;
+                            const IconComp = categoryIconMap[cat.icon] || FileText;
+                            return (
+                              <button key={key} onClick={() => setActiveCategory(key)} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-sm transition-all duration-150 ${activeCategory === key ? "bg-primary text-primary-foreground shadow-sm" : "hover:bg-muted"}`}>
+                                <span className="flex items-center gap-2 min-w-0"><IconComp className="h-4 w-4 shrink-0" /><span className="font-medium truncate">{cat.th}</span></span>
+                                <Badge variant="secondary" className="text-[10px] h-5 min-w-[24px] justify-center ml-2 shrink-0">{count}</Badge>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="lg:col-span-3">
+                  {displayCards.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {displayCards.map((card: any) => {
+                        const config = cardTypeConfig[card.cardType] || cardTypeConfig.identity;
+                        const Icon = config.icon;
+                        const isRevoked = card.credentialStatus === "revoked";
+                        const isExpired = card.credentialStatus === "expired";
+                        return (
+                          <button key={card.id} onClick={() => handleCardClick(card)} className={`relative overflow-hidden rounded-xl p-4 text-left text-white shadow-lg hover:shadow-xl transition-all duration-200 bg-gradient-to-br ${config.bgGradient} hover:-translate-y-1 active:scale-[0.97] ${isRevoked || isExpired ? "opacity-60" : ""}`} style={{ minHeight: "150px" }}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm shrink-0"><Icon className="h-5 w-5" /></div>
+                                <div className="min-w-0">
+                                  <h3 className="font-semibold text-sm truncate">{card.displayName}</h3>
+                                  <p className="text-xs opacity-80 truncate">{card.issuerHospitalName || "TrustCare Network"}</p>
+                                </div>
+                              </div>
+                              {card.isPinned && <Badge className="bg-white/20 text-white border-0 text-[10px]">ปักหมุด</Badge>}
+                            </div>
+                            <div className="mt-6 flex items-end justify-between gap-4">
+                              <div className="min-w-0">
+                                <p className="text-[10px] opacity-60 uppercase tracking-wider">{DOCUMENT_CATEGORIES[card.documentCategory as DocumentCategory]?.th || card.cardType}</p>
+                                <p className="text-xs opacity-90 truncate mt-0.5">{new Date(card.createdAt).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" })}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-white/80"><QrCode className="h-4 w-4" /><span className="text-[10px] uppercase tracking-wider">VP</span></div>
+                            </div>
+                            {(isRevoked || isExpired) && <div className="absolute top-2 right-2"><Badge className="bg-red-900/60 text-white border-0 text-[9px]">{isRevoked ? "ถูกเพิกถอน" : "หมดอายุ"}</Badge></div>}
+                            <div className="absolute top-3 right-3 opacity-10"><Icon className="h-14 w-14" /></div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <Card><CardContent className="flex flex-col items-center justify-center py-16"><WalletIcon className="h-12 w-12 text-muted-foreground/30 mb-4" /><p className="text-muted-foreground">{activeCategory === "all" ? "ยังไม่มี Health Card ในกระเป๋า" : "ไม่มีการ์ดในหมวดหมู่นี้"}</p></CardContent></Card>
+                  )}
+                </div>
+              </div>
             )}
           </TabsContent>
 
-          <TabsContent value="history" className="mt-4">
-            {histLoading ? (
-              <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
-            ) : history && history.length > 0 ? (
-              <Card>
-                <CardContent className="p-0">
-                  <div className="divide-y">
-                    {history.map((item: any) => (
-                      <div key={item.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center">
-                            <QrCode className="h-4 w-4 text-primary" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium">{item.verifierName || "Verifier"}</p>
-                            <p className="text-xs text-muted-foreground">{item.purpose || "verification"} • {new Date(item.createdAt).toLocaleString("th-TH")}</p>
-                          </div>
-                        </div>
-                        <Badge variant={item.verificationResult === "valid" ? "default" : "destructive"} className="text-[10px]">
-                          {item.verificationResult || "recorded"}
-                        </Badge>
-                      </div>
-                    ))}
+          <TabsContent value="superseded" className="mt-4">
+            {supersededLoading ? <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div> : superseded && superseded.length > 0 ? (
+              <Card><CardContent className="p-0"><div className="divide-y">
+                {superseded.map((cred: any) => (
+                  <div key={cred.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center"><History className="h-4 w-4 text-muted-foreground" /></div>
+                      <div><p className="text-sm font-medium">{cred.type}</p><p className="text-xs text-muted-foreground">{cred.revocationReason || cred.status} • {new Date(cred.revokedAt || cred.createdAt).toLocaleString("th-TH")}</p></div>
+                    </div>
+                    <Badge variant={cred.status === "revoked" ? "destructive" : "secondary"} className="text-[10px]">{cred.status === "revoked" ? "เพิกถอน" : "หมดอายุ"}</Badge>
                   </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-16">
-                  <History className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                  <p className="text-muted-foreground">ยังไม่มีประวัติการแสดงข้อมูล</p>
-                </CardContent>
-              </Card>
-            )}
+                ))}
+              </div></CardContent></Card>
+            ) : <Card><CardContent className="flex flex-col items-center justify-center py-16"><History className="h-12 w-12 text-muted-foreground/30 mb-4" /><p className="text-muted-foreground">ไม่มี Credential ที่ถูกแทนที่หรือหมดอายุ</p></CardContent></Card>}
+          </TabsContent>
+
+          <TabsContent value="history" className="mt-4">
+            {histLoading ? <div className="space-y-3">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div> : history && history.length > 0 ? (
+              <Card><CardContent className="p-0"><div className="divide-y">
+                {history.map((item: any) => (
+                  <div key={item.id} className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center"><QrCode className="h-4 w-4 text-primary" /></div>
+                      <div><p className="text-sm font-medium">{item.verifierName || "Verifier"}</p><p className="text-xs text-muted-foreground">{item.purpose || "verification"} • {new Date(item.presentedAt || item.createdAt).toLocaleString("th-TH")}</p></div>
+                    </div>
+                    <Badge variant={item.verificationResult === "valid" ? "default" : "destructive"} className="text-[10px]">{item.verificationResult || "recorded"}</Badge>
+                  </div>
+                ))}
+              </div></CardContent></Card>
+            ) : <Card><CardContent className="flex flex-col items-center justify-center py-16"><History className="h-12 w-12 text-muted-foreground/30 mb-4" /><p className="text-muted-foreground">ยังไม่มีประวัติการแสดงข้อมูล</p></CardContent></Card>}
           </TabsContent>
         </Tabs>
       </div>
 
-      {/* Credential Detail + QR Dialog */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-md">
           {selectedCard && !qrMode && (
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  {(() => {
-                    const config = cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity;
-                    const Icon = config.icon;
-                    return <Icon className="h-5 w-5 text-primary" />;
-                  })()}
+                  {(() => { const Icon = (cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity).icon; return <Icon className="h-5 w-5 text-primary" />; })()}
                   {selectedCard.displayName}
                 </DialogTitle>
                 <DialogDescription>{selectedCard.displayNameEn || selectedCard.cardType}</DialogDescription>
               </DialogHeader>
-
               <div className="space-y-4 py-2">
-                {/* Card Preview */}
                 <div className={`rounded-xl p-4 text-white bg-gradient-to-br ${(cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity).bgGradient}`}>
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center">
-                      {(() => {
-                        const Icon = (cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity).icon;
-                        return <Icon className="h-5 w-5" />;
-                      })()}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-sm">{selectedCard.displayName}</p>
-                      <p className="text-xs opacity-80">{selectedCard.issuerHospitalName || "TrustCare Network"}</p>
-                    </div>
+                    <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center">{(() => { const Icon = (cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity).icon; return <Icon className="h-5 w-5" />; })()}</div>
+                    <div><p className="font-semibold text-sm">{selectedCard.displayName}</p><p className="text-xs opacity-80">{selectedCard.issuerHospitalName || "TrustCare Network"}</p></div>
                   </div>
                   <Separator className="bg-white/20 mb-3" />
                   <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div><p className="opacity-60">ประเภท</p><p className="opacity-90">{selectedCard.documentCategory || selectedCard.cardType}</p></div>
+                    <div><p className="opacity-60">หมวดหมู่</p><p className="opacity-90">{DOCUMENT_CATEGORIES[selectedCard.documentCategory as DocumentCategory]?.th || selectedCard.cardType}</p></div>
                     <div><p className="opacity-60">สร้างเมื่อ</p><p className="opacity-90">{new Date(selectedCard.createdAt).toLocaleDateString("th-TH")}</p></div>
+                    <div><p className="opacity-60">สถานะ</p><p className="opacity-90">{selectedCard.credentialStatus === "active" ? "ใช้งานได้" : selectedCard.credentialStatus}</p></div>
+                    {selectedCard.expiresAt && <div><p className="opacity-60">หมดอายุ</p><p className="opacity-90">{new Date(selectedCard.expiresAt).toLocaleDateString("th-TH")}</p></div>}
                   </div>
                 </div>
-
-                {/* Actions */}
                 <div className="grid grid-cols-2 gap-3">
-                  <Button onClick={handleGenerateQR} disabled={presentMutation.isPending} className="gap-2">
-                    <QrCode className="h-4 w-4" />
-                    {presentMutation.isPending ? "กำลังสร้าง..." : "สร้าง VP QR"}
-                  </Button>
-                  <Button variant="outline" className="gap-2" onClick={() => toast.info("ฟีเจอร์แชร์จะเปิดให้ใช้เร็วๆ นี้")}>
-                    <Share2 className="h-4 w-4" />แชร์
-                  </Button>
+                  <Button onClick={handleGenerateQR} disabled={presentMutation.isPending || selectedCard.credentialStatus !== "active"} className="gap-2"><QrCode className="h-4 w-4" />{presentMutation.isPending ? "กำลังสร้าง..." : "สร้าง VP QR"}</Button>
+                  <Button variant="outline" className="gap-2" onClick={handleShareClick}><Share2 className="h-4 w-4" />แชร์ (Selective)</Button>
                 </div>
-
-                {/* Metadata */}
                 <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
                   <p><span className="font-medium">Credential ID:</span> #{selectedCard.credentialId}</p>
                   <p><span className="font-medium">Card Type:</span> {selectedCard.cardType}</p>
@@ -252,36 +293,51 @@ export default function Wallet() {
               </div>
             </>
           )}
-
           {selectedCard && qrMode && (
             <>
               <DialogHeader>
                 <DialogTitle className="text-center">Verifiable Presentation QR</DialogTitle>
                 <DialogDescription className="text-center">{selectedCard.displayName}</DialogDescription>
               </DialogHeader>
-
               <div className="flex flex-col items-center gap-4 py-4">
-                <div className="rounded-lg border p-3 bg-white shadow-sm">
-                  <img src={qrDataUrl} alt="VP QR" className="h-56 w-56" />
-                </div>
+                <div className="rounded-lg border p-3 bg-white shadow-sm"><img src={qrDataUrl} alt="VP QR" className="h-56 w-56" /></div>
                 <div className="text-center space-y-1 max-w-full">
                   <p className="text-sm font-medium">{selectedCard.displayName}</p>
                   <p className="text-xs text-muted-foreground font-mono break-all">{presentation?.presentationId}</p>
-                  {presentation?.expiresAt && (
-                    <p className="text-xs text-muted-foreground">หมดอายุ: {new Date(presentation.expiresAt).toLocaleString("th-TH")}</p>
-                  )}
+                  {presentation?.expiresAt && <p className="text-xs text-muted-foreground">หมดอายุ: {new Date(presentation.expiresAt).toLocaleString("th-TH")}</p>}
                 </div>
                 <div className="flex gap-3 w-full">
-                  <Button variant="outline" onClick={() => setQrMode(false)} className="flex-1 gap-2">
-                    <Eye className="h-4 w-4" />ดูรายละเอียด
-                  </Button>
-                  <Button variant="outline" onClick={handlePrintQR} className="flex-1 gap-2">
-                    <Printer className="h-4 w-4" />พิมพ์ QR
-                  </Button>
+                  <Button variant="outline" onClick={() => setQrMode(false)} className="flex-1 gap-2"><Eye className="h-4 w-4" />ดูรายละเอียด</Button>
+                  <Button variant="outline" onClick={() => { window.print(); toast.info("กำลังพิมพ์ VP QR"); }} className="flex-1 gap-2"><Printer className="h-4 w-4" />พิมพ์ QR</Button>
                 </div>
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+      {/* Selective Disclosure Dialog */}
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Shield className="h-5 w-5 text-primary" />Selective Disclosure</DialogTitle>
+            <DialogDescription>เลือกข้อมูลที่ต้องการแชร์ (SD-JWT)</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2 max-h-[300px] overflow-y-auto">
+            {Object.keys(disclosureFields).length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">ไม่มีข้อมูลใน Credential นี้</p>
+            ) : (
+              Object.entries(disclosureFields).map(([field, checked]) => (
+                <div key={field} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors">
+                  <Checkbox id={`sd-${field}`} checked={checked} onCheckedChange={(v) => setDisclosureFields(prev => ({ ...prev, [field]: !!v }))} />
+                  <Label htmlFor={`sd-${field}`} className="text-sm font-medium cursor-pointer flex-1">{field}</Label>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" onClick={() => setShareOpen(false)} className="flex-1">ยกเลิก</Button>
+            <Button onClick={handleShareConfirm} className="flex-1 gap-2"><Share2 className="h-4 w-4" />แชร์ VP</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </DashboardLayout>

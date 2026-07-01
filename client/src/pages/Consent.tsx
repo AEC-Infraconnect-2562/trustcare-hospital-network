@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
-import { ShieldCheck, FileText, Clock, XCircle, CheckCircle2, Info } from "lucide-react";
+import { ShieldCheck, FileText, Clock, XCircle, CheckCircle2, Info, History } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -21,6 +21,7 @@ const purposeLabels: Record<string, string> = {
 export default function Consent() {
   const { data: records, isLoading, refetch } = trpc.consent.records.useQuery({});
   const { data: policies } = trpc.consent.policies.useQuery({});
+  const { data: consentHistory } = trpc.consent.history.useQuery({});
   const [revokeId, setRevokeId] = useState<number | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
 
@@ -52,6 +53,7 @@ export default function Consent() {
           <TabsList>
             <TabsTrigger value="records" className="gap-2"><ShieldCheck className="h-3.5 w-3.5" />ความยินยอมของฉัน</TabsTrigger>
             <TabsTrigger value="policies" className="gap-2"><FileText className="h-3.5 w-3.5" />นโยบาย</TabsTrigger>
+            <TabsTrigger value="history" className="gap-2"><History className="h-3.5 w-3.5" />ประวัติ</TabsTrigger>
           </TabsList>
 
           <TabsContent value="records" className="mt-4">
@@ -124,6 +126,30 @@ export default function Consent() {
                 </Card>
               )) || <p className="text-center py-8 text-muted-foreground">ยังไม่มีนโยบาย</p>}
             </div>
+          </TabsContent>
+          <TabsContent value="history" className="mt-4">
+            {consentHistory && consentHistory.length > 0 ? (
+              <div className="space-y-2">
+                {consentHistory.map((h: any, idx: number) => (
+                  <Card key={idx} className="hover:shadow-sm transition-shadow">
+                    <CardContent className="p-3 flex items-center gap-3">
+                      <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 ${h.action === "consent.granted" ? "bg-emerald-100" : "bg-red-100"}`}>
+                        {h.action === "consent.granted" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-red-600" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{h.action === "consent.granted" ? "ให้ความยินยอม" : "ถอนความยินยอม"} • {purposeLabels[h.purpose] || h.purpose}</p>
+                        <p className="text-xs text-muted-foreground">ผู้ดำเนินการ: ผู้ป่วย #{h.actorId} • {h.timestamp ? new Date(h.timestamp).toLocaleString("th-TH") : "-"}</p>
+                      </div>
+                      <Badge variant={h.action === "consent.granted" ? "default" : "destructive"} className="text-[10px] shrink-0">
+                        {h.action === "consent.granted" ? "Grant" : "Revoke"}
+                      </Badge>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card><CardContent className="flex flex-col items-center py-16"><History className="h-12 w-12 text-muted-foreground/30 mb-4" /><p className="text-muted-foreground">ยังไม่มีประวัติการจัดการความยินยอม</p></CardContent></Card>
+            )}
           </TabsContent>
         </Tabs>
 

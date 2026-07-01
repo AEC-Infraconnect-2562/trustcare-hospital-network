@@ -491,6 +491,26 @@ export const appRouter = router({
     cards: protectedProcedure.query(async ({ ctx }) => {
       return db.listWalletCards(ctx.user.id);
     }),
+    cardsByCategory: protectedProcedure.query(async ({ ctx }) => {
+      const cards = await db.listWalletCards(ctx.user.id);
+      const allCreds = await db.listIssuedCredentials({ subjectId: ctx.user.id });
+      const credMap = new Map(allCreds.map((c: any) => [c.id, c]));
+      const enriched = cards.map((card: any) => {
+        const cred = credMap.get(card.credentialId);
+        return { ...card, credentialStatus: cred?.status || 'active', expiresAt: cred?.expiresAt || null };
+      });
+      const grouped: Record<string, any[]> = {};
+      for (const card of enriched) {
+        const cat = card.documentCategory || 'operations';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(card);
+      }
+      return grouped;
+    }),
+    superseded: protectedProcedure.query(async ({ ctx }) => {
+      const allCreds = await db.listIssuedCredentials({ subjectId: ctx.user.id });
+      return allCreds.filter((c: any) => c.status === 'revoked' || c.status === 'expired');
+    }),
     history: protectedProcedure.query(async ({ ctx }) => {
       return db.listPresentationHistory(ctx.user.id);
     }),
@@ -533,21 +553,31 @@ export const appRouter = router({
       if (presented?.trim().startsWith("{")) {
         const presentation = JSON.parse(presented);
         const result = verifyJsonPresentation({ presentation });
+        // TAO Trust Registry check
+        let taoTrust: { trusted: boolean; level: string; anchor: string; reason?: string } | null = null;
+        const firstCred = presentation.verifiableCredential?.[0];
+        if (firstCred) {
+          const issuerDid = typeof firstCred.issuer === "string" ? firstCred.issuer : firstCred.issuer?.id;
+          const credType = Array.isArray(firstCred.type) ? firstCred.type.find((t: string) => t !== "VerifiableCredential") || "VerifiableCredential" : firstCred.type;
+          if (issuerDid) taoTrust = await db.checkIssuerTrust(issuerDid, credType);
+        }
+        const effectiveTrustLevel = taoTrust && !taoTrust.trusted ? "red" : result.trustLevel;
         await db.createAuditEvent({
           action: "verifier.vp_json.verified",
           resourceType: "verifiable_presentation",
           resourceId: String(result.presentationId ?? "json-vp"),
-          details: { trustLevel: result.trustLevel, verified: result.verified, purpose: result.purpose },
+          details: { trustLevel: effectiveTrustLevel, verified: result.verified, purpose: result.purpose, taoTrust },
         });
         return {
-          trustLevel: result.trustLevel,
+          trustLevel: effectiveTrustLevel,
           verified: result.verified,
           issuer: "TrustCare JSON VP",
           holderDid: result.holderDid,
           credentials: presentation.verifiableCredential ?? [],
           highPriority: result.highPriority,
-          warnings: result.warnings,
+          warnings: taoTrust?.reason ? [...(result.warnings || []), `TAO: ${taoTrust.reason}`] : result.warnings,
           errors: result.errors,
+          taoTrust,
         };
       }
       if (presented?.startsWith("eyJ")) {
@@ -748,10 +778,37 @@ export const appRouter = router({
         resourceId: String(input.id),
         details: { reason: input.reason },
       });
-      return { success: true };
+            return { success: true };
+    }),
+    check: protectedProcedure.input(z.object({
+      patientId: z.number(),
+      purpose: z.enum(["treatment", "referral", "research", "insurance", "public_health", "emergency"]),
+      hospitalId: z.number().optional(),
+      doctorId: z.number().optional(),
+    })).query(async ({ input }) => {
+      const records = await db.listConsentRecords(input.patientId);
+      const active = records.find((r: any) =>
+        r.status === "granted" &&
+        r.purpose === input.purpose &&
+        (!input.hospitalId || r.grantedToHospitalId === input.hospitalId) &&
+        (!input.doctorId || r.grantedToDoctorId === input.doctorId) &&
+        (!r.expiresAt || new Date(r.expiresAt) > new Date())
+      );
+      return { hasConsent: !!active, consentId: active?.id || null, expiresAt: active?.expiresAt || null };
+    }),
+    history: protectedProcedure.input(z.object({
+      patientId: z.number().optional(),
+    })).query(async ({ ctx, input }) => {
+      const patientId = input.patientId || ctx.user.id;
+      const records = await db.listConsentRecords(patientId);
+      return records.map((r: any) => ({
+        ...r,
+        actorId: r.patientId,
+        action: r.status === "revoked" ? "consent.revoked" : "consent.granted",
+        timestamp: r.status === "revoked" ? r.revokedAt : r.grantedAt,
+      }));
     }),
   }),
-
   // ============================================================
   // REFERRAL MANAGEMENT
   // ============================================================
@@ -1177,7 +1234,113 @@ export const appRouter = router({
       return { success: true };
     }),
   }),
-
+  // ============================================================
+  // TAO TRUST FRAMEWORK
+  // ============================================================
+  tao: router({
+    issuers: protectedProcedure.input(z.object({
+      trustLevel: z.string().optional(),
+      organizationType: z.string().optional(),
+      trustAnchor: z.string().optional(),
+    }).optional()).query(async ({ input }) => {
+      return db.listTaoIssuers(input || undefined);
+    }),
+    createIssuer: adminProcedure.input(z.object({
+      did: z.string().min(1),
+      name: z.string().min(1),
+      nameEn: z.string().optional(),
+      organizationType: z.enum(["hospital", "clinic", "lab", "pharmacy", "government", "insurance", "international"]),
+      country: z.string().optional(),
+      jurisdiction: z.string().optional(),
+      trustLevel: z.enum(["accredited", "recognized", "self_declared", "pending", "suspended", "revoked"]).optional(),
+      accreditationBody: z.string().optional(),
+      accreditationId: z.string().optional(),
+      credentialTypesAllowed: z.any().optional(),
+      trustAnchor: z.enum(["etda", "gdhcn", "moph", "nhso", "self"]).optional(),
+      contactEmail: z.string().optional(),
+      contactUrl: z.string().optional(),
+      hospitalId: z.number().optional(),
+    })).mutation(async ({ input }) => {
+      const id = await db.createTaoIssuer(input as any);
+      return { id, success: true };
+    }),
+    updateIssuer: adminProcedure.input(z.object({
+      id: z.number(),
+      trustLevel: z.enum(["accredited", "recognized", "self_declared", "pending", "suspended", "revoked"]).optional(),
+      isActive: z.boolean().optional(),
+      credentialTypesAllowed: z.any().optional(),
+      trustAnchor: z.enum(["etda", "gdhcn", "moph", "nhso", "self"]).optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await db.updateTaoIssuer(id, data as any);
+      return { success: true };
+    }),
+    verifiers: protectedProcedure.input(z.object({
+      trustLevel: z.string().optional(),
+      organizationType: z.string().optional(),
+    }).optional()).query(async ({ input }) => {
+      return db.listTaoVerifiers(input || undefined);
+    }),
+    createVerifier: adminProcedure.input(z.object({
+      did: z.string().min(1),
+      name: z.string().min(1),
+      nameEn: z.string().optional(),
+      organizationType: z.enum(["hospital", "clinic", "insurance", "government", "employer", "border_control", "research"]),
+      country: z.string().optional(),
+      trustLevel: z.enum(["accredited", "recognized", "self_declared", "pending", "suspended", "revoked"]).optional(),
+      credentialTypesAccepted: z.any().optional(),
+      purposesAllowed: z.any().optional(),
+      trustAnchor: z.enum(["etda", "gdhcn", "moph", "nhso", "self"]).optional(),
+      contactEmail: z.string().optional(),
+      hospitalId: z.number().optional(),
+    })).mutation(async ({ input }) => {
+      const id = await db.createTaoVerifier(input as any);
+      return { id, success: true };
+    }),
+    updateVerifier: adminProcedure.input(z.object({
+      id: z.number(),
+      trustLevel: z.enum(["accredited", "recognized", "self_declared", "pending", "suspended", "revoked"]).optional(),
+      isActive: z.boolean().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await db.updateTaoVerifier(id, data as any);
+      return { success: true };
+    }),
+    policies: protectedProcedure.input(z.object({
+      credentialType: z.string().optional(),
+      enforcementMode: z.string().optional(),
+    }).optional()).query(async ({ input }) => {
+      return db.listTaoPolicies(input || undefined);
+    }),
+    createPolicy: adminProcedure.input(z.object({
+      credentialType: z.string().min(1),
+      requiredTrustLevel: z.enum(["accredited", "recognized", "self_declared", "any"]).optional(),
+      requiredTrustAnchor: z.enum(["etda", "gdhcn", "moph", "nhso", "any"]).optional(),
+      enforcementMode: z.enum(["strict", "advisory", "off"]).optional(),
+      description: z.string().optional(),
+      descriptionEn: z.string().optional(),
+    })).mutation(async ({ input }) => {
+      const id = await db.createTaoPolicy(input as any);
+      return { id, success: true };
+    }),
+    updatePolicy: adminProcedure.input(z.object({
+      id: z.number(),
+      requiredTrustLevel: z.enum(["accredited", "recognized", "self_declared", "any"]).optional(),
+      requiredTrustAnchor: z.enum(["etda", "gdhcn", "moph", "nhso", "any"]).optional(),
+      enforcementMode: z.enum(["strict", "advisory", "off"]).optional(),
+      isActive: z.boolean().optional(),
+    })).mutation(async ({ input }) => {
+      const { id, ...data } = input;
+      await db.updateTaoPolicy(id, data as any);
+      return { success: true };
+    }),
+    checkIssuerTrust: protectedProcedure.input(z.object({
+      issuerDid: z.string(),
+      credentialType: z.string(),
+    })).query(async ({ input }) => {
+      return db.checkIssuerTrust(input.issuerDid, input.credentialType);
+    }),
+  }),
   // ============================================================
   // SMART HEALTH LINKS (SHL)
   // ============================================================

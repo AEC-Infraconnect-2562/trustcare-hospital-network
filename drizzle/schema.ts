@@ -573,6 +573,73 @@ export type TrustRegistryEntry = typeof trustRegistry.$inferSelect;
 export type InsertTrustRegistryEntry = typeof trustRegistry.$inferInsert;
 
 // ============================================================
+// TAO TRUST FRAMEWORK (ETSI TL / GDHCN aligned)
+// ============================================================
+export const taoTrustedIssuers = mysqlTable("tao_trusted_issuers", {
+  id: int("id").autoincrement().primaryKey(),
+  did: varchar("did", { length: 512 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  nameEn: varchar("nameEn", { length: 255 }),
+  organizationType: mysqlEnum("organizationType", ["hospital", "clinic", "lab", "pharmacy", "government", "insurance", "international"]).notNull(),
+  country: varchar("country", { length: 3 }).default("THA").notNull(),
+  jurisdiction: varchar("jurisdiction", { length: 100 }),
+  trustLevel: mysqlEnum("trustLevel", ["accredited", "recognized", "self_declared", "pending", "suspended", "revoked"]).default("pending").notNull(),
+  accreditationBody: varchar("accreditationBody", { length: 255 }),
+  accreditationId: varchar("accreditationId", { length: 255 }),
+  accreditedAt: timestamp("accreditedAt"),
+  accreditationExpires: timestamp("accreditationExpires"),
+  credentialTypesAllowed: json("credentialTypesAllowed"),
+  publicKeyJwk: json("publicKeyJwk"),
+  x509Certificate: text("x509Certificate"),
+  trustAnchor: mysqlEnum("trustAnchor", ["etda", "gdhcn", "moph", "nhso", "self"]).default("self").notNull(),
+  contactEmail: varchar("contactEmail", { length: 320 }),
+  contactUrl: text("contactUrl"),
+  hospitalId: int("hospitalId"),
+  isActive: boolean("isActive").default(true).notNull(),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type TaoTrustedIssuer = typeof taoTrustedIssuers.$inferSelect;
+export type InsertTaoTrustedIssuer = typeof taoTrustedIssuers.$inferInsert;
+
+export const taoTrustedVerifiers = mysqlTable("tao_trusted_verifiers", {
+  id: int("id").autoincrement().primaryKey(),
+  did: varchar("did", { length: 512 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  nameEn: varchar("nameEn", { length: 255 }),
+  organizationType: mysqlEnum("organizationType", ["hospital", "clinic", "insurance", "government", "employer", "border_control", "research"]).notNull(),
+  country: varchar("country", { length: 3 }).default("THA").notNull(),
+  trustLevel: mysqlEnum("trustLevel", ["accredited", "recognized", "self_declared", "pending", "suspended", "revoked"]).default("pending").notNull(),
+  credentialTypesAccepted: json("credentialTypesAccepted"),
+  purposesAllowed: json("purposesAllowed"),
+  trustAnchor: mysqlEnum("trustAnchor", ["etda", "gdhcn", "moph", "nhso", "self"]).default("self").notNull(),
+  contactEmail: varchar("contactEmail", { length: 320 }),
+  hospitalId: int("hospitalId"),
+  isActive: boolean("isActive").default(true).notNull(),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type TaoTrustedVerifier = typeof taoTrustedVerifiers.$inferSelect;
+export type InsertTaoTrustedVerifier = typeof taoTrustedVerifiers.$inferInsert;
+
+export const taoTrustPolicies = mysqlTable("tao_trust_policies", {
+  id: int("id").autoincrement().primaryKey(),
+  credentialType: varchar("credentialType", { length: 100 }).notNull(),
+  requiredTrustLevel: mysqlEnum("requiredTrustLevel", ["accredited", "recognized", "self_declared", "any"]).default("recognized").notNull(),
+  requiredTrustAnchor: mysqlEnum("requiredTrustAnchor", ["etda", "gdhcn", "moph", "nhso", "any"]).default("any").notNull(),
+  enforcementMode: mysqlEnum("enforcementMode", ["strict", "advisory", "off"]).default("advisory").notNull(),
+  description: text("description"),
+  descriptionEn: text("descriptionEn"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type TaoTrustPolicy = typeof taoTrustPolicies.$inferSelect;
+export type InsertTaoTrustPolicy = typeof taoTrustPolicies.$inferInsert;
+
+// ============================================================
 // SMART HEALTH LINKS (SHL)
 // ============================================================
 export const smartHealthLinks = mysqlTable("smart_health_links", {
