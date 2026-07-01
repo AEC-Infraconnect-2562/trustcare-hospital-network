@@ -276,3 +276,32 @@
 - [x] UI verified: /shl shows 6 packages, /shl-viewer ready
 - [x] All 152 tests passing
 - [x] Validation report written (validation-report-shl-reseed.md)
+
+## v4.0 - Issuer Detail + Wallet UX + Consent & Trust Registry Redesign
+
+### Issuer & Wallet Enhancement (from RU_VC patterns)
+- [ ] Add clickable credential rows in Issuer → opens detail page/dialog
+- [ ] Credential detail view shows VP data, issuer info, status, QR code
+- [ ] Make Wallet visible to all roles (not just patient)
+- [ ] Wallet card detail dialog with gradient header, VP info, QR generation
+- [ ] Wallet share/present flow with selective disclosure option
+- [ ] Enhance Verifier QR scanner UX (camera + paste modes already exist)
+
+### Contextual Consent Redesign (from spec)
+- [ ] Remove sidebar-only layout, create full consent management page
+- [ ] ConsentBanner component for inline consent collection
+- [ ] ConsentGate wrapper component for conditional rendering
+- [ ] useConsent hook for programmatic consent checks
+- [ ] Consent API: grant, revoke, check, history endpoints
+- [ ] Consent types: treatment, referral, research, marketing, data_sharing
+- [ ] Consent audit trail with timestamps and actor info
+
+### TAO Trust Registry Redesign (from spec)
+- [ ] Create tao_trusted_issuers table (DID, name, status, trust_level, accreditation)
+- [ ] Create tao_trusted_verifiers table
+- [ ] Create tao_trust_policies table (credential_type → required trust level)
+- [ ] Migration for new TAO tables
+- [ ] Trust Registry UI with tabs: Issuers, Verifiers, Policies
+- [ ] Trust level badges (accredited, recognized, self-declared)
+- [ ] Integration with verification flow (check issuer trust level)
+- [ ] Seed TAO trust data for 3 hospitals

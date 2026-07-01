@@ -29,6 +29,7 @@ import PatientIdentity from "./pages/PatientIdentity";
 import PortabilityWorkbench from "./pages/PortabilityWorkbench";
 import MakerQueue from "./pages/MakerQueue";
 import CheckerQueue from "./pages/CheckerQueue";
+import CredentialDetail from "./pages/CredentialDetail";
 import RoleGuard from "./components/RoleGuard";
 
 function Router() {
@@ -39,6 +40,7 @@ function Router() {
       <Route path="/hospitals" component={Hospitals} />
       <Route path="/wallet" component={Wallet} />
       <Route path="/issuer" component={Issuer} />
+      <Route path="/issuer/:id" component={CredentialDetail} />
       <Route path="/maker-queue" component={MakerQueue} />
       <Route path="/checker-queue" component={CheckerQueue} />
       <Route path="/verifier" component={Verifier} />

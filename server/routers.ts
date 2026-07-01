@@ -1,4 +1,4 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, isSingletonType } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -2277,6 +2277,34 @@ async function issueCredentialFromRequest(input: {
 }) {
   const request = input.request;
   const documentData = request.documentData ?? {};
+
+  // ── Singleton enforcement: revoke previous active credential if type is singleton ──
+  if (isSingletonType(request.type) && request.subjectId && request.issuerHospitalId) {
+    const existingActive = await db.listIssuedCredentials({
+      subjectId: request.subjectId,
+      status: "active",
+    });
+    const previousSingleton = existingActive.find(
+      (c: any) => c.type === request.type && c.issuerHospitalId === request.issuerHospitalId
+    );
+    if (previousSingleton) {
+      await db.revokeCredential(previousSingleton.id, "superseded");
+      await db.createAuditEvent({
+        actorId: input.checkerId,
+        actorRole: input.checkerRole,
+        hospitalId: request.issuerHospitalId,
+        action: "credential_superseded",
+        resourceType: "issued_credential",
+        resourceId: String(previousSingleton.id),
+        details: {
+          oldCredentialId: previousSingleton.credentialId,
+          type: request.type,
+          reason: "superseded",
+          newRequestId: request.requestId,
+        },
+      });
+    }
+  }
   const hospital = request.issuerHospitalId ? await db.getHospitalById(request.issuerHospitalId) : undefined;
   const issuer = {
     id: String(request.issuerHospitalId || documentData.issuer?.id || "trustcare-network"),

@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { trpc } from "@/lib/trpc";
 import { BadgeCheck, Plus, FileText, Ban, Clock, ClipboardCheck } from "lucide-react";
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { toast } from "sonner";
 
 const typeLabels: Record<string, string> = {
@@ -56,6 +57,7 @@ const requestStatusLabels: Record<string, { label: string; variant: "default" | 
 };
 
 export default function Issuer() {
+  const [, setLocation] = useLocation();
   const { data: credentials, isLoading, refetch } = trpc.credential.list.useQuery({});
   const { data: templates } = trpc.credential.templates.useQuery({});
   const { data: requests, refetch: refetchRequests } = trpc.credential.issuanceRequests.useQuery({ limit: 50 });
@@ -115,7 +117,7 @@ export default function Issuer() {
                       {credentials.map((cred: any) => {
                         const status = statusLabels[cred.status] || statusLabels.active;
                         return (
-                          <TableRow key={cred.id}>
+                          <TableRow key={cred.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setLocation(`/issuer/${cred.id}`)}>
                             <TableCell className="font-medium text-sm">{typeLabels[cred.type] || cred.type}</TableCell>
                             <TableCell className="font-mono text-xs text-muted-foreground">{cred.credentialId.slice(0, 20)}...</TableCell>
                             <TableCell><Badge variant={status.variant} className="text-[10px]">{status.label}</Badge></TableCell>
@@ -123,7 +125,7 @@ export default function Issuer() {
                             <TableCell className="text-sm">{cred.expiresAt ? new Date(cred.expiresAt).toLocaleDateString("th-TH") : "—"}</TableCell>
                             <TableCell className="text-right">
                               {cred.status === "active" && (
-                                <Button size="sm" variant="ghost" className="text-destructive h-7 text-xs" onClick={() => setRevokeId(cred.id)}>
+                                <Button size="sm" variant="ghost" className="text-destructive h-7 text-xs" onClick={(e) => { e.stopPropagation(); setRevokeId(cred.id); }}>
                                   <Ban className="h-3 w-3 mr-1" />เพิกถอน
                                 </Button>
                               )}
