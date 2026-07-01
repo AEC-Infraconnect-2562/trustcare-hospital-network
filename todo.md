@@ -101,3 +101,11 @@
 - [x] Enhanced Referral page (cross-branch workflow, cross-border workflow, packet generation, counter-referral)
 - [x] Executive Dashboard page (adoption, referral KPIs, claim metrics, medical tourist metrics, integration health)
 - [x] Patient Identity page (linked identifiers, branch HN/MRN, MPI status)
+
+## PR Merges
+- [x] PR #1 merged: Patient Data Portability Layer (FHIR canonicalization, VC issuance/verification, sync-back planning, Portability Workbench UI)
+  - server/portability/ module (fhir.ts, vc.ts, syncBack.ts, policy.ts, clinicalDocuments.ts, types.ts, utils.ts)
+  - PortabilityWorkbench.tsx UI with 4 tabs (Canonical, VC Documents, Verify, Sync Back)
+  - Extended credential enums: medical_certificate, prescription, claim_package, sync_receipt
+  - E2E test + unit tests (12 tests passing)
+  - GitHub Actions CI (advisory, non-blocking)
