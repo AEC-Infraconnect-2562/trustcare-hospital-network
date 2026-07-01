@@ -24,7 +24,7 @@ function createContext(): TrpcContext {
 }
 
 describe("portability E2E contract", () => {
-  it("creates a cross-border VP, verifies it, issues clinical document VCs, and plans HIS sync-back", async () => {
+  it("creates a cross-border VP, verifies it, issues clinical document VCs, and closes HIS sync-back with a receipt VC", async () => {
     const caller = appRouter.createCaller(createContext());
     const hisInput = {
       sourceFormat: "db_view" as const,
@@ -97,5 +97,15 @@ describe("portability E2E contract", () => {
 
     expect(plan.status).toBe("ready");
     expect(plan.outboundPayload.protocol).toBe("FHIR REST");
+
+    const syncReceipt = await caller.portability.executeSyncBack({
+      plan,
+      holderDid: "did:key:e2e-patient",
+      subjectId: "patient-e2e",
+    });
+
+    expect(syncReceipt.execution.status).toBe("accepted");
+    expect(syncReceipt.syncReceiptCredential.type).toBe("SyncReceiptCredential");
+    expect((await caller.portability.verify({ jwt: syncReceipt.syncReceiptCredential.jwt, kind: "credential" })).verified).toBe(true);
   });
 });

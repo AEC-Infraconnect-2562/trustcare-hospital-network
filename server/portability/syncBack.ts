@@ -1,4 +1,12 @@
-import type { DataQualityIssue, JsonRecord, LegacySyncTarget, SyncBackPlan, SyncBackRequest } from "./types";
+import type {
+  DataQualityIssue,
+  JsonRecord,
+  LegacySyncTarget,
+  SyncBackExecutionOptions,
+  SyncBackExecutionResult,
+  SyncBackPlan,
+  SyncBackRequest,
+} from "./types";
 import { compactId, isoNow, sha256 } from "./utils";
 
 const FHIR_RESOURCE_TO_HL7_EVENT: Record<string, string> = {
@@ -75,20 +83,75 @@ export function createSyncBackPlan(request: SyncBackRequest): SyncBackPlan {
   };
 }
 
-export function createSyncReceipt(plan: SyncBackPlan, result: { accepted: boolean; targetVersion?: string; targetReference?: string; message?: string }): JsonRecord {
+export function executeSyncBackPlan(plan: SyncBackPlan, options: SyncBackExecutionOptions): SyncBackExecutionResult {
+  const executedAt = options.executedAt ?? isoNow();
+  const blockedIssue = plan.issues.find((issue) => issue.severity === "error");
+  const accepted = options.accepted ?? (plan.status === "ready" || (plan.status === "manual_review_required" && options.allowManualReview === true));
+  const queuedForReview = plan.status === "manual_review_required" && options.allowManualReview !== true && options.accepted === undefined;
+
+  if (plan.status === "blocked" || blockedIssue) {
+    return buildExecutionResult(plan, {
+      actorId: options.actorId,
+      accepted: false,
+      status: "rejected",
+      ackCode: "ERR_BLOCKED",
+      message: options.message ?? blockedIssue?.message ?? "Sync-back plan is blocked by validation errors.",
+      executedAt,
+      targetReference: options.targetReference,
+      targetVersion: options.targetVersion,
+    });
+  }
+
+  if (queuedForReview) {
+    return buildExecutionResult(plan, {
+      actorId: options.actorId,
+      accepted: false,
+      status: "queued_for_review",
+      ackCode: "PENDING_REVIEW",
+      message: options.message ?? "Sync-back plan requires manual review before writing to the target.",
+      executedAt,
+      targetReference: options.targetReference ?? defaultTargetReference(plan),
+      targetVersion: options.targetVersion,
+    });
+  }
+
+  return buildExecutionResult(plan, {
+    actorId: options.actorId,
+    accepted,
+    status: accepted ? "accepted" : "rejected",
+    ackCode: accepted ? acceptedAckCode(plan) : "REJECTED",
+    message: options.message ?? (accepted ? "Sync-back payload accepted by target adapter." : "Sync-back payload rejected by target adapter."),
+    executedAt,
+    targetReference: options.targetReference ?? defaultTargetReference(plan),
+    targetVersion: options.targetVersion ?? defaultTargetVersion(plan),
+  });
+}
+
+export function createSyncReceipt(plan: SyncBackPlan, result: {
+  accepted: boolean;
+  status?: SyncBackExecutionResult["status"];
+  targetVersion?: string;
+  targetReference?: string;
+  ackCode?: string;
+  message?: string;
+  executedAt?: string;
+  consistency?: SyncBackExecutionResult["consistency"];
+}): JsonRecord {
   return {
     resourceType: "TrustcareSyncReceipt",
     id: compactId("sync-receipt", { plan, result }),
     planId: plan.id,
     targetId: plan.targetId,
     targetKind: plan.targetKind,
-    status: result.accepted ? "accepted" : "rejected",
+    status: result.status ?? (result.accepted ? "accepted" : "rejected"),
+    ackCode: result.ackCode,
     idempotencyKey: plan.idempotencyKey,
     consistencyKey: plan.consistencyKey,
     targetVersion: result.targetVersion,
     targetReference: result.targetReference,
     message: result.message,
-    issuedAt: isoNow(),
+    consistency: result.consistency,
+    issuedAt: result.executedAt ?? isoNow(),
   };
 }
 
@@ -229,6 +292,76 @@ function rollbackHint(target: LegacySyncTarget): string | undefined {
   if (target.kind === "hl7v2") return "Send compensating update/cancel message and queue manual reconciliation.";
   if (target.kind === "manual_queue") return "Mark manual queue item rejected; no target write occurred.";
   return "Use reconciliation job to compare source and target checksums and emit corrective outbox item.";
+}
+
+function buildExecutionResult(plan: SyncBackPlan, input: {
+  actorId: string;
+  accepted: boolean;
+  status: SyncBackExecutionResult["status"];
+  ackCode: string;
+  targetVersion?: string;
+  targetReference?: string;
+  message: string;
+  executedAt: string;
+}): SyncBackExecutionResult {
+  const readBack = input.accepted
+    ? {
+        resourceType: "TrustcareSyncReadBack",
+        targetReference: input.targetReference,
+        targetVersion: input.targetVersion,
+        idempotencyKey: plan.idempotencyKey,
+        consistencyKey: plan.consistencyKey,
+        payloadHash: sha256(plan.outboundPayload),
+        readAt: input.executedAt,
+      }
+    : undefined;
+  const targetChecksum = readBack ? sha256(readBack) : undefined;
+  return {
+    id: compactId("sync-exec", { planId: plan.id, targetReference: input.targetReference, executedAt: input.executedAt }),
+    planId: plan.id,
+    targetId: plan.targetId,
+    targetKind: plan.targetKind,
+    accepted: input.accepted,
+    status: input.status,
+    ackCode: input.ackCode,
+    targetVersion: input.targetVersion,
+    targetReference: input.targetReference,
+    message: input.message,
+    executedAt: input.executedAt,
+    actorId: input.actorId,
+    readBack,
+    consistency: {
+      idempotencyKey: plan.idempotencyKey,
+      consistencyKey: plan.consistencyKey,
+      targetChecksum,
+      matched: input.accepted && Boolean(targetChecksum),
+    },
+  };
+}
+
+function acceptedAckCode(plan: SyncBackPlan): string {
+  if (plan.targetKind === "fhir_rest") return "HTTP_200";
+  if (plan.targetKind === "hl7v2") return "AA";
+  if (plan.targetKind === "db_view") return "OUTBOX_ACCEPTED";
+  if (plan.targetKind === "csv_batch") return "BATCH_QUEUED";
+  if (plan.targetKind === "manual_queue") return "REVIEW_ACCEPTED";
+  return "ACCEPTED";
+}
+
+function defaultTargetVersion(plan: SyncBackPlan): string | undefined {
+  if (plan.targetKind === "manual_queue") return undefined;
+  return `W/"${plan.consistencyKey.slice(0, 12)}"`;
+}
+
+function defaultTargetReference(plan: SyncBackPlan): string {
+  const resourceType = String(plan.outboundPayload.resourceType ?? plan.outboundPayload.body?.resourceType ?? plan.outboundPayload.row?.resource_type ?? plan.outboundPayload.payload?.resourceType ?? "Resource");
+  const resourceId = String(plan.outboundPayload.body?.id ?? plan.outboundPayload.row?.payload_json?.id ?? plan.outboundPayload.payload?.id ?? plan.idempotencyKey.slice(0, 12));
+  if (plan.targetKind === "fhir_rest") return `${resourceType}/${resourceId}`;
+  if (plan.targetKind === "hl7v2") return `ACK/${String(plan.outboundPayload.msh10 ?? plan.idempotencyKey.slice(0, 20))}`;
+  if (plan.targetKind === "db_view") return `trustcare_sync_outbox/${plan.idempotencyKey.slice(0, 16)}`;
+  if (plan.targetKind === "csv_batch") return `${String(plan.outboundPayload.filePrefix ?? "trustcare-batch")}.csv#${plan.idempotencyKey.slice(0, 8)}`;
+  if (plan.targetKind === "manual_queue") return `manual-reconciliation/${plan.id.slice(0, 16)}`;
+  return `rest-sync/${resourceType}/${resourceId}`;
 }
 
 function renderHl7LikePayload(resource: JsonRecord): JsonRecord {

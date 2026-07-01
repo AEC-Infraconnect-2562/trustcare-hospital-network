@@ -181,3 +181,35 @@ export interface SyncBackPlan {
   status: "ready" | "manual_review_required" | "blocked";
   issues: DataQualityIssue[];
 }
+
+export interface SyncBackExecutionResult {
+  id: string;
+  planId: string;
+  targetId: string;
+  targetKind: SyncTargetKind;
+  accepted: boolean;
+  status: "accepted" | "rejected" | "queued_for_review";
+  ackCode: string;
+  targetVersion?: string;
+  targetReference?: string;
+  message: string;
+  executedAt: string;
+  actorId: string;
+  readBack?: JsonRecord;
+  consistency: {
+    idempotencyKey: string;
+    consistencyKey: string;
+    targetChecksum?: string;
+    matched: boolean;
+  };
+}
+
+export interface SyncBackExecutionOptions {
+  actorId: string;
+  accepted?: boolean;
+  targetVersion?: string;
+  targetReference?: string;
+  message?: string;
+  allowManualReview?: boolean;
+  executedAt?: string;
+}

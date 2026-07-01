@@ -70,6 +70,14 @@ export default function PortabilityWorkbench() {
     onSuccess: () => toast.success("Sync-back plan generated"),
     onError: (error) => toast.error(error.message),
   });
+  const syncExecute = trpc.portability.executeSyncBack.useMutation({
+    onSuccess: (data) => {
+      setLatestJwt(data.syncReceiptCredential.jwt);
+      setVerifyInput(data.syncReceiptCredential.jwt);
+      toast.success("Sync receipt VC issued");
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
   const parsedPayload = useMemo(() => {
     try {
@@ -267,6 +275,19 @@ export default function PortabilityWorkbench() {
                   >
                     Plan MedicationRequest Sync
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={!syncPlan.data || syncExecute.isPending}
+                    onClick={() => syncPlan.data && syncExecute.mutate({
+                      plan: syncPlan.data as any,
+                      subjectId: "HN-10045",
+                      holderDid: "did:key:patient-demo",
+                      allowManualReview: true,
+                    })}
+                  >
+                    Execute Sync and Issue Receipt VC
+                  </Button>
                   <div className="text-xs text-muted-foreground">
                     {syncTargets.data?.map((target) => (
                       <p key={target.id}>{target.name}: {target.kind}, {target.writeMode}</p>
@@ -274,7 +295,7 @@ export default function PortabilityWorkbench() {
                   </div>
                 </CardContent>
               </Card>
-              <ResultCard title="Sync Plan Result" data={syncPlan.data} />
+              <ResultCard title="Sync Execution Result" data={syncExecute.data ? { plan: syncPlan.data, ...syncExecute.data } : syncPlan.data} />
             </div>
           </TabsContent>
         </Tabs>

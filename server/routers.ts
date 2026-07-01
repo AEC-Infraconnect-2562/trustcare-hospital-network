@@ -11,8 +11,10 @@ import {
   canonicalizeHisPayload,
   createPortabilityPacket,
   createSyncBackPlan,
+  executeSyncBackPlan,
   issueMedicalCertificateVc,
   issuePrescriptionVc,
+  issueSyncReceiptVc,
   RECOMMENDED_SYNC_TARGETS,
   verifyCredential,
   verifyPresentation,
@@ -1274,6 +1276,75 @@ export const appRouter = router({
       });
       return plan;
     }),
+
+    executeSyncBack: protectedProcedure.input(z.object({
+      plan: z.object({
+        id: z.string(),
+        targetId: z.string(),
+        targetKind: z.enum(["fhir_rest", "hl7v2", "db_view", "rest_api", "csv_batch", "manual_queue"]),
+        operation: z.enum(["create", "update", "upsert", "append", "revoke"]),
+        idempotencyKey: z.string(),
+        consistencyKey: z.string(),
+        outboundPayload: z.any(),
+        preconditions: z.array(z.any()),
+        rollbackHint: z.string().optional(),
+        status: z.enum(["ready", "manual_review_required", "blocked"]),
+        issues: z.array(z.object({
+          ruleId: z.string(),
+          severity: z.enum(["error", "warning"]),
+          resourceType: z.string().optional(),
+          resourceId: z.string().optional(),
+          message: z.string(),
+        })),
+      }).passthrough(),
+      issuer: z.object({
+        id: z.string(),
+        name: z.string(),
+        did: z.string(),
+        country: z.string().optional(),
+        trustDomain: z.string().optional(),
+      }).optional(),
+      holderDid: z.string().optional(),
+      subjectId: z.string().optional(),
+      accepted: z.boolean().optional(),
+      targetVersion: z.string().optional(),
+      targetReference: z.string().optional(),
+      message: z.string().optional(),
+      allowManualReview: z.boolean().optional(),
+      audience: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const execution = executeSyncBackPlan(input.plan as any, {
+        actorId: String(ctx.user.id),
+        accepted: input.accepted,
+        targetVersion: input.targetVersion,
+        targetReference: input.targetReference,
+        message: input.message,
+        allowManualReview: input.allowManualReview ?? true,
+      });
+      const syncReceiptCredential = await issueSyncReceiptVc({
+        issuer: input.issuer ?? defaultIssuerProfile(),
+        holderDid: input.holderDid ?? defaultHolderDid(ctx.user.id),
+        subjectId: input.subjectId ?? syncReceiptSubjectId(input.plan, defaultHolderDid(ctx.user.id)),
+        plan: input.plan as any,
+        execution,
+        audience: input.audience,
+      });
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "portability.sync_back.executed",
+        resourceType: "sync_receipt_credential",
+        resourceId: syncReceiptCredential.id,
+        details: {
+          planId: input.plan.id,
+          status: execution.status,
+          targetId: execution.targetId,
+          targetReference: execution.targetReference,
+          credentialDigest: syncReceiptCredential.digest,
+        },
+      });
+      return { execution, syncReceiptCredential };
+    }),
   }),
 
   // ============================================================
@@ -1321,4 +1392,14 @@ function defaultIssuerProfile() {
 
 function defaultHolderDid(userId: number) {
   return `did:key:trustcare-patient-${userId}`;
+}
+
+function syncReceiptSubjectId(plan: any, fallback: string) {
+  return String(
+    plan?.outboundPayload?.row?.business_key
+      ?? plan?.outboundPayload?.body?.subject?.reference
+      ?? plan?.outboundPayload?.payload?.subject?.reference
+      ?? plan?.outboundPayload?.conditionalUrl
+      ?? fallback
+  );
 }

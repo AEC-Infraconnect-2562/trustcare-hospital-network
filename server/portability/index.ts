@@ -8,6 +8,7 @@ export * from "./clinicalDocuments";
 import { buildMedicalCertificateFhir, buildPrescriptionMedicationRequests } from "./clinicalDocuments";
 import { canonicalizeHisPayload } from "./fhir";
 import { decideAccess, defaultScopesForContext, purposeForContext } from "./policy";
+import { createSyncReceipt } from "./syncBack";
 import type {
   ConsentGrant,
   ContextPacket,
@@ -16,6 +17,8 @@ import type {
   IssuerProfile,
   JsonRecord,
   PortabilityContext,
+  SyncBackExecutionResult,
+  SyncBackPlan,
 } from "./types";
 import {
   consentReceiptClaims,
@@ -205,6 +208,45 @@ export async function issuePrescriptionVc(input: {
     }),
     evidence: [{ type: "FHIRMedicationRequestBundle", digest: sha256(medicationRequests), resourceCount: medicationRequests.length }],
     validDays: input.dispenseWindowDays ?? 30,
+    audience: input.audience,
+  });
+}
+
+export async function issueSyncReceiptVc(input: {
+  issuer: IssuerProfile;
+  holderDid: string;
+  subjectId: string;
+  plan: SyncBackPlan;
+  execution: SyncBackExecutionResult;
+  audience?: string;
+}): Promise<IssuedVc> {
+  const receipt = createSyncReceipt(input.plan, input.execution);
+  return issueCredential({
+    type: "SyncReceiptCredential",
+    issuer: input.issuer,
+    subjectId: input.subjectId,
+    subjectDid: input.holderDid,
+    claims: {
+      receiptType: "his_sync_back",
+      planId: input.plan.id,
+      targetId: input.plan.targetId,
+      targetKind: input.plan.targetKind,
+      operation: input.plan.operation,
+      status: input.execution.status,
+      accepted: input.execution.accepted,
+      ackCode: input.execution.ackCode,
+      targetReference: input.execution.targetReference,
+      targetVersion: input.execution.targetVersion,
+      idempotencyKey: input.plan.idempotencyKey,
+      consistencyKey: input.plan.consistencyKey,
+      executedAt: input.execution.executedAt,
+      receipt,
+    },
+    evidence: [
+      { type: "SyncBackPlan", digest: sha256(input.plan), resourceId: input.plan.id },
+      { type: "SyncBackExecution", digest: sha256(input.execution), resourceId: input.execution.id },
+    ],
+    validDays: 365,
     audience: input.audience,
   });
 }
