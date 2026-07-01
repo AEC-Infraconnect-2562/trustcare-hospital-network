@@ -116,6 +116,15 @@
   - Workbench "Execute Sync and Issue Receipt VC" button
   - CI fix (pnpm version from packageManager), analytics script conditional injection
   - Unit + E2E tests updated (13 tests total)
+- [x] PR #3 merged: Add production trust hardening
+  - Asymmetric JWK signing (ES256/EdDSA) with JWKS endpoint
+  - Trust registry verification mode (off/advisory/required)
+  - Credential status events + revocation checking (BitstringStatusListEntry)
+  - Sync reconciliation jobs (read_back/ack_replay/manual_review)
+  - Sync adapter manifest
+  - Production tab in Portability Workbench
+  - Production hardening runbook
+  - credential_status_events + sync_reconciliation_jobs tables
 
 ## Future Enhancements (Backlog)
 - [ ] Demo Seed Data — สร้าง script เพิ่มโรงพยาบาลตัวอย่าง 3-5 แห่ง พร้อมผู้ป่วย, VC, Consent, Referral ตัวอย่างเพื่อทดสอบ flow ข้ามโรงพยาบาลได้ทันที
