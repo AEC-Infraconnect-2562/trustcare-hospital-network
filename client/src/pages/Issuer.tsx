@@ -14,6 +14,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 const typeLabels: Record<string, string> = {
+  medical_certificate: "Medical Certificate",
+  prescription: "Prescription",
+  claim_package: "Claim Package",
+  sync_receipt: "Sync Receipt",
   patient_identity: "บัตรประจำตัวผู้ป่วย",
   consent_receipt: "ใบรับรองความยินยอม",
   patient_summary: "สรุปข้อมูลผู้ป่วย",

@@ -22,6 +22,13 @@
       "when": 1782889046281,
       "tag": "0002_equal_stellaris",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1782895800000,
+      "tag": "0003_patient_portability_vc_documents",
+      "breakpoints": true
     }
   ]
 }

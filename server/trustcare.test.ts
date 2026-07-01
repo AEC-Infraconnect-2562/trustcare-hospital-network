@@ -55,6 +55,7 @@ describe("Trustcare Hospital Network - Router Structure", () => {
     expect(caller.consent).toBeDefined();
     expect(caller.referral).toBeDefined();
     expect(caller.fhir).toBeDefined();
+    expect(caller.portability).toBeDefined();
     expect(caller.terminology).toBeDefined();
     expect(caller.audit).toBeDefined();
     expect(caller.dashboard).toBeDefined();
