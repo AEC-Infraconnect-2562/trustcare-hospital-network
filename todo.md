@@ -402,3 +402,64 @@
 ## v2.7.2 - Mobile Avatar Fix & VP Scroll Fix
 - [x] Fix avatar image not showing on mobile (works on desktop but not mobile)
 - [x] Fix VP detail dialog cannot scroll on mobile (content cut off, no overflow scroll)
+
+## v3.6 - Care Transition Platform (PR #8 + Deep Research Enhancement)
+### Backend & Data
+- [x] Merge PR #8 (codex/referral-partner-portal-care-transition) - 8 new tables, careTransition + partnerPortal routers
+- [x] Apply migration 0012_care_transition_partner_portal.sql
+- [x] Validate all 8 new tables (care_transition_case_events, case_documents, case_tasks, partner_source_connectors, partner_source_attestations, care_packages, care_package_items, case_decisions)
+- [x] Seed connectors: internal_referral, cross_border, medical_tourist, external_partner (5 connectors)
+- [x] Seed cases: 1 internal referral, 1 cross-border outbound, 1 medical tourist, 1 partner inbound (4 cases)
+- [x] Seed documents: at least 3 per case (referral_letter, lab_report, patient_summary, passport, insurance_card, etc.)
+- [x] Seed tasks: initialize default tasks per case type
+- [x] Seed decisions: at least 1 clinical acceptance per case
+- [ ] Generate care package via real backend path (FHIR Bundle + SHL + VP)
+- [x] CareTransitionWorkspace Timeline tab (event stream view from case_events)
+- [x] careTransition.workspace procedure returns unified case data with events/documents/tasks/decisions/packages
+- [x] partnerPortal.dashboard procedure returns persistent case list for partner staff
+
+### Frontend - Referral Page Redesign (/referral)
+- [x] KPI cards (status flow visualization)
+- [x] Referral case list with status badges
+- [x] Case detail with CareTransitionWorkspace (Documents, Tasks, Decisions, Packages, Timeline tabs)
+- [x] CareTransitionWorkspace integration with decision workflow
+- [ ] Referral creation wizard (patient select, destination, reason, documents, consent, submit)
+
+### Frontend - Cross-Border Page Redesign (/cross-border)
+- [x] KPI cards (เคสทั้งหมด, เอกสาร, งานค้าง, แพ็กเกจ)
+- [x] Filter cards (Cross-branch, Cross-border, External Partner)
+- [x] Tabs (ทั้งหมด, ข้ามสาขา, ส่งออก, รับเข้า, พันธมิตร)
+- [x] CareTransitionWorkspace with package generation
+- [ ] Partner trust verification panel
+- [ ] Create wizard (direction, partner, patient, documents, translation, consent, package, send)
+
+### Frontend - International Page Redesign (/international)
+- [x] KPI cards (เคสทั้งหมด, เอกสาร, งานค้าง, แพ็กเกจ)
+- [x] Stage-based progress view (สอบถาม → สร้างโปรไฟล์ → อัปโหลดเอกสาร → ยืนยันตัวตน → ตรวจสอบข้อมูลทางการแพทย์ → จัดทำใบเสนอราคา → ตรวจสอบประกัน → ยืนยันนัดหมาย)
+- [x] Status tabs (ทั้งหมด, สอบถาม, นัดหมายแล้ว, กำลังรักษา, ปิดเคส)
+- [x] CareTransitionWorkspace integration
+- [ ] Document intake workspace
+- [ ] Clinical pre-review panel
+- [ ] Financial/quotation workflow
+- [ ] Discharge packet generation
+
+### Frontend - Partner Portal (/partner-portal)
+- [x] Dashboard with KPI cards (Total cases, Pending review, Active tasks, Connectors, Packages)
+- [x] Persistent case list with detail view (from backend)
+- [x] Tabs (Cases, Connectors, New Case, Outbound)
+- [ ] Case creation wizard (type, patient, reason, source method, documents, attestation, submit)
+- [ ] Connector management (create, validate, activate)
+- [ ] Document workspace (upload, type assignment, hash, preview, submit for review)
+
+### Governance & Trust
+- [ ] Verify Maker/Checker enforcement on VC issuance from case documents
+- [ ] Verify patient role blocked from Partner Portal and Maker/Checker operations
+- [ ] Verify outbound documents use VC/VP trust layer (not raw PDF sharing)
+- [ ] Verify SHL used as transport/share package only (not as trust proof)
+
+### Tests & Verification
+- [x] TypeScript compilation: 0 errors
+- [x] All existing tests pass (172 tests, 15 files)
+- [x] New care-transition tests pass (4 tests in care-transition.test.ts)
+- [x] Smoke test: /referral, /cross-border, /international, /partner-portal - all render correctly
+- [ ] Push to GitHub

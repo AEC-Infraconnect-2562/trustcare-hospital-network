@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CareTransitionWorkspace } from "@/components/CareTransitionWorkspace";
 import { trpc } from "@/lib/trpc";
 import { useMemo, useState } from "react";
-import { Plane, Plus, User, FileText, Globe, Calendar, CheckCircle2 } from "lucide-react";
+import { Plane, Plus, User, FileText, Globe, Calendar, CheckCircle2, ClipboardList, Package } from "lucide-react";
 import { toast } from "sonner";
 
 const statusFlow = [
@@ -60,6 +60,7 @@ export default function International() {
   const updateStatus = trpc.international.updateStatus.useMutation({
     onSuccess: () => { refetch(); toast.success("อัปเดตสถานะสำเร็จ"); }
   });
+  const overview = trpc.careTransition.overview.useQuery();
 
   return (
     <DashboardLayout>
@@ -118,6 +119,14 @@ export default function International() {
               </form>
             </DialogContent>
           </Dialog>
+        </div>
+
+        {/* KPI Overview */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <KPI title="เคสทั้งหมด" value={cases?.length ?? 0} icon={Globe} />
+          <KPI title="เอกสาร" value={overview.data?.stats.documents ?? 0} icon={FileText} />
+          <KPI title="งานค้าง" value={overview.data?.stats.activeTasks ?? 0} icon={ClipboardList} />
+          <KPI title="แพ็กเกจ" value={overview.data?.stats.packages ?? 0} icon={Package} />
         </div>
 
         {/* Status Flow Indicator */}
@@ -207,5 +216,17 @@ export default function International() {
         />
       </div>
     </DashboardLayout>
+  );
+}
+
+function KPI({ title, value, icon: Icon }: { title: string; value: number; icon: any }) {
+  return (
+    <div className="rounded-md border bg-background p-3">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <p className="text-xs text-muted-foreground">{title}</p>
+      </div>
+      <p className="text-2xl font-semibold">{value}</p>
+    </div>
   );
 }
