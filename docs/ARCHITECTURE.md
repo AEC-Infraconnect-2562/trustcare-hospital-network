@@ -1156,3 +1156,188 @@ The SW does not intercept navigation requests or app JS chunks, ensuring fresh d
 | Time to Interactive | < 3s (3G) | ~2.5s |
 | Avatar image size | < 25 KB each | ~18 KB (400×400 JPEG) |
 | Largest Contentful Paint | < 2.5s | ~2s (cached) |
+
+
+---
+
+## 26. Service Readiness Module (v3.8.0)
+
+The Service Readiness module implements a **Wallet-first service preparation** paradigm. Before a patient arrives at a service point, the system assesses whether their Patient Wallet contains the minimum verified documents needed for that specific service context. This reduces registration friction, eliminates redundant history requests, and enables pre-built Verifiable Presentations (VP) with QR codes for instant verification.
+
+### 26.1 Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    PREPARE FOR SERVICE (Frontend)                     │
+│  ┌──────────────┐  ┌────────────────────┐  ┌─────────────────────┐  │
+│  │Context Picker│  │ServiceReadinessPanel│  │DocumentRequestWizard│  │
+│  │ (7 contexts) │  │ (score + checklist) │  │ (request missing)   │  │
+│  └──────────────┘  └────────────────────┘  └─────────────────────┘  │
+│  ┌──────────────┐  ┌────────────────────┐  ┌─────────────────────┐  │
+│  │VP Packet     │  │ContextualConsent   │  │ Trust View (partner │  │
+│  │Builder + QR  │  │Dialog (pre-share)  │  │  verification)      │  │
+│  └──────────────┘  └────────────────────┘  └─────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+                              │ tRPC
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    BACKEND (wallet router)                            │
+│  wallet.readiness        → assessReadiness(cards, context)           │
+│  wallet.requestDocument  → create document request (status machine)  │
+│  wallet.buildServicePacket → create VP + QR for service point        │
+│  wallet.documentRequests → list active requests per context          │
+└─────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    DATABASE (2 tables)                                │
+│  service_readiness_checks  → readiness assessment history            │
+│  wallet_document_requests  → document retrieval/import requests      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 26.2 Service Contexts (7 Contexts)
+
+| Context | Label (TH) | Label (EN) | Required Docs | Recommended Docs |
+|---------|-----------|-----------|---------------|-----------------|
+| `opd_visit` | เตรียมเข้ารับบริการ OPD | OPD visit readiness | identity, allergy, medication | summary, coverage |
+| `emergency` | เหตุฉุกเฉิน | Emergency readiness | identity, allergy, medication, conditions | (none) |
+| `referral` | ส่งต่อผู้ป่วย | Referral readiness | identity, referral, summary | labs, coverage |
+| `cross_border` | ส่งต่อข้ามเครือข่าย/ข้ามแดน | Cross-network readiness | identity, referral, summary, consent | labs |
+| `medical_tourist` | ผู้ป่วยต่างชาติ | Medical tourist readiness | identity, summary, quotation | guarantee, visa |
+| `insurance_claim` | เคลม/ประกัน | Insurance claim readiness | identity, coverage, claim | summary, receipt |
+| `pharmacy_dispense` | รับยา/ต่อยา | Pharmacy dispense readiness | identity, prescription, medication, allergy | dispense |
+
+### 26.3 Score Calculation
+
+The readiness score uses a weighted formula:
+
+```
+score = round((requiredReady/requiredTotal * 0.8 + recommendedReady/recommendedTotal * 0.2) * 100)
+```
+
+Where `requiredReady/requiredTotal = 1.0` when `requiredTotal = 0`, and similarly for recommended.
+
+Score thresholds for UI badges:
+
+| Score | Badge | Color |
+|-------|-------|-------|
+| 100% | Ready | Green |
+| 60-99% | Almost ready | Amber |
+| 1-59% | Needs documents | Red |
+| 0% | Not started | Gray |
+
+### 26.4 Document Request Status Machine
+
+```
+draft → pending_consent → requested → imported → needs_review → converted_to_vc
+                                    ↘ rejected
+                                    ↘ cancelled
+```
+
+| Status | Description |
+|--------|-------------|
+| `draft` | Request created but not yet sent |
+| `pending_consent` | Awaiting patient consent |
+| `requested` | Sent to source system (HIS/partner) |
+| `imported` | Raw document received |
+| `needs_review` | Imported but requires clinical review |
+| `converted_to_vc` | Successfully converted to a Wallet card (VC) |
+| `rejected` | Source system rejected the request |
+| `cancelled` | Patient or staff cancelled |
+
+### 26.5 Source Types
+
+| Source Type | Description | Example |
+|-------------|-------------|---------|
+| `his` | Hospital Information System | โรงพยาบาลเดิม HIS |
+| `lis` | Laboratory Information System | Lab results |
+| `ris` | Radiology Information System | Imaging reports |
+| `pacs` | Picture Archiving System | DICOM images |
+| `hospital_app` | Hospital mobile app | Patient portal |
+| `national_app` | National health app | หมอพร้อม |
+| `partner_portal` | Partner organization portal | Referring hospital |
+| `payer` | Insurance/payer system | ประกันสังคม |
+| `patient_upload` | Patient self-upload | Photo of document |
+| `personal_health_app` | Personal health app | Apple Health |
+| `other` | Other source | Manual entry |
+
+### 26.6 VP Service Packet
+
+When readiness score is sufficient, the patient can generate a **VP Service Packet** containing:
+
+1. Selected wallet cards (VCs) matching the context requirements
+2. Contextual consent receipt (if cross-border or partner sharing)
+3. QR code for instant verification at service point
+4. Recipient information (hospital/department/service name)
+
+The VP is signed with the patient's `did:key` and can be verified by any party in the Trust Registry.
+
+### 26.7 Database Tables
+
+**`service_readiness_checks`** — Records each readiness assessment:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | serial | Primary key |
+| patientId | int | FK → users.id |
+| context | varchar(50) | Service context |
+| score | int | Readiness score (0-100) |
+| requiredReady | int | Count of ready required items |
+| requiredTotal | int | Total required items |
+| recommendedReady | int | Count of ready recommended items |
+| recommendedTotal | int | Total recommended items |
+| missingKeys | text (JSON) | Array of missing requirement keys |
+| selectedCardIds | text (JSON) | Array of card IDs used |
+| vpPacketId | varchar(100) | VP packet ID if generated |
+| checkedAt | timestamp | Assessment timestamp |
+
+**`wallet_document_requests`** — Tracks document retrieval requests:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | serial | Primary key |
+| requestId | varchar(100) | Unique request identifier |
+| patientId | int | FK → users.id |
+| context | varchar(50) | Service context |
+| documentType | varchar(100) | Type of document requested |
+| sourceType | varchar(50) | Source system type |
+| sourceName | varchar(255) | Human-readable source name |
+| status | varchar(50) | Current status |
+| priority | varchar(20) | Priority level |
+| notes | text | Staff/patient notes |
+| importedAt | timestamp | When document was received |
+| convertedCardId | int | FK → wallet_cards.id (after conversion) |
+| createdAt | timestamp | Request creation time |
+| updatedAt | timestamp | Last status change |
+
+### 26.8 Test Coverage
+
+| Test File | Tests | Coverage |
+|-----------|-------|----------|
+| `server/serviceReadiness.test.ts` | 53 | All 7 contexts, score calculation, edge cases, demo scenarios |
+| `server/readiness.test.ts` | 3 | Basic readiness module validation |
+| `e2e/portability-flow.e2e.test.ts` | 2 | Full VP creation and verification flow |
+
+### 26.9 Seed Data (Demo Patients with Incomplete Wallets)
+
+| Patient | OpenID | Context | Score | Missing Documents |
+|---------|--------|---------|-------|-------------------|
+| นางสาวฮารุกะ ทานากะ | demo-patient-004 | cross_border | 40% | referral, summary, labs |
+| นายวิชัย สมบูรณ์ | demo-patient-005 | pharmacy_dispense | 40% | prescription, medication, dispense |
+| นางพรทิพย์ แก้วมณี | demo-patient-006 | insurance_claim | 27% | coverage, claim, summary, receipt |
+| นายอภิชาติ วงศ์ประเสริฐ | demo-patient-007 | referral | 27% | referral, summary, labs, coverage |
+| Mr. David Chen | demo-patient-008 | medical_tourist | 53% | quotation, guarantee, visa |
+| นางสุดา รักษ์ธรรม | demo-patient-009 | emergency | 40% | allergy, medication, conditions |
+
+---
+
+## 27. Changelog
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 5.4 | 2026-07-02 | Service Readiness module, wallet document requests, 6 new demo patients, 53 E2E tests |
+| 5.3 | 2026-07-01 | Care Transition partner portal, bundle management, SHL from bundles |
+| 5.2 | 2026-06-30 | Executive dashboard, claim analytics, DICOM viewer |
+| 5.1 | 2026-06-29 | TAO Trust Framework, schema registry, consent expiry notifications |
+| 5.0 | 2026-06-28 | System Realignment: multi-role, maker/checker, portability engine |

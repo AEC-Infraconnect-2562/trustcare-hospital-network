@@ -519,3 +519,28 @@
 - [x] Match card list styling with RU_VC wallet card design
 - [x] TypeScript compilation: 0 errors
 - [x] Tests passing (193 tests)
+
+## v3.8.0 - Service Readiness Seed Data & E2E Tests
+
+- [x] Create seedServiceReadiness.ts script for incomplete wallet patients
+- [x] Seed 6 new demo patients (P004-P009) with incomplete wallets
+- [x] Seed 11 wallet cards across new patients
+- [x] Seed 14 document requests with various statuses
+- [x] Seed 11 readiness check history records
+- [x] API test: verify readiness scores for all 7 patients
+- [x] UX test: verify Prepare for Service page renders correctly
+- [x] UX test: context switching works (OPD, emergency, cross_border, etc.)
+- [x] UX test: document request panel shows active requests
+- [x] Write serviceReadiness.test.ts (53 E2E tests)
+- [x] All 7 contexts tested with full/partial/empty wallets
+- [x] Score calculation formula verified
+- [x] Edge cases: revoked credentials, null cardType, duplicates
+- [x] Demo patient scenarios matching seeded data
+- [x] Document request status machine validated
+- [x] Source types validated
+- [x] Role-based access patterns validated
+- [x] Update ARCHITECTURE.md (Section 26: Service Readiness Module)
+- [x] Update TRUSTCARE_SYSTEM_REALIGNMENT_HANDOFF.md (Sections 9-10)
+- [x] Full test suite: 251 tests passing (21 test files)
+- [x] TypeScript compilation: 0 errors
+- [x] Push to GitHub

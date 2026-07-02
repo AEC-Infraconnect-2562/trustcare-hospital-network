@@ -251,3 +251,67 @@ Do not solve missing data by hardcoding UI fallback data. Do not create unsigned
 - Missing document requests persist to DB.
 - Manus can reseed VC/VP data and retest without modifying UI code.
 
+
+
+---
+
+## 9. Seed Data for Testing (v3.8.0)
+
+Six new demo patients have been seeded with **incomplete wallets** to enable testing of the missing-document flow, document request wizard, and partial readiness scenarios.
+
+### 9.1 New Demo Patients
+
+| OpenID | Name | Nationality | Primary Context | Score | Wallet Contents |
+|--------|------|-------------|-----------------|-------|-----------------|
+| `demo-patient-004` | นางสาวฮารุกะ ทานากะ | JPN | cross_border | 40% | identity, consent |
+| `demo-patient-005` | นายวิชัย สมบูรณ์ | TH | pharmacy_dispense | 40% | identity, allergy |
+| `demo-patient-006` | นางพรทิพย์ แก้วมณี | TH | insurance_claim | 27% | identity |
+| `demo-patient-007` | นายอภิชาติ วงศ์ประเสริฐ | TH | referral | 27% | identity, allergy, medication |
+| `demo-patient-008` | Mr. David Chen | US | medical_tourist | 53% | identity, patient_summary |
+| `demo-patient-009` | นางสุดา รักษ์ธรรม | TH | emergency | 40% | identity |
+
+### 9.2 Seeded Document Requests (14 records)
+
+Various statuses across all patients:
+
+| Patient | Document Type | Status | Source |
+|---------|--------------|--------|--------|
+| P004 | referral_vc | requested | Tokyo Medical University Hospital |
+| P004 | patient_summary | imported | Tokyo Medical University Hospital |
+| P004 | lab_result | needs_review | Tokyo Medical Lab Services |
+| P005 | prescription | requested | โรงพยาบาลทรัสต์แคร์ เซ็นทรัล |
+| P005 | medication | pending_consent | ร้านยาเภสัชกรชุมชน |
+| P006 | coverage | requested | สำนักงานประกันสังคม |
+| P006 | claim | draft | TrustCare Claims Center |
+| P007 | referral | requested | โรงพยาบาลจังหวัดเชียงราย |
+| P007 | patient_summary | requested | โรงพยาบาลจังหวัดเชียงราย |
+| P008 | quotation | requested | TrustCare International Desk |
+| P008 | guarantee_letter | pending_consent | Pacific Cross Insurance |
+| P009 | allergy | requested | โรงพยาบาลทรัสต์แคร์ เซ็นทรัล |
+| P009 | medication | requested | โรงพยาบาลทรัสต์แคร์ เซ็นทรัล |
+| P009 | patient_summary | requested | โรงพยาบาลทรัสต์แคร์ เซ็นทรัล |
+
+### 9.3 Seeded Readiness Check History (11 records)
+
+Historical readiness assessments for trend tracking and audit.
+
+### 9.4 Seed Script
+
+Location: `server/seedServiceReadiness.ts`
+
+Run with: `npx tsx server/seedServiceReadiness.ts`
+
+---
+
+## 10. E2E Test Coverage
+
+| Test File | Tests | Description |
+|-----------|-------|-------------|
+| `server/serviceReadiness.test.ts` | 53 | Full readiness assessment logic for all 7 contexts |
+| `server/readiness.test.ts` | 3 | Basic readiness module validation |
+| `server/demo-login.test.ts` | 15 | Demo login + role-based menu visibility |
+| `server/maker-checker.test.ts` | 24 | Credential workflow authorization |
+| `server/portability.test.ts` | 7 | VC/VP engine functions |
+| `e2e/portability-flow.e2e.test.ts` | 2 | Full cross-border VP creation and verification |
+
+**Total test suite: 251 tests, all passing.**
