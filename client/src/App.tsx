@@ -36,6 +36,7 @@ const CheckerQueue = lazy(() => import("./pages/CheckerQueue"));
 const CredentialDetail = lazy(() => import("./pages/CredentialDetail"));
 const AdapterSdk = lazy(() => import("./pages/AdapterSdk"));
 const PartnerWizard = lazy(() => import("./pages/PartnerWizard"));
+const PartnerPortal = lazy(() => import("./pages/PartnerPortal"));
 const PatientProfile = lazy(() => import("./pages/PatientProfile"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
@@ -72,6 +73,7 @@ function Router() {
         <Route path="/integration" component={Integration} />
         <Route path="/adapter-sdk" component={AdapterSdk} />
         <Route path="/partner-wizard" component={PartnerWizard} />
+        <Route path="/partner-portal" component={PartnerPortal} />
         <Route path="/fhir-mapping" component={FhirMapping} />
         <Route path="/terminology" component={Terminology} />
         <Route path="/trust-registry" component={TrustRegistry} />

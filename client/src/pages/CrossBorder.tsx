@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CareTransitionWorkspace } from "@/components/CareTransitionWorkspace";
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
-import { Globe, Plus, ArrowRightLeft, Send, Package, CheckCircle2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Globe, Plus, ArrowRightLeft, Send } from "lucide-react";
 import { toast } from "sonner";
 
 const statusLabels: Record<string, string> = {
@@ -36,10 +37,15 @@ const typeLabels: Record<string, string> = {
 export default function CrossBorder() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedReferralId, setSelectedReferralId] = useState<number>();
 
   const { data: referrals, refetch } = trpc.crossBorderReferral.list.useQuery({
     referralType: typeFilter === "all" ? undefined : typeFilter,
   });
+  const selectedReferral = useMemo(() => {
+    if (!referrals?.length) return undefined;
+    return referrals.find((item: any) => item.id === selectedReferralId) ?? referrals[0];
+  }, [referrals, selectedReferralId]);
   const createReferral = trpc.crossBorderReferral.create.useMutation({
     onSuccess: () => { refetch(); setShowCreateDialog(false); toast.success("สร้างการส่งต่อข้ามเครือข่ายสำเร็จ"); }
   });
@@ -71,6 +77,7 @@ export default function CrossBorder() {
                 e.preventDefault();
                 const fd = new FormData(e.currentTarget);
                 createReferral.mutate({
+                  referralId: Number(fd.get("referralId") || 0) || undefined,
                   referralType: fd.get("referralType") as any,
                   partnerOrgName: fd.get("partnerOrgName") as string,
                   partnerCountry: fd.get("partnerCountry") as string,
@@ -89,6 +96,7 @@ export default function CrossBorder() {
                   </Select>
                 </div>
                 <div><Label>ชื่อองค์กรปลายทาง</Label><Input name="partnerOrgName" required /></div>
+                <div><Label>Linked internal referral ID</Label><Input name="referralId" type="number" placeholder="Optional, needed for patient-bound SHL package" /></div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><Label>ประเทศปลายทาง (ISO 3)</Label><Input name="partnerCountry" placeholder="THA, JPN, SGP..." /></div>
                   <div>
@@ -158,7 +166,11 @@ export default function CrossBorder() {
                 ) : (
                   <div className="space-y-3">
                     {referrals.map(r => (
-                      <div key={r.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors">
+                      <div
+                        key={r.id}
+                        className={`flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer ${selectedReferral?.id === r.id ? "border-primary" : ""}`}
+                        onClick={() => setSelectedReferralId(r.id)}
+                      >
                         <div className="flex items-center gap-4">
                           <div className="p-2 rounded-full bg-primary/10">
                             <Globe className="h-5 w-5 text-primary" />
@@ -174,11 +186,6 @@ export default function CrossBorder() {
                         </div>
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary">{statusLabels[r.status] || r.status}</Badge>
-                          {r.status === "consent_granted" && (
-                            <Button size="sm" variant="outline" onClick={() => generatePacket.mutate({ id: r.id, patientId: 1, hospitalId: 4 /* TCC - should use active hospital */ })}>
-                              <Package className="h-3 w-3 mr-1" />สร้าง Packet
-                            </Button>
-                          )}
                           {r.status === "packet_generated" && (
                             <Button size="sm" onClick={() => updateStatus.mutate({ id: r.id, status: "sent" })}>
                               <Send className="h-3 w-3 mr-1" />ส่ง
@@ -193,6 +200,13 @@ export default function CrossBorder() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        <CareTransitionWorkspace
+          caseType={selectedReferral?.referralType === "external_partner" ? "external_partner" : selectedReferral?.referralType === "cross_branch" ? "cross_branch" : "cross_border"}
+          caseId={selectedReferral?.id}
+          recipientName={selectedReferral?.partnerOrgName || undefined}
+          defaultPackageType="cross_border"
+        />
       </div>
     </DashboardLayout>
   );

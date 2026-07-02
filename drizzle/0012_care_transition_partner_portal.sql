@@ -1,0 +1,160 @@
+CREATE TABLE IF NOT EXISTS `care_transition_case_events` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `caseType` enum('internal_referral','cross_branch','cross_border','external_partner','medical_tourist') NOT NULL,
+  `caseId` int NOT NULL,
+  `eventType` enum('created','document_received','document_verified','task_updated','decision_recorded','package_generated','package_sent','status_changed','payment_updated','discharge_packet_generated') NOT NULL,
+  `actorId` int,
+  `actorRole` varchar(64),
+  `fromStatus` varchar(80),
+  `toStatus` varchar(80),
+  `summary` varchar(500),
+  `metadata` json,
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  CONSTRAINT `care_transition_case_events_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `case_documents` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `caseType` enum('internal_referral','cross_branch','cross_border','external_partner','medical_tourist') NOT NULL,
+  `caseId` int NOT NULL,
+  `direction` enum('inbound','outbound') NOT NULL DEFAULT 'inbound',
+  `documentType` enum('referral_letter','patient_summary','lab_report','imaging_report','passport','insurance_card','guarantee_letter','quotation','visa_support_letter','consent','claim_document','invoice','receipt','discharge_summary','prescription','medical_certificate','other') NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `sourceSystem` varchar(128),
+  `sourcePartnerId` int,
+  `fileName` varchar(255),
+  `fileUrl` text,
+  `fileKey` varchar(500),
+  `mimeType` varchar(120) DEFAULT 'application/pdf',
+  `hash` varchar(128),
+  `fhirDocumentReferenceId` varchar(255),
+  `fhirDocumentReference` json,
+  `verificationStatus` enum('received','needs_review','verified','rejected','converted_to_vc') NOT NULL DEFAULT 'received',
+  `vcCredentialId` varchar(255),
+  `receivedBy` int,
+  `verifiedBy` int,
+  `verifiedAt` timestamp,
+  `notes` text,
+  `metadata` json,
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `case_documents_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `case_tasks` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `caseType` enum('internal_referral','cross_branch','cross_border','external_partner','medical_tourist') NOT NULL,
+  `caseId` int NOT NULL,
+  `taskType` enum('mpi_match','consent_review','document_quality','clinical_triage','translation_review','financial_review','payer_review','legal_acceptance','appointment_scheduling','admission_readiness','vc_request','package_dispatch','discharge_packet','sync_back') NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `status` enum('created','ready','in_progress','blocked','completed','failed','cancelled') NOT NULL DEFAULT 'ready',
+  `priority` enum('routine','urgent','stat') NOT NULL DEFAULT 'routine',
+  `ownerRole` varchar(64),
+  `ownerId` int,
+  `dueAt` timestamp,
+  `completedAt` timestamp,
+  `input` json,
+  `output` json,
+  `notes` text,
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `case_tasks_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `partner_source_connectors` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `partnerOrgId` int,
+  `partnerName` varchar(255) NOT NULL,
+  `connectorType` enum('fhir_rest','hl7v2_mllp','db_view','cdc','sftp_csv','smart_health_link','native_vc_vp','manual_portal') NOT NULL,
+  `direction` enum('inbound','outbound','bidirectional') NOT NULL DEFAULT 'bidirectional',
+  `status` enum('draft','testing','active','suspended','retired') NOT NULL DEFAULT 'draft',
+  `endpointUrl` text,
+  `authType` enum('none','api_key','oauth2_client_credentials','mutual_tls','signed_vp','basic') NOT NULL DEFAULT 'none',
+  `credentialRef` varchar(255),
+  `mappingProfile` varchar(255),
+  `canonicalMapping` json,
+  `supportedDocumentTypes` json,
+  `supportedCredentialTypes` json,
+  `lastValidatedAt` timestamp,
+  `validationStatus` enum('not_tested','passed','warning','failed') NOT NULL DEFAULT 'not_tested',
+  `validationReport` json,
+  `metadata` json,
+  `createdBy` int,
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `partner_source_connectors_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `partner_source_attestations` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `caseDocumentId` int,
+  `connectorId` int,
+  `partnerOrgId` int,
+  `partnerName` varchar(255) NOT NULL,
+  `sourceMode` enum('partner_native_vc','structured_source','delegated_issuance','legacy_document') NOT NULL,
+  `attestationStatus` enum('draft','submitted','verified','rejected') NOT NULL DEFAULT 'submitted',
+  `sourceHash` varchar(128),
+  `evidence` json,
+  `sourceDid` varchar(255),
+  `signerDid` varchar(255),
+  `vcCredentialId` varchar(255),
+  `reviewedBy` int,
+  `reviewedAt` timestamp,
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  CONSTRAINT `partner_source_attestations_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `care_packages` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `caseType` enum('internal_referral','cross_branch','cross_border','external_partner','medical_tourist') NOT NULL,
+  `caseId` int NOT NULL,
+  `packageType` enum('referral','cross_border','medical_tourist','discharge','counter_referral','claim') NOT NULL,
+  `status` enum('draft','ready_for_review','approved','sent','received','revoked') NOT NULL DEFAULT 'draft',
+  `recipientType` enum('trustcare_hospital','partner_hospital','payer','patient','embassy','facilitator') NOT NULL DEFAULT 'partner_hospital',
+  `recipientName` varchar(255),
+  `recipientDid` varchar(255),
+  `purpose` enum('referral','discharge','cross_border','medical_tourist','insurance','claim','follow_up') NOT NULL,
+  `fhirBundleHash` varchar(128),
+  `manifestHash` varchar(128),
+  `shlId` int,
+  `presentationId` varchar(255),
+  `consentCredentialId` varchar(255),
+  `accessPolicy` json,
+  `costEstimate` json,
+  `claimRef` varchar(255),
+  `createdBy` int,
+  `approvedBy` int,
+  `approvedAt` timestamp,
+  `sentAt` timestamp,
+  `metadata` json,
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `care_packages_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `care_package_items` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `carePackageId` int NOT NULL,
+  `itemType` enum('fhir_bundle','document_reference','legacy_file','vc','vp','shl_manifest','claim','invoice','receipt') NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `resourceRef` varchar(255),
+  `hash` varchar(128),
+  `requiredForAcceptance` boolean NOT NULL DEFAULT false,
+  `metadata` json,
+  `createdAt` timestamp NOT NULL DEFAULT (now()),
+  CONSTRAINT `care_package_items_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `case_decisions` (
+  `id` int AUTO_INCREMENT NOT NULL,
+  `caseType` enum('internal_referral','cross_branch','cross_border','external_partner','medical_tourist') NOT NULL,
+  `caseId` int NOT NULL,
+  `decisionType` enum('clinical_acceptance','document_acceptance','financial_acceptance','legal_acceptance','admission_acceptance','discharge_clearance') NOT NULL,
+  `outcome` enum('accepted','rejected','more_info_requested','conditional') NOT NULL,
+  `reason` text,
+  `conditions` json,
+  `decidedBy` int,
+  `decidedAt` timestamp NOT NULL DEFAULT (now()),
+  `metadata` json,
+  CONSTRAINT `case_decisions_id` PRIMARY KEY(`id`)
+);

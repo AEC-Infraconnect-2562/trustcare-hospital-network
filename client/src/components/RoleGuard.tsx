@@ -30,6 +30,7 @@ const routeAccessConfig: RouteAccess[] = [
   { path: "/referral", roles: ["system_admin", "hospital_admin", "doctor", "nurse"] },
   { path: "/cross-border", roles: ["system_admin", "hospital_admin", "doctor"] },
   { path: "/international", roles: ["system_admin", "hospital_admin", "doctor", "nurse"] },
+  { path: "/partner-portal", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
   // Digital Credentials
   { path: "/issuer", roles: ["system_admin", "hospital_admin", "doctor"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
   { path: "/maker-queue", roles: ["system_admin", "hospital_admin", "doctor"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },

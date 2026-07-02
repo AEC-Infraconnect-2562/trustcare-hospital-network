@@ -62,6 +62,21 @@ import {
 import { sha256 } from "./portability/utils";
 import { resolveShlManifestAccessPacket, ShlAccessError } from "./shlAccess";
 import { storagePut } from "./storage";
+import {
+  buildCarePackageManifest,
+  buildDocumentReference,
+  buildServiceRequest,
+  type CaseType,
+  caseDocumentTypeValues,
+  caseTypeFromReferralType,
+  caseTypeValues,
+  connectorTypeValues,
+  defaultTasksForCase,
+  packageTypeForCase,
+  packageTypeValues,
+  purposeForCarePackage,
+  validatePartnerConnector,
+} from "./careTransition";
 
 const credentialTypeValues = [
   "patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization",
@@ -1797,6 +1812,611 @@ export const appRouter = router({
   }),
 
   // ============================================================
+  // CARE TRANSITION WORKBENCH
+  // ============================================================
+  careTransition: router({
+    overview: protectedProcedure.query(async () => {
+      const [stats, documents, tasks, packages, connectors] = await Promise.all([
+        db.getCareTransitionStats(),
+        db.listCaseDocuments({ verificationStatus: "needs_review" }),
+        db.listCaseTasks({ status: "ready" }),
+        db.listCarePackages({}),
+        db.listPartnerSourceConnectors({}),
+      ]);
+      return {
+        stats,
+        documents: documents.slice(0, 8),
+        tasks: tasks.slice(0, 8),
+        packages: packages.slice(0, 8),
+        connectors: connectors.slice(0, 8),
+      };
+    }),
+    workspace: protectedProcedure.input(z.object({
+      caseType: z.enum(caseTypeValues),
+      caseId: z.number(),
+    })).query(async ({ input }) => {
+      const [caseRecord, documents, tasks, packages, decisions, events] = await Promise.all([
+        resolveCareTransitionCase(input.caseType, input.caseId),
+        db.listCaseDocuments(input),
+        db.listCaseTasks(input),
+        db.listCarePackages(input),
+        db.listCaseDecisions(input),
+        db.listCareTransitionEvents(input),
+      ]);
+      return { case: caseRecord, documents, tasks, packages, decisions, events };
+    }),
+    initializeCase: protectedProcedure.input(z.object({
+      caseType: z.enum(caseTypeValues),
+      caseId: z.number(),
+      translationRequired: z.boolean().optional(),
+      payerRequired: z.boolean().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const existing = await db.listCaseTasks({ caseType: input.caseType, caseId: input.caseId });
+      if (existing.length === 0) {
+        for (const task of defaultTasksForCase(input.caseType, input)) {
+          await db.createCaseTask({
+            caseType: input.caseType,
+            caseId: input.caseId,
+            taskType: task.taskType as any,
+            title: task.title,
+            ownerRole: task.ownerRole,
+            priority: task.priority ?? "routine",
+            input: { fhir: "Task", caseType: input.caseType },
+          } as any);
+        }
+      }
+      await db.createCareTransitionEvent({
+        caseType: input.caseType,
+        caseId: input.caseId,
+        eventType: "created",
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        summary: "Care transition workflow initialized",
+        metadata: { taskCount: existing.length === 0 ? defaultTasksForCase(input.caseType, input).length : existing.length },
+      } as any);
+      return { success: true, taskCount: existing.length === 0 ? defaultTasksForCase(input.caseType, input).length : existing.length };
+    }),
+    addDocument: protectedProcedure.input(z.object({
+      caseType: z.enum(caseTypeValues),
+      caseId: z.number(),
+      direction: z.enum(["inbound", "outbound"]).default("inbound"),
+      documentType: z.enum(caseDocumentTypeValues),
+      title: z.string().min(1),
+      sourceSystem: z.string().optional(),
+      sourcePartnerId: z.number().optional(),
+      fileName: z.string().optional(),
+      fileUrl: z.string().optional(),
+      fileKey: z.string().optional(),
+      mimeType: z.string().optional(),
+      hash: z.string().optional(),
+      notes: z.string().optional(),
+      patientId: z.number().optional(),
+      metadata: z.any().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const caseRecord = await resolveCareTransitionCase(input.caseType, input.caseId);
+      const resolvedPatientId = input.patientId ?? Number((caseRecord as any)?.patientId ?? 0);
+      const patientId = resolvedPatientId || undefined;
+      const documentRefId = `docref-${input.caseType}-${input.caseId}-${nanoid(10)}`;
+      const documentReference = buildDocumentReference({
+        id: documentRefId,
+        title: input.title,
+        documentType: input.documentType,
+        caseType: input.caseType,
+        caseId: input.caseId,
+        patientId,
+        fileName: input.fileName,
+        fileUrl: input.fileUrl,
+        mimeType: input.mimeType,
+        hash: input.hash,
+        sourcePartnerId: input.sourcePartnerId,
+        sourceSystem: input.sourceSystem,
+        direction: input.direction,
+      });
+      const content = (documentReference.content as any[])[0]?.attachment ?? {};
+      const id = await db.createCaseDocument({
+        caseType: input.caseType,
+        caseId: input.caseId,
+        direction: input.direction,
+        documentType: input.documentType,
+        title: input.title,
+        sourceSystem: input.sourceSystem ?? "partner_portal",
+        sourcePartnerId: input.sourcePartnerId,
+        fileName: input.fileName,
+        fileUrl: input.fileUrl,
+        fileKey: input.fileKey,
+        mimeType: input.mimeType ?? "application/pdf",
+        hash: String(content.hash),
+        fhirDocumentReferenceId: documentRefId,
+        fhirDocumentReference: documentReference,
+        verificationStatus: "needs_review",
+        receivedBy: ctx.user.id,
+        notes: input.notes,
+        metadata: {
+          ...input.metadata,
+          fhir: { resourceType: "DocumentReference", profile: "R4" },
+          sourceOfTruth: input.sourceSystem ?? "partner_portal",
+        },
+      } as any);
+      await db.createCareTransitionEvent({
+        caseType: input.caseType,
+        caseId: input.caseId,
+        eventType: "document_received",
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        summary: `Document received: ${input.title}`,
+        metadata: { documentId: id, documentType: input.documentType, direction: input.direction },
+      } as any);
+      return { id, fhirDocumentReferenceId: documentRefId, hash: content.hash, verificationStatus: "needs_review" };
+    }),
+    verifyDocument: protectedProcedure.input(z.object({
+      id: z.number(),
+      verificationStatus: z.enum(["verified", "rejected", "converted_to_vc"]),
+      notes: z.string().optional(),
+      createVcRequest: z.boolean().optional(),
+      credentialType: z.enum(credentialTypeValues).optional(),
+      issuerHospitalId: z.number().optional(),
+      subjectId: z.number().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const document = await db.getCaseDocumentById(input.id);
+      if (!document) throw new TRPCError({ code: "NOT_FOUND", message: "Case document not found" });
+      let vcRequest: any;
+      if (input.createVcRequest && input.verificationStatus !== "rejected") {
+        const credentialType = input.credentialType ?? credentialTypeForCaseDocument(String(document.documentType));
+        requireMaker(ctx.user, credentialType);
+        const caseRecord = await resolveCareTransitionCase(String(document.caseType) as any, Number(document.caseId));
+        const subjectId = input.subjectId ?? Number((caseRecord as any)?.patientId ?? 0);
+        const issuerHospitalId = input.issuerHospitalId ?? Number((caseRecord as any)?.fromHospitalId ?? (caseRecord as any)?.preferredBranchId ?? (ctx.user as any).hospitalId ?? 1);
+        if (!subjectId) throw new TRPCError({ code: "BAD_REQUEST", message: "subjectId is required to create a VC request from this document." });
+        vcRequest = await submitMakerCredentialRequest({
+          maker: ctx.user,
+          issuerHospitalId,
+          subjectId,
+          type: credentialType,
+          documentData: {
+            source: "case_document",
+            caseType: document.caseType,
+            caseId: document.caseId,
+            caseDocumentId: document.id,
+            documentType: document.documentType,
+            title: document.title,
+            hash: document.hash,
+            fhirDocumentReference: document.fhirDocumentReference,
+            evidence: { sourceSystem: document.sourceSystem, sourcePartnerId: document.sourcePartnerId },
+          },
+          canonicalReview: {
+            status: "human_verified_document_reference",
+            requiredBeforeIssue: false,
+            sourceHash: document.hash,
+          },
+        });
+        await db.createPartnerSourceAttestation({
+          caseDocumentId: document.id,
+          partnerOrgId: document.sourcePartnerId,
+          partnerName: String(document.sourceSystem ?? "Partner portal"),
+          sourceMode: "delegated_issuance",
+          attestationStatus: "verified",
+          sourceHash: document.hash ?? undefined,
+          evidence: { credentialRequestId: vcRequest.id, requestId: vcRequest.requestId },
+          reviewedBy: ctx.user.id,
+          reviewedAt: new Date(),
+        } as any);
+      }
+      await db.updateCaseDocument(input.id, {
+        verificationStatus: input.verificationStatus,
+        notes: input.notes,
+        verifiedBy: ctx.user.id,
+        verifiedAt: new Date(),
+        vcCredentialId: vcRequest?.requestId,
+      } as any);
+      await db.createCareTransitionEvent({
+        caseType: document.caseType as any,
+        caseId: document.caseId,
+        eventType: "document_verified",
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        summary: `Document ${input.verificationStatus}: ${document.title}`,
+        metadata: { documentId: document.id, vcRequest },
+      } as any);
+      return { success: true, vcRequest };
+    }),
+    updateTask: protectedProcedure.input(z.object({
+      id: z.number(),
+      status: z.enum(["created", "ready", "in_progress", "blocked", "completed", "failed", "cancelled"]),
+      notes: z.string().optional(),
+      output: z.any().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      await db.updateCaseTask(input.id, {
+        status: input.status,
+        notes: input.notes,
+        output: input.output,
+        completedAt: input.status === "completed" ? new Date() : undefined,
+        ownerId: ctx.user.id,
+      } as any);
+      await db.createAuditEvent({ actorId: ctx.user.id, actorRole: (ctx.user as any).systemRole, action: `care_transition.task.${input.status}`, resourceType: "case_task", resourceId: String(input.id) });
+      return { success: true };
+    }),
+    recordDecision: protectedProcedure.input(z.object({
+      caseType: z.enum(caseTypeValues),
+      caseId: z.number(),
+      decisionType: z.enum(["clinical_acceptance", "document_acceptance", "financial_acceptance", "legal_acceptance", "admission_acceptance", "discharge_clearance"]),
+      outcome: z.enum(["accepted", "rejected", "more_info_requested", "conditional"]),
+      reason: z.string().optional(),
+      conditions: z.any().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const id = await db.createCaseDecision({ ...input, decidedBy: ctx.user.id } as any);
+      await db.createCareTransitionEvent({
+        caseType: input.caseType,
+        caseId: input.caseId,
+        eventType: "decision_recorded",
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        summary: `${input.decisionType}: ${input.outcome}`,
+        metadata: { decisionId: id, reason: input.reason },
+      } as any);
+      return { id };
+    }),
+    generatePackage: protectedProcedure.input(z.object({
+      caseType: z.enum(caseTypeValues),
+      caseId: z.number(),
+      packageType: z.enum(packageTypeValues).optional(),
+      patientId: z.number().optional(),
+      hospitalId: z.number().optional(),
+      recipientName: z.string().optional(),
+      recipientDid: z.string().optional(),
+      recipientType: z.enum(["trustcare_hospital", "partner_hospital", "payer", "patient", "embassy", "facilitator"]).optional(),
+      includeShl: z.boolean().default(true),
+      forceCheckerReview: z.boolean().optional(),
+      costEstimate: z.any().optional(),
+      claimRef: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const caseRecord = await resolveCareTransitionCase(input.caseType, input.caseId);
+      const patientId = input.patientId ?? Number((caseRecord as any)?.patientId ?? 0);
+      const hospitalId = input.hospitalId ?? Number((caseRecord as any)?.fromHospitalId ?? (caseRecord as any)?.preferredBranchId ?? (ctx.user as any).hospitalId ?? 1);
+      if (!patientId) throw new TRPCError({ code: "BAD_REQUEST", message: "patientId is required to generate a care package." });
+      const packageType = input.packageType ?? packageTypeForCase(input.caseType);
+      const documents = await db.listCaseDocuments({ caseType: input.caseType, caseId: input.caseId });
+      const serviceRequest = buildServiceRequest({
+        id: `servicerequest-${input.caseType}-${input.caseId}`,
+        caseType: input.caseType,
+        patientId,
+        reason: String((caseRecord as any)?.reason ?? (caseRecord as any)?.serviceLine ?? "Care transition"),
+        diagnosis: String((caseRecord as any)?.diagnosis ?? ""),
+        priority: String((caseRecord as any)?.priority ?? "routine"),
+        requester: String((ctx.user as any).name ?? "TrustCare"),
+        performer: input.recipientName,
+      });
+      const documentResources = documents.map((document: any) => document.fhirDocumentReference).filter(Boolean);
+      const fhirBundle = {
+        resourceType: "Bundle",
+        type: "collection",
+        timestamp: new Date().toISOString(),
+        entry: [
+          { fullUrl: `urn:uuid:${serviceRequest.id}`, resource: serviceRequest },
+          ...documentResources.map((resource: any) => ({ fullUrl: `urn:uuid:${resource.id}`, resource })),
+        ],
+      };
+      const fhirBundleHash = sha256(fhirBundle);
+      const packageManifest = buildCarePackageManifest({
+        caseType: input.caseType,
+        caseId: input.caseId,
+        packageType,
+        documents: documents.map((document: any) => ({
+          id: document.id,
+          title: document.title,
+          documentType: document.documentType,
+          hash: document.hash,
+          fhirDocumentReferenceId: document.fhirDocumentReferenceId,
+        })),
+        costEstimate: input.costEstimate,
+        claimRef: input.claimRef,
+      });
+      let shlPackage: any;
+      if (input.includeShl) {
+        shlPackage = await createSmartHealthLinkPackage(ctx, {
+          patientId,
+          hospitalId,
+          purpose: purposeForCarePackage(packageType) as any,
+          context: input.caseType === "medical_tourist" ? "medical_tourist" : input.caseType === "internal_referral" ? "cross_branch_referral" : "cross_border",
+          label: `${packageType} package #${input.caseId}`,
+          fhirBundle,
+          scope: ["Patient.read", "ServiceRequest.read", "Task.read", "DocumentReference.read", "Coverage.read", "Claim.read"],
+          recipientPolicy: { recipientType: input.recipientType ?? "partner_hospital", recipientName: input.recipientName, recipientDid: input.recipientDid },
+          forceCheckerReview: input.forceCheckerReview,
+          passcodeRequired: true,
+          expiresInDays: packageType === "medical_tourist" ? 30 : 14,
+        });
+      }
+      const carePackageId = await db.createCarePackage({
+        caseType: input.caseType,
+        caseId: input.caseId,
+        packageType,
+        status: shlPackage?.status === "pending_review" ? "ready_for_review" : "approved",
+        recipientType: input.recipientType ?? "partner_hospital",
+        recipientName: input.recipientName,
+        recipientDid: input.recipientDid,
+        purpose: purposeForCarePackage(packageType) as any,
+        fhirBundleHash,
+        manifestHash: packageManifest.manifestHash,
+        shlId: shlPackage?.id,
+        presentationId: shlPackage?.presentationId,
+        costEstimate: input.costEstimate,
+        claimRef: input.claimRef,
+        createdBy: ctx.user.id,
+        metadata: { manifest: packageManifest.manifest, shl: shlPackage },
+      } as any);
+      await db.createCarePackageItem({ carePackageId: carePackageId!, itemType: "fhir_bundle", title: "FHIR care transition bundle", hash: fhirBundleHash, metadata: { resourceCount: fhirBundle.entry.length } } as any);
+      for (const document of documents as any[]) {
+        await db.createCarePackageItem({
+          carePackageId: carePackageId!,
+          itemType: "document_reference",
+          title: document.title,
+          resourceRef: document.fhirDocumentReferenceId,
+          hash: document.hash,
+          requiredForAcceptance: ["referral_letter", "passport", "insurance_card", "patient_summary"].includes(document.documentType),
+          metadata: { documentId: document.id, documentType: document.documentType },
+        } as any);
+      }
+      await db.createCareTransitionEvent({
+        caseType: input.caseType,
+        caseId: input.caseId,
+        eventType: "package_generated",
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        summary: `Care package generated: ${packageType}`,
+        metadata: { carePackageId, shlPackage, manifestHash: packageManifest.manifestHash },
+      } as any);
+      return { id: carePackageId, fhirBundleHash, manifestHash: packageManifest.manifestHash, shl: shlPackage };
+    }),
+  }),
+
+  // ============================================================
+  // PARTNER PORTAL
+  // ============================================================
+  partnerPortal: router({
+    dashboard: protectedProcedure.query(async () => {
+      const [stats, connectors, documents, packages] = await Promise.all([
+        db.getCareTransitionStats(),
+        db.listPartnerSourceConnectors({}),
+        db.listCaseDocuments({}),
+        db.listCarePackages({}),
+      ]);
+      return {
+        stats,
+        connectors: connectors.slice(0, 12),
+        inboundDocuments: documents.filter((document: any) => document.direction === "inbound").slice(0, 12),
+        outboundPackages: packages.slice(0, 12),
+      };
+    }),
+    listConnectors: protectedProcedure.input(z.object({
+      partnerOrgId: z.number().optional(),
+      connectorType: z.enum(connectorTypeValues).optional(),
+      status: z.string().optional(),
+    }).optional()).query(async ({ input }) => {
+      return db.listPartnerSourceConnectors(input);
+    }),
+    createConnector: protectedProcedure.input(z.object({
+      partnerOrgId: z.number().optional(),
+      partnerName: z.string().min(1),
+      connectorType: z.enum(connectorTypeValues),
+      direction: z.enum(["inbound", "outbound", "bidirectional"]).default("bidirectional"),
+      endpointUrl: z.string().optional(),
+      authType: z.enum(["none", "api_key", "oauth2_client_credentials", "mutual_tls", "signed_vp", "basic"]).default("none"),
+      credentialRef: z.string().optional(),
+      mappingProfile: z.string().optional(),
+      canonicalMapping: z.any().optional(),
+      supportedDocumentTypes: z.array(z.enum(caseDocumentTypeValues)).optional(),
+      supportedCredentialTypes: z.array(z.enum(credentialTypeValues)).optional(),
+      metadata: z.any().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const validation = validatePartnerConnector(input);
+      const id = await db.createPartnerSourceConnector({
+        ...input,
+        status: validation.ok ? "testing" : "draft",
+        validationStatus: validation.ok ? (validation.warnings.length ? "warning" : "passed") : "failed",
+        validationReport: validation,
+        createdBy: ctx.user.id,
+      } as any);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "partner.connector.created",
+        resourceType: "partner_source_connector",
+        resourceId: String(id),
+        details: { connectorType: input.connectorType, validation },
+      });
+      return { id, validation };
+    }),
+    validateConnector: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const connector = await db.getPartnerSourceConnectorById(input.id);
+      if (!connector) throw new TRPCError({ code: "NOT_FOUND", message: "Connector not found" });
+      const validation = validatePartnerConnector(connector as any);
+      await db.updatePartnerSourceConnector(input.id, {
+        validationStatus: validation.ok ? (validation.warnings.length ? "warning" : "passed") : "failed",
+        validationReport: validation,
+        lastValidatedAt: new Date(),
+      } as any);
+      await db.createAuditEvent({ actorId: ctx.user.id, actorRole: (ctx.user as any).systemRole, action: "partner.connector.validated", resourceType: "partner_source_connector", resourceId: String(input.id), details: validation });
+      return validation;
+    }),
+    activateConnector: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const connector = await db.getPartnerSourceConnectorById(input.id);
+      if (!connector) throw new TRPCError({ code: "NOT_FOUND", message: "Connector not found" });
+      const validation = validatePartnerConnector(connector as any);
+      if (!validation.ok) throw new TRPCError({ code: "BAD_REQUEST", message: validation.issues.join(" ") });
+      await db.updatePartnerSourceConnector(input.id, {
+        status: "active",
+        validationStatus: validation.warnings.length ? "warning" : "passed",
+        validationReport: validation,
+        lastValidatedAt: new Date(),
+      } as any);
+      await db.createAuditEvent({ actorId: ctx.user.id, actorRole: (ctx.user as any).systemRole, action: "partner.connector.activated", resourceType: "partner_source_connector", resourceId: String(input.id), details: validation });
+      return { success: true, validation };
+    }),
+    submitCase: protectedProcedure.input(z.object({
+      flowType: z.enum(["external_partner", "cross_border_inbound", "medical_tourist"]),
+      connectorId: z.number().optional(),
+      partnerOrgName: z.string().min(1),
+      partnerCountry: z.string().optional(),
+      language: z.enum(["th", "en", "zh", "ja", "ar", "ru", "ko", "de", "fr", "other"]).optional(),
+      jurisdiction: z.string().optional(),
+      patientId: z.number().optional(),
+      serviceLine: z.string().optional(),
+      reason: z.string().optional(),
+      contactEmail: z.string().optional(),
+      contactPhone: z.string().optional(),
+      payerMode: z.enum(["self_pay", "insurance", "government", "guarantee_letter"]).optional(),
+      translationRequired: z.boolean().optional(),
+      documents: z.array(z.object({
+        documentType: z.enum(caseDocumentTypeValues),
+        title: z.string(),
+        fileName: z.string().optional(),
+        fileUrl: z.string().optional(),
+        mimeType: z.string().optional(),
+        hash: z.string().optional(),
+      })).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const connector = input.connectorId ? await db.getPartnerSourceConnectorById(input.connectorId) : undefined;
+      let caseType: CaseType = "external_partner";
+      let caseId: number | undefined;
+      if (input.flowType === "medical_tourist") {
+        caseType = "medical_tourist";
+        caseId = await db.createInternationalCase({
+          patientId: input.patientId,
+          country: input.partnerCountry,
+          language: normalizeInternationalLanguage(input.language),
+          serviceLine: input.serviceLine,
+          contactEmail: input.contactEmail,
+          contactPhone: input.contactPhone,
+          clinicalNotes: input.reason,
+          metadata: { partnerOrgName: input.partnerOrgName, payerMode: input.payerMode, connectorId: input.connectorId },
+        } as any);
+      } else {
+        caseType = input.flowType === "cross_border_inbound" ? "cross_border" : "external_partner";
+        caseId = await db.createCrossBorderReferral({
+          referralType: input.flowType === "cross_border_inbound" ? "cross_border_inbound" : "external_partner",
+          partnerOrgId: input.connectorId,
+          partnerOrgName: input.partnerOrgName,
+          partnerCountry: input.partnerCountry,
+          language: normalizeCrossBorderLanguage(input.language),
+          jurisdiction: input.jurisdiction,
+          translationRequired: input.translationRequired ?? false,
+          status: "draft",
+        } as any);
+      }
+      await db.createCareTransitionEvent({
+        caseType,
+        caseId: caseId!,
+        eventType: "created",
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        summary: `Partner case submitted by ${input.partnerOrgName}`,
+        metadata: { flowType: input.flowType, connectorId: input.connectorId, connectorType: connector?.connectorType, payerMode: input.payerMode },
+      } as any);
+      for (const task of defaultTasksForCase(caseType, { translationRequired: input.translationRequired, payerRequired: Boolean(input.payerMode && input.payerMode !== "self_pay") })) {
+        await db.createCaseTask({
+          caseType,
+          caseId: caseId!,
+          taskType: task.taskType as any,
+          title: task.title,
+          ownerRole: task.ownerRole,
+          priority: task.priority ?? "routine",
+          input: { source: "partner_portal", flowType: input.flowType },
+        } as any);
+      }
+      for (const document of input.documents ?? []) {
+        const documentReference = buildDocumentReference({
+          id: `docref-${caseType}-${caseId}-${nanoid(10)}`,
+          title: document.title,
+          documentType: document.documentType,
+          caseType,
+          caseId: caseId!,
+          patientId: input.patientId,
+          fileName: document.fileName,
+          fileUrl: document.fileUrl,
+          mimeType: document.mimeType,
+          hash: document.hash,
+          sourcePartnerId: input.connectorId,
+          sourceSystem: input.partnerOrgName,
+          direction: "inbound",
+        });
+        await db.createCaseDocument({
+          caseType,
+          caseId: caseId!,
+          direction: "inbound",
+          documentType: document.documentType,
+          title: document.title,
+          sourceSystem: input.partnerOrgName,
+          sourcePartnerId: input.connectorId,
+          fileName: document.fileName,
+          fileUrl: document.fileUrl,
+          mimeType: document.mimeType ?? "application/pdf",
+          hash: String((documentReference.content as any[])[0]?.attachment?.hash),
+          fhirDocumentReferenceId: String(documentReference.id),
+          fhirDocumentReference: documentReference,
+          verificationStatus: "needs_review",
+          receivedBy: ctx.user.id,
+          metadata: { connectorId: input.connectorId, connectorType: connector?.connectorType },
+        } as any);
+      }
+      return { caseType, caseId, status: "submitted", connector: connector ? { id: connector.id, connectorType: connector.connectorType, status: connector.status } : null };
+    }),
+    sendDocument: protectedProcedure.input(z.object({
+      caseType: z.enum(caseTypeValues),
+      caseId: z.number(),
+      documentType: z.enum(caseDocumentTypeValues),
+      title: z.string().min(1),
+      recipientName: z.string().optional(),
+      fileName: z.string().optional(),
+      fileUrl: z.string().optional(),
+      mimeType: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const documentReference = buildDocumentReference({
+        id: `docref-out-${input.caseType}-${input.caseId}-${nanoid(10)}`,
+        title: input.title,
+        documentType: input.documentType,
+        caseType: input.caseType,
+        caseId: input.caseId,
+        fileName: input.fileName,
+        fileUrl: input.fileUrl,
+        mimeType: input.mimeType,
+        sourceSystem: "trustcare",
+        direction: "outbound",
+      });
+      const id = await db.createCaseDocument({
+        caseType: input.caseType,
+        caseId: input.caseId,
+        direction: "outbound",
+        documentType: input.documentType,
+        title: input.title,
+        sourceSystem: "trustcare",
+        fileName: input.fileName,
+        fileUrl: input.fileUrl,
+        mimeType: input.mimeType ?? "application/pdf",
+        hash: String((documentReference.content as any[])[0]?.attachment?.hash),
+        fhirDocumentReferenceId: String(documentReference.id),
+        fhirDocumentReference: documentReference,
+        verificationStatus: "verified",
+        receivedBy: ctx.user.id,
+        verifiedBy: ctx.user.id,
+        verifiedAt: new Date(),
+        notes: input.notes,
+        metadata: { recipientName: input.recipientName, direction: "outbound" },
+      } as any);
+      await db.createCareTransitionEvent({
+        caseType: input.caseType,
+        caseId: input.caseId,
+        eventType: "document_received",
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        summary: `Outbound document prepared: ${input.title}`,
+        metadata: { documentId: id, recipientName: input.recipientName },
+      } as any);
+      return { id };
+    }),
+  }),
+
+  // ============================================================
   // PATIENT DATA PORTABILITY LAYER
   // ============================================================
   portability: router({
@@ -2403,6 +3023,58 @@ export const appRouter = router({
 export type AppRouter = typeof appRouter;
 
 // Helper
+async function resolveCareTransitionCase(caseType: CaseType, caseId: number) {
+  if (caseType === "internal_referral") return db.getReferralById(caseId);
+  if (caseType === "medical_tourist") return db.getInternationalCaseById(caseId);
+  const crossBorder = await db.getCrossBorderReferralById(caseId);
+  if (crossBorder?.referralId) {
+    const referral = await db.getReferralById(crossBorder.referralId);
+    return {
+      ...crossBorder,
+      referral,
+      patientId: referral?.patientId,
+      fromHospitalId: referral?.fromHospitalId,
+      toHospitalId: referral?.toHospitalId,
+      reason: referral?.reason,
+      diagnosis: referral?.diagnosis,
+      priority: referral?.priority,
+    };
+  }
+  return crossBorder;
+}
+
+function credentialTypeForCaseDocument(documentType: string): (typeof credentialTypeValues)[number] {
+  const map: Record<string, (typeof credentialTypeValues)[number]> = {
+    referral_letter: "referral_vc",
+    patient_summary: "patient_summary",
+    lab_report: "lab_result",
+    imaging_report: "diagnostic_report",
+    passport: "travel_document_verification",
+    insurance_card: "insurance_eligibility",
+    guarantee_letter: "guarantee_letter",
+    quotation: "quotation",
+    visa_support_letter: "visa_support_letter",
+    consent: "consent_receipt",
+    claim_document: "claim_package",
+    invoice: "claim_package",
+    receipt: "claim_receipt",
+    discharge_summary: "discharge_summary",
+    prescription: "prescription",
+    medical_certificate: "medical_certificate",
+  };
+  return map[documentType] ?? "travel_document_verification";
+}
+
+function normalizeCrossBorderLanguage(language?: string) {
+  if (language === "th" || language === "en" || language === "zh" || language === "ja" || language === "other") return language;
+  return "en";
+}
+
+function normalizeInternationalLanguage(language?: string) {
+  if (language === "en" || language === "zh" || language === "ja" || language === "ar" || language === "ru" || language === "ko" || language === "de" || language === "fr" || language === "other") return language;
+  return "en";
+}
+
 function requireMaker(user: any, credentialType: string) {
   if (!canActAsCredentialMaker(user?.systemRole, [])) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Document creation requires Maker role." });

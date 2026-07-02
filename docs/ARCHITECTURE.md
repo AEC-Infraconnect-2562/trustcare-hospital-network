@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.1 (Performance Optimization: Lazy Loading + Service Worker + Code Splitting)
+**Version:** 5.2 (Care Transition + Partner Portal)
 **Last updated:** 2026-07-02
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -49,7 +49,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        DATABASE (MySQL/TiDB)                         │
-│  42 tables · 12 migrations (0000–0011)                              │
+│  50 tables · 13 migrations (0000–0012)                              │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -72,7 +72,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 ### 1.3 Module Dependency Graph
 
 ```
-routers.ts (3628 lines, 27 routers)
+routers.ts (care transition release, 29 routers)
   ├── db.ts (query helpers)
   │     └── drizzle/schema.ts (42 table definitions)
   ├── shared/rolePolicy.ts (role authorization logic)
@@ -658,7 +658,7 @@ trustcare-hospital-network/
 │   ├── portability/               ← VC/VP engine (17 modules)
 │   ├── scheduledHandlers/         ← Periodic task handlers
 │   │   └── consentExpiry.ts       ← Consent expiry reminder notifications
-│   ├── routers.ts                 ← tRPC procedures (3628 lines, 27 routers)
+│   ├── routers.ts                 ← tRPC procedures (29 routers)
 │   ├── db.ts                      ← Database query helpers
 │   ├── seed.ts                    ← Demo user + hospital seeding
 │   └── storage.ts                 ← S3 storage helpers
@@ -712,6 +712,7 @@ trustcare-hospital-network/
 | ExecutiveDashboard | `/executive` | Executive analytics |
 | Settings | `/settings` | System settings |
 | PartnerWizard | `/partner-wizard` | Partner onboarding |
+| PartnerPortal | `/partner-portal` | Partner API layer, document exchange, care packages |
 | AdapterSdk | `/adapter-sdk` | Adapter SDK docs |
 | NotFound | `*` | 404 page |
 
@@ -995,6 +996,8 @@ All credential previews (in Wallet, CredentialDetail, and Issuer views) display 
 - [W3C Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
 - [SMART Health Links Protocol](https://docs.smarthealthit.org/smart-health-links/spec/)
 - [TrustCare SHL Context Versioning](./SHL_CONTEXT_VERSIONING.md)
+- [Care Transition and Partner Portal](./CARE_TRANSITION_PARTNER_PORTAL.md)
+- [Manus Care Transition Handoff](./MANUS_CARE_TRANSITION_HANDOFF.md)
 - [TrustCare VC Uniqueness Rules](./VC_UNIQUENESS_RULES.md)
 - [SD-JWT-VC (IETF Draft)](https://datatracker.ietf.org/doc/draft-ietf-oauth-sd-jwt-vc/)
 - [HL7 FHIR R4 International Patient Summary](http://hl7.org/fhir/uv/ips/)

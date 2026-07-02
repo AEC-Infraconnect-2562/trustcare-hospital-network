@@ -7,8 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CareTransitionWorkspace } from "@/components/CareTransitionWorkspace";
 import { trpc } from "@/lib/trpc";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Plane, Plus, User, FileText, Globe, Calendar, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,10 +45,15 @@ const languageLabels: Record<string, string> = {
 export default function International() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedCaseId, setSelectedCaseId] = useState<number>();
 
   const { data: cases, refetch } = trpc.international.listCases.useQuery({
     status: statusFilter === "all" ? undefined : statusFilter,
   });
+  const selectedCase = useMemo(() => {
+    if (!cases?.length) return undefined;
+    return cases.find((item: any) => item.id === selectedCaseId) ?? cases[0];
+  }, [cases, selectedCaseId]);
   const createCase = trpc.international.createCase.useMutation({
     onSuccess: () => { refetch(); setShowCreateDialog(false); toast.success("สร้างเคสผู้ป่วยต่างชาติสำเร็จ"); }
   });
@@ -151,7 +157,11 @@ export default function International() {
                 ) : (
                   <div className="space-y-3">
                     {cases.map(c => (
-                      <div key={c.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors">
+                      <div
+                        key={c.id}
+                        className={`flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer ${selectedCase?.id === c.id ? "border-primary" : ""}`}
+                        onClick={() => setSelectedCaseId(c.id)}
+                      >
                         <div className="flex items-center gap-4">
                           <div className="p-2 rounded-full bg-primary/10">
                             <User className="h-5 w-5 text-primary" />
@@ -186,6 +196,15 @@ export default function International() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        <CareTransitionWorkspace
+          caseType="medical_tourist"
+          caseId={selectedCase?.id}
+          patientId={selectedCase?.patientId || undefined}
+          hospitalId={selectedCase?.preferredBranchId || undefined}
+          recipientName={selectedCase?.insuranceProvider || selectedCase?.country || undefined}
+          defaultPackageType="medical_tourist"
+        />
       </div>
     </DashboardLayout>
   );

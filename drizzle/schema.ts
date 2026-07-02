@@ -891,6 +891,186 @@ export type CrossBorderReferral = typeof crossBorderReferrals.$inferSelect;
 export type InsertCrossBorderReferral = typeof crossBorderReferrals.$inferInsert;
 
 // ============================================================
+// CARE TRANSITION / PARTNER PORTAL
+// ============================================================
+export const careTransitionCaseEvents = mysqlTable("care_transition_case_events", {
+  id: int("id").autoincrement().primaryKey(),
+  caseType: mysqlEnum("caseType", ["internal_referral", "cross_branch", "cross_border", "external_partner", "medical_tourist"]).notNull(),
+  caseId: int("caseId").notNull(),
+  eventType: mysqlEnum("eventType", ["created", "document_received", "document_verified", "task_updated", "decision_recorded", "package_generated", "package_sent", "status_changed", "payment_updated", "discharge_packet_generated"]).notNull(),
+  actorId: int("actorId"),
+  actorRole: varchar("actorRole", { length: 64 }),
+  fromStatus: varchar("fromStatus", { length: 80 }),
+  toStatus: varchar("toStatus", { length: 80 }),
+  summary: varchar("summary", { length: 500 }),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CareTransitionCaseEvent = typeof careTransitionCaseEvents.$inferSelect;
+export type InsertCareTransitionCaseEvent = typeof careTransitionCaseEvents.$inferInsert;
+
+export const caseDocuments = mysqlTable("case_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  caseType: mysqlEnum("caseType", ["internal_referral", "cross_branch", "cross_border", "external_partner", "medical_tourist"]).notNull(),
+  caseId: int("caseId").notNull(),
+  direction: mysqlEnum("direction", ["inbound", "outbound"]).default("inbound").notNull(),
+  documentType: mysqlEnum("documentType", ["referral_letter", "patient_summary", "lab_report", "imaging_report", "passport", "insurance_card", "guarantee_letter", "quotation", "visa_support_letter", "consent", "claim_document", "invoice", "receipt", "discharge_summary", "prescription", "medical_certificate", "other"]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  sourceSystem: varchar("sourceSystem", { length: 128 }),
+  sourcePartnerId: int("sourcePartnerId"),
+  fileName: varchar("fileName", { length: 255 }),
+  fileUrl: text("fileUrl"),
+  fileKey: varchar("fileKey", { length: 500 }),
+  mimeType: varchar("mimeType", { length: 120 }).default("application/pdf"),
+  hash: varchar("hash", { length: 128 }),
+  fhirDocumentReferenceId: varchar("fhirDocumentReferenceId", { length: 255 }),
+  fhirDocumentReference: json("fhirDocumentReference"),
+  verificationStatus: mysqlEnum("verificationStatus", ["received", "needs_review", "verified", "rejected", "converted_to_vc"]).default("received").notNull(),
+  vcCredentialId: varchar("vcCredentialId", { length: 255 }),
+  receivedBy: int("receivedBy"),
+  verifiedBy: int("verifiedBy"),
+  verifiedAt: timestamp("verifiedAt"),
+  notes: text("notes"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CaseDocument = typeof caseDocuments.$inferSelect;
+export type InsertCaseDocument = typeof caseDocuments.$inferInsert;
+
+export const caseTasks = mysqlTable("case_tasks", {
+  id: int("id").autoincrement().primaryKey(),
+  caseType: mysqlEnum("caseType", ["internal_referral", "cross_branch", "cross_border", "external_partner", "medical_tourist"]).notNull(),
+  caseId: int("caseId").notNull(),
+  taskType: mysqlEnum("taskType", ["mpi_match", "consent_review", "document_quality", "clinical_triage", "translation_review", "financial_review", "payer_review", "legal_acceptance", "appointment_scheduling", "admission_readiness", "vc_request", "package_dispatch", "discharge_packet", "sync_back"]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  status: mysqlEnum("status", ["created", "ready", "in_progress", "blocked", "completed", "failed", "cancelled"]).default("ready").notNull(),
+  priority: mysqlEnum("priority", ["routine", "urgent", "stat"]).default("routine").notNull(),
+  ownerRole: varchar("ownerRole", { length: 64 }),
+  ownerId: int("ownerId"),
+  dueAt: timestamp("dueAt"),
+  completedAt: timestamp("completedAt"),
+  input: json("input"),
+  output: json("output"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CaseTask = typeof caseTasks.$inferSelect;
+export type InsertCaseTask = typeof caseTasks.$inferInsert;
+
+export const partnerSourceConnectors = mysqlTable("partner_source_connectors", {
+  id: int("id").autoincrement().primaryKey(),
+  partnerOrgId: int(),
+  partnerName: varchar("partnerName", { length: 255 }).notNull(),
+  connectorType: mysqlEnum("connectorType", ["fhir_rest", "hl7v2_mllp", "db_view", "cdc", "sftp_csv", "smart_health_link", "native_vc_vp", "manual_portal"]).notNull(),
+  direction: mysqlEnum("direction", ["inbound", "outbound", "bidirectional"]).default("bidirectional").notNull(),
+  status: mysqlEnum("status", ["draft", "testing", "active", "suspended", "retired"]).default("draft").notNull(),
+  endpointUrl: text("endpointUrl"),
+  authType: mysqlEnum("authType", ["none", "api_key", "oauth2_client_credentials", "mutual_tls", "signed_vp", "basic"]).default("none").notNull(),
+  credentialRef: varchar("credentialRef", { length: 255 }),
+  mappingProfile: varchar("mappingProfile", { length: 255 }),
+  canonicalMapping: json("canonicalMapping"),
+  supportedDocumentTypes: json("supportedDocumentTypes"),
+  supportedCredentialTypes: json("supportedCredentialTypes"),
+  lastValidatedAt: timestamp("lastValidatedAt"),
+  validationStatus: mysqlEnum("validationStatus", ["not_tested", "passed", "warning", "failed"]).default("not_tested").notNull(),
+  validationReport: json("validationReport"),
+  metadata: json("metadata"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PartnerSourceConnector = typeof partnerSourceConnectors.$inferSelect;
+export type InsertPartnerSourceConnector = typeof partnerSourceConnectors.$inferInsert;
+
+export const partnerSourceAttestations = mysqlTable("partner_source_attestations", {
+  id: int("id").autoincrement().primaryKey(),
+  caseDocumentId: int("caseDocumentId"),
+  connectorId: int("connectorId"),
+  partnerOrgId: int(),
+  partnerName: varchar("partnerName", { length: 255 }).notNull(),
+  sourceMode: mysqlEnum("sourceMode", ["partner_native_vc", "structured_source", "delegated_issuance", "legacy_document"]).notNull(),
+  attestationStatus: mysqlEnum("attestationStatus", ["draft", "submitted", "verified", "rejected"]).default("submitted").notNull(),
+  sourceHash: varchar("sourceHash", { length: 128 }),
+  evidence: json("evidence"),
+  sourceDid: varchar("sourceDid", { length: 255 }),
+  signerDid: varchar("signerDid", { length: 255 }),
+  vcCredentialId: varchar("vcCredentialId", { length: 255 }),
+  reviewedBy: int("reviewedBy"),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PartnerSourceAttestation = typeof partnerSourceAttestations.$inferSelect;
+export type InsertPartnerSourceAttestation = typeof partnerSourceAttestations.$inferInsert;
+
+export const carePackages = mysqlTable("care_packages", {
+  id: int("id").autoincrement().primaryKey(),
+  caseType: mysqlEnum("caseType", ["internal_referral", "cross_branch", "cross_border", "external_partner", "medical_tourist"]).notNull(),
+  caseId: int("caseId").notNull(),
+  packageType: mysqlEnum("packageType", ["referral", "cross_border", "medical_tourist", "discharge", "counter_referral", "claim"]).notNull(),
+  status: mysqlEnum("status", ["draft", "ready_for_review", "approved", "sent", "received", "revoked"]).default("draft").notNull(),
+  recipientType: mysqlEnum("recipientType", ["trustcare_hospital", "partner_hospital", "payer", "patient", "embassy", "facilitator"]).default("partner_hospital").notNull(),
+  recipientName: varchar("recipientName", { length: 255 }),
+  recipientDid: varchar("recipientDid", { length: 255 }),
+  purpose: mysqlEnum("purpose", ["referral", "discharge", "cross_border", "medical_tourist", "insurance", "claim", "follow_up"]).notNull(),
+  fhirBundleHash: varchar("fhirBundleHash", { length: 128 }),
+  manifestHash: varchar("manifestHash", { length: 128 }),
+  shlId: int("shlId"),
+  presentationId: varchar("presentationId", { length: 255 }),
+  consentCredentialId: varchar("consentCredentialId", { length: 255 }),
+  accessPolicy: json("accessPolicy"),
+  costEstimate: json("costEstimate"),
+  claimRef: varchar("claimRef", { length: 255 }),
+  createdBy: int("createdBy"),
+  approvedBy: int("approvedBy"),
+  approvedAt: timestamp("approvedAt"),
+  sentAt: timestamp("sentAt"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CarePackage = typeof carePackages.$inferSelect;
+export type InsertCarePackage = typeof carePackages.$inferInsert;
+
+export const carePackageItems = mysqlTable("care_package_items", {
+  id: int("id").autoincrement().primaryKey(),
+  carePackageId: int("carePackageId").notNull(),
+  itemType: mysqlEnum("itemType", ["fhir_bundle", "document_reference", "legacy_file", "vc", "vp", "shl_manifest", "claim", "invoice", "receipt"]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  resourceRef: varchar("resourceRef", { length: 255 }),
+  hash: varchar("hash", { length: 128 }),
+  requiredForAcceptance: boolean("requiredForAcceptance").default(false).notNull(),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CarePackageItem = typeof carePackageItems.$inferSelect;
+export type InsertCarePackageItem = typeof carePackageItems.$inferInsert;
+
+export const caseDecisions = mysqlTable("case_decisions", {
+  id: int("id").autoincrement().primaryKey(),
+  caseType: mysqlEnum("caseType", ["internal_referral", "cross_branch", "cross_border", "external_partner", "medical_tourist"]).notNull(),
+  caseId: int("caseId").notNull(),
+  decisionType: mysqlEnum("decisionType", ["clinical_acceptance", "document_acceptance", "financial_acceptance", "legal_acceptance", "admission_acceptance", "discharge_clearance"]).notNull(),
+  outcome: mysqlEnum("outcome", ["accepted", "rejected", "more_info_requested", "conditional"]).notNull(),
+  reason: text("reason"),
+  conditions: json("conditions"),
+  decidedBy: int("decidedBy"),
+  decidedAt: timestamp("decidedAt").defaultNow().notNull(),
+  metadata: json("metadata"),
+});
+
+export type CaseDecision = typeof caseDecisions.$inferSelect;
+export type InsertCaseDecision = typeof caseDecisions.$inferInsert;
+
+// ============================================================
 // VC SCHEMA REGISTRY
 // ============================================================
 export const vcSchemaRegistry = mysqlTable("vc_schema_registry", {

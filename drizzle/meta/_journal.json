@@ -85,6 +85,13 @@
       "when": 1782924600000,
       "tag": "0011_shl_transport_vc_trust_layer",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1783000200000,
+      "tag": "0012_care_transition_partner_portal",
+      "breakpoints": true
     }
   ]
 }

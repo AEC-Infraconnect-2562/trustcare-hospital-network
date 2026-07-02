@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { CareTransitionWorkspace } from "@/components/CareTransitionWorkspace";
 import { trpc } from "@/lib/trpc";
 import { ArrowRightLeft, Plus, ArrowRight, Clock, CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
@@ -30,6 +31,11 @@ const priorityLabels: Record<string, { label: string; variant: "default" | "seco
 export default function Referral() {
   const { data: referrals, isLoading, refetch } = trpc.referral.list.useQuery({});
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedReferralId, setSelectedReferralId] = useState<number>();
+  const selectedReferral = useMemo(() => {
+    if (!referrals?.length) return undefined;
+    return referrals.find((item: any) => item.id === selectedReferralId) ?? referrals[0];
+  }, [referrals, selectedReferralId]);
 
   return (
     <DashboardLayout>
@@ -77,7 +83,11 @@ export default function Referral() {
               const priority = priorityLabels[ref.priority] || priorityLabels.routine;
               const StatusIcon = status.icon;
               return (
-                <Card key={ref.id} className="hover:shadow-sm transition-shadow">
+                <Card
+                  key={ref.id}
+                  className={`hover:shadow-sm transition-shadow cursor-pointer ${selectedReferral?.id === ref.id ? "border-primary" : ""}`}
+                  onClick={() => setSelectedReferralId(ref.id)}
+                >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3">
@@ -113,6 +123,15 @@ export default function Referral() {
             </CardContent>
           </Card>
         )}
+
+        <CareTransitionWorkspace
+          caseType="internal_referral"
+          caseId={selectedReferral?.id}
+          patientId={selectedReferral?.patientId}
+          hospitalId={selectedReferral?.fromHospitalId}
+          recipientName={selectedReferral?.toHospitalId ? `TrustCare hospital #${selectedReferral.toHospitalId}` : undefined}
+          defaultPackageType="referral"
+        />
       </div>
     </DashboardLayout>
   );

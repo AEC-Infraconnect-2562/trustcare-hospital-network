@@ -27,7 +27,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Wallet, ArrowRightLeft, ShieldCheck,
   BadgeCheck, ScanLine, GitBranch, BookOpen, Building2, FileSearch, Users,
   Settings, Moon, Sun, Bell, Globe, Plane, Receipt, Plug, ShieldAlert, Link2,
-  FileJson2, Code2, UserCircle,
+  FileJson2, Code2, UserCircle, Handshake,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -43,7 +43,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 const iconMap: Record<string, any> = {
   LayoutDashboard, Wallet, ArrowRightLeft, ShieldCheck, BadgeCheck, ScanLine,
   GitBranch, BookOpen, Building2, FileSearch, Users, Settings, Globe, Plane,
-  Receipt, Plug, ShieldAlert, Link2, FileJson2, Code2, UserCircle,
+  Receipt, Plug, ShieldAlert, Link2, FileJson2, Code2, UserCircle, Handshake,
 };
 
 type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
@@ -89,6 +89,7 @@ const menuItemsEn: Record<string, string> = {
   referral: "Patient Referral",
   "cross-border": "Cross-border Referral",
   international: "International Patients",
+  "partner-portal": "Partner Portal",
   issuer: "Issue Credentials",
   verifier: "Verify Credentials",
   "trust-registry": "Trust Registry",
@@ -120,6 +121,7 @@ const allMenuItems: MenuItemDef[] = [
   { id: "referral", label: "ส่งต่อผู้ป่วย", icon: "ArrowRightLeft", path: "/referral", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "clinical", groupLabel: "บริการทางคลินิก" },
   { id: "cross-border", label: "ส่งต่อข้ามเครือข่าย", icon: "Globe", path: "/cross-border", roles: ["system_admin", "hospital_admin", "doctor"], group: "clinical", groupLabel: "บริการทางคลินิก" },
   { id: "international", label: "ผู้ป่วยต่างชาติ", icon: "Plane", path: "/international", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "clinical", groupLabel: "บริการทางคลินิก" },
+  { id: "partner-portal", label: "Partner Portal", icon: "Handshake", path: "/partner-portal", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer"], group: "clinical", groupLabel: "Clinical Services" },
   // Digital Credentials
   { id: "issuer", label: "ออกใบรับรอง", icon: "BadgeCheck", path: "/issuer", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
   { id: "verifier", label: "ตรวจสอบใบรับรอง", icon: "ScanLine", path: "/verifier", roles: ["system_admin", "hospital_admin", "checker", "doctor", "nurse"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },

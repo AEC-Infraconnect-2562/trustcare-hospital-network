@@ -1,6 +1,6 @@
 # Contributing to TrustCare Hospital Network
 
-**Version:** 5.1
+**Version:** 5.2
 **Last updated:** 2026-07-02
 
 ---
@@ -48,7 +48,7 @@ Before opening a Pull Request, ensure:
 - [ ] `docs/ARCHITECTURE.md` is updated if:
   - New tables are added
   - New credential types are introduced
-  - Router structure changes (currently 27 routers)
+  - Router structure changes (currently 29 routers)
   - Avatar/photo system changes
   - Scheduled handler additions
   - Portability module is modified
@@ -81,8 +81,8 @@ These tables must stay in sync when adding new credential types:
 
 ### Current Schema Stats
 
-- **42 tables** total
-- **12 migrations** (0000–0011)
+- **50 tables** total
+- **13 migrations** (0000–0012)
 - **24 credential types** in the enum
 
 ---
@@ -117,7 +117,7 @@ Both `server/seed.ts` and `server/portability/reseed.ts` reference this array. *
 
 ## Router Organization
 
-The `server/routers.ts` file contains **27 routers** (~3628 lines). When it exceeds 4000 lines, split into:
+The `server/routers.ts` file contains **29 routers**. When it exceeds maintainable size, split into:
 
 ```
 server/routers/
@@ -128,7 +128,7 @@ server/routers/
   └── ...
 ```
 
-### Current Routers (27)
+### Current Routers (29)
 
 ```
 auth · seed · makerChecker · hospital · credential · wallet · verifier ·

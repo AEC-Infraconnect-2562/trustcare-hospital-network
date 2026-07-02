@@ -20,6 +20,14 @@ import {
   notifications, InsertNotification,
   userRoles, InsertUserRole,
   credentialRequests, InsertCredentialRequest,
+  careTransitionCaseEvents, InsertCareTransitionCaseEvent,
+  caseDocuments, InsertCaseDocument,
+  caseTasks, InsertCaseTask,
+  partnerSourceConnectors, InsertPartnerSourceConnector,
+  partnerSourceAttestations, InsertPartnerSourceAttestation,
+  carePackages, InsertCarePackage,
+  carePackageItems, InsertCarePackageItem,
+  caseDecisions, InsertCaseDecision,
   vcSchemaRegistry, InsertVcSchemaRegistry,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -1161,6 +1169,220 @@ export async function getCrossBorderReferralById(id: number) {
   if (!db) return undefined;
   const result = await db.select().from(crossBorderReferrals).where(eq(crossBorderReferrals.id, id)).limit(1);
   return result[0];
+}
+
+// ============================================================
+// CARE TRANSITION / PARTNER PORTAL HELPERS
+// ============================================================
+type CareCaseFilter = {
+  caseType?: string;
+  caseId?: number;
+  status?: string;
+  partnerOrgId?: number;
+  connectorType?: string;
+};
+
+export async function createCareTransitionEvent(data: InsertCareTransitionCaseEvent) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(careTransitionCaseEvents).values(data);
+  return result[0].insertId;
+}
+
+export async function listCareTransitionEvents(filter: { caseType: string; caseId: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(careTransitionCaseEvents)
+    .where(and(eq(careTransitionCaseEvents.caseType, filter.caseType as any), eq(careTransitionCaseEvents.caseId, filter.caseId)))
+    .orderBy(desc(careTransitionCaseEvents.createdAt));
+}
+
+export async function createCaseDocument(data: InsertCaseDocument) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(caseDocuments).values(data);
+  return result[0].insertId;
+}
+
+export async function listCaseDocuments(filter?: CareCaseFilter & { direction?: string; verificationStatus?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.caseType) conditions.push(eq(caseDocuments.caseType, filter.caseType as any));
+  if (filter?.caseId) conditions.push(eq(caseDocuments.caseId, filter.caseId));
+  if (filter?.direction) conditions.push(eq(caseDocuments.direction, filter.direction as any));
+  if (filter?.verificationStatus) conditions.push(eq(caseDocuments.verificationStatus, filter.verificationStatus as any));
+  if (conditions.length > 0) {
+    return db.select().from(caseDocuments).where(and(...conditions)).orderBy(desc(caseDocuments.createdAt)).limit(200);
+  }
+  return db.select().from(caseDocuments).orderBy(desc(caseDocuments.createdAt)).limit(200);
+}
+
+export async function getCaseDocumentById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(caseDocuments).where(eq(caseDocuments.id, id)).limit(1);
+  return result[0];
+}
+
+export async function updateCaseDocument(id: number, data: Partial<InsertCaseDocument>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(caseDocuments).set(data as any).where(eq(caseDocuments.id, id));
+}
+
+export async function createCaseTask(data: InsertCaseTask) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(caseTasks).values(data);
+  return result[0].insertId;
+}
+
+export async function listCaseTasks(filter?: CareCaseFilter & { taskType?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.caseType) conditions.push(eq(caseTasks.caseType, filter.caseType as any));
+  if (filter?.caseId) conditions.push(eq(caseTasks.caseId, filter.caseId));
+  if (filter?.status) conditions.push(eq(caseTasks.status, filter.status as any));
+  if (filter?.taskType) conditions.push(eq(caseTasks.taskType, filter.taskType as any));
+  if (conditions.length > 0) {
+    return db.select().from(caseTasks).where(and(...conditions)).orderBy(desc(caseTasks.createdAt)).limit(200);
+  }
+  return db.select().from(caseTasks).orderBy(desc(caseTasks.createdAt)).limit(200);
+}
+
+export async function updateCaseTask(id: number, data: Partial<InsertCaseTask>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(caseTasks).set(data as any).where(eq(caseTasks.id, id));
+}
+
+export async function createPartnerSourceConnector(data: InsertPartnerSourceConnector) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(partnerSourceConnectors).values(data);
+  return result[0].insertId;
+}
+
+export async function listPartnerSourceConnectors(filter?: CareCaseFilter) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.partnerOrgId) conditions.push(eq(partnerSourceConnectors.partnerOrgId, filter.partnerOrgId));
+  if (filter?.connectorType) conditions.push(eq(partnerSourceConnectors.connectorType, filter.connectorType as any));
+  if (filter?.status) conditions.push(eq(partnerSourceConnectors.status, filter.status as any));
+  if (conditions.length > 0) {
+    return db.select().from(partnerSourceConnectors).where(and(...conditions)).orderBy(desc(partnerSourceConnectors.createdAt)).limit(100);
+  }
+  return db.select().from(partnerSourceConnectors).orderBy(desc(partnerSourceConnectors.createdAt)).limit(100);
+}
+
+export async function getPartnerSourceConnectorById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(partnerSourceConnectors).where(eq(partnerSourceConnectors.id, id)).limit(1);
+  return result[0];
+}
+
+export async function updatePartnerSourceConnector(id: number, data: Partial<InsertPartnerSourceConnector>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(partnerSourceConnectors).set(data as any).where(eq(partnerSourceConnectors.id, id));
+}
+
+export async function createPartnerSourceAttestation(data: InsertPartnerSourceAttestation) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(partnerSourceAttestations).values(data);
+  return result[0].insertId;
+}
+
+export async function createCarePackage(data: InsertCarePackage) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(carePackages).values(data);
+  return result[0].insertId;
+}
+
+export async function listCarePackages(filter?: CareCaseFilter & { packageType?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.caseType) conditions.push(eq(carePackages.caseType, filter.caseType as any));
+  if (filter?.caseId) conditions.push(eq(carePackages.caseId, filter.caseId));
+  if (filter?.status) conditions.push(eq(carePackages.status, filter.status as any));
+  if (filter?.packageType) conditions.push(eq(carePackages.packageType, filter.packageType as any));
+  if (conditions.length > 0) {
+    return db.select().from(carePackages).where(and(...conditions)).orderBy(desc(carePackages.createdAt)).limit(100);
+  }
+  return db.select().from(carePackages).orderBy(desc(carePackages.createdAt)).limit(100);
+}
+
+export async function getCarePackageById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(carePackages).where(eq(carePackages.id, id)).limit(1);
+  return result[0];
+}
+
+export async function updateCarePackage(id: number, data: Partial<InsertCarePackage>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(carePackages).set(data as any).where(eq(carePackages.id, id));
+}
+
+export async function createCarePackageItem(data: InsertCarePackageItem) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(carePackageItems).values(data);
+  return result[0].insertId;
+}
+
+export async function listCarePackageItems(carePackageId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(carePackageItems).where(eq(carePackageItems.carePackageId, carePackageId)).orderBy(desc(carePackageItems.createdAt));
+}
+
+export async function createCaseDecision(data: InsertCaseDecision) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(caseDecisions).values(data);
+  return result[0].insertId;
+}
+
+export async function listCaseDecisions(filter: { caseType: string; caseId: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(caseDecisions)
+    .where(and(eq(caseDecisions.caseType, filter.caseType as any), eq(caseDecisions.caseId, filter.caseId)))
+    .orderBy(desc(caseDecisions.decidedAt));
+}
+
+export async function getCareTransitionStats() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      documents: 0,
+      pendingDocuments: 0,
+      activeTasks: 0,
+      activeConnectors: 0,
+      packages: 0,
+    };
+  }
+  const [documentCount] = await db.select({ count: count() }).from(caseDocuments);
+  const [pendingDocumentCount] = await db.select({ count: count() }).from(caseDocuments).where(eq(caseDocuments.verificationStatus, "needs_review" as any));
+  const [activeTaskCount] = await db.select({ count: count() }).from(caseTasks).where(or(eq(caseTasks.status, "ready" as any), eq(caseTasks.status, "in_progress" as any), eq(caseTasks.status, "blocked" as any)));
+  const [activeConnectorCount] = await db.select({ count: count() }).from(partnerSourceConnectors).where(eq(partnerSourceConnectors.status, "active" as any));
+  const [packageCount] = await db.select({ count: count() }).from(carePackages);
+  return {
+    documents: documentCount.count,
+    pendingDocuments: pendingDocumentCount.count,
+    activeTasks: activeTaskCount.count,
+    activeConnectors: activeConnectorCount.count,
+    packages: packageCount.count,
+  };
 }
 
 // ============================================================

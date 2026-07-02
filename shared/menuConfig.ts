@@ -118,6 +118,18 @@ export const menuItems: MenuItem[] = [
     groupLabelEn: "Clinical Services",
   },
 
+  {
+    id: "partner-portal",
+    label: "Partner Portal",
+    labelEn: "Partner Portal",
+    icon: "Handshake",
+    path: "/partner-portal",
+    roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer"],
+    group: "clinical",
+    groupLabel: "Clinical Services",
+    groupLabelEn: "Clinical Services",
+  },
+
   // ─── Digital Credentials ───
   {
     id: "issuer",
