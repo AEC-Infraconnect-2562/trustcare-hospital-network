@@ -394,3 +394,7 @@
 - [x] Fix patient avatar images still showing cartoon/dicebear instead of realistic photos (DB updated, generate-avatars.mjs rewritten)
 - [x] Sort Identity credentials (patient_identity) to always appear at top of Wallet and all VC/VP lists (Wallet + Issuer)
 - [x] Add Back button to Wallet page, Patient Profile page, and CredentialDetail page
+
+## v2.7.1 - Avatar Image Fix (Production) & VP Back Button
+- [x] Fix avatar image not displaying on production (DB updated all patients/staff with /manus-storage/ paths)
+- [x] Add Back/Close button to Wallet credential detail (VP) view - both normal view and QR mode have explicit "ปิด" button

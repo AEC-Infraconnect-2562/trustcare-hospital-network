@@ -14,7 +14,7 @@ import {
   AlertTriangle, ArrowLeft, ArrowRightLeft, BadgeCheck, CalendarDays, CreditCard, Eye,
   FileBadge, FileCheck2, FileText, Fingerprint, Globe2, History, Landmark, Link2, Microscope,
   PackageCheck, Pill, Printer, QrCode, ReceiptText, RefreshCcw, ScanLine,
-  Shield, Share2, Syringe, User, Wallet as WalletIcon,
+  Shield, Share2, Syringe, User, Wallet as WalletIcon, X,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -445,6 +445,10 @@ export default function Wallet() {
                   <p><span className="font-medium">Card Type:</span> {selectedCard.cardType}</p>
                   {selectedCard.lastPresentedAt && <p><span className="font-medium">แสดงล่าสุด:</span> {new Date(selectedCard.lastPresentedAt).toLocaleString("th-TH")}</p>}
                 </div>
+                {/* Explicit close button for mobile accessibility */}
+                <Button variant="outline" onClick={() => setDetailOpen(false)} className="w-full mt-3 gap-2">
+                  <X className="h-4 w-4" />ปิด
+                </Button>
               </div>
             </>
           )}
@@ -465,6 +469,9 @@ export default function Wallet() {
                   <Button variant="outline" onClick={() => setQrMode(false)} className="flex-1 gap-2"><Eye className="h-4 w-4" />ดูรายละเอียด</Button>
                   <Button variant="outline" onClick={() => { window.print(); toast.info("กำลังพิมพ์ VP QR"); }} className="flex-1 gap-2"><Printer className="h-4 w-4" />พิมพ์ QR</Button>
                 </div>
+                <Button variant="outline" onClick={() => { setQrMode(false); setDetailOpen(false); }} className="w-full gap-2">
+                  <X className="h-4 w-4" />ปิด
+                </Button>
               </div>
             </>
           )}
