@@ -7,7 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { AlertTriangle, Camera, CheckCircle2, ClipboardCheck, FileText, Pill, RotateCcw, ScanLine, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearch } from "wouter";
 import { toast } from "sonner";
 
 type TrustLevel = "green" | "yellow" | "red";
@@ -44,6 +45,20 @@ export default function Verifier() {
   const patient = subjects.find((subject: any) => subject.patient)?.patient ?? subjects[0]?.patient ?? {};
   const allergies = flatten(subjects.map((subject: any) => subject.critical?.allergies ?? subject.clinical?.allergies ?? []));
   const medications = flatten(subjects.map((subject: any) => subject.critical?.medications ?? subject.clinical?.medications ?? []));
+
+  // Auto-verify when opened via QR URL with ?vp= param
+  const searchString = useSearch();
+  const autoVerified = useRef(false);
+  useEffect(() => {
+    if (autoVerified.current) return;
+    const params = new URLSearchParams(searchString);
+    const vpId = params.get("vp");
+    if (vpId) {
+      autoVerified.current = true;
+      verifyQr.mutate({ qrData: vpId, source: "camera" });
+      setScanMode("camera");
+    }
+  }, [searchString]);
 
   const handleScanSuccess = useCallback((decodedText: string) => {
     verifyQr.mutate({ qrData: decodedText, source: "camera" });

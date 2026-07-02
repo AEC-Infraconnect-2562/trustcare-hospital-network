@@ -321,11 +321,11 @@
 - [x] Store revoked credentials with superseded_by reference
 
 ## v4.1 - Credential Display Redesign (Realistic Hospital Documents)
-- [ ] Create CredentialRenderer component with document-type-specific templates
-- [ ] Add realistic person photo to patient_identity and medical_certificate credentials
-- [ ] Redesign CredentialDetail page with hospital branding, formatted fields, photo
-- [ ] Update Wallet card display to show person photo and formatted credential preview
-- [ ] Replace raw JSON display with human-readable formatted credential view
+- [x] Create CredentialRenderer component with document-type-specific templates
+- [x] Add realistic person photo to patient_identity and medical_certificate credentials
+- [x] Redesign CredentialDetail page with hospital branding, formatted fields, photo
+- [x] Update Wallet card display to show person photo and formatted credential preview
+- [x] Replace raw JSON display with human-readable formatted credential view
 
 ## v4.2 - Hospital Consolidation (Fix Duplicate Hospital Data)
 - [x] Unify hospital codes: merge TC-BKK/TC-CM/TC-PKT into TCC/TCP/TCM (single source of truth)
@@ -353,8 +353,11 @@
 - [x] Redesign VP/credential display to show as friendly real documents (not raw fields)
 - [x] Improve seed data quality: Single Source of Truth for demo/seed patients, complete clinical data
 - [ ] Add 'สำเนา' watermark on credential document previews
-- [ ] Push all changes to GitHub
+- [x] Push all changes to GitHub
 
 ## v4.5 - HIS Adapter Fix & UI Overflow
 - [x] Fix HIS adapter seed: reduce from 6 adapters to 3 (one per hospital, not 2 per hospital)
 - [x] Fix UI overflow on mobile: adapter cards "ทดสอบ" button cut off on small screens
+
+## v4.6 - QR Code Fix
+- [x] Fix QR Code generation error: VP data too large for QR Code - use URL-based approach instead

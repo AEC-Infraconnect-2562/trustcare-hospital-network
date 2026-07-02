@@ -539,11 +539,17 @@ export const appRouter = router({
         resourceId: String(input.cardId),
         details: { presentationId: presentation.presentationId, credentialIds: presentation.credentialIds },
       });
+      // QR Code has ~2,953 byte limit; JWT is too large.
+      // Use a short verification URL that the verifier can resolve.
+      const proto = ctx.req.headers["x-forwarded-proto"] || ctx.req.protocol || "https";
+      const host = ctx.req.headers["x-forwarded-host"] || ctx.req.headers.host || "";
+      const origin = `${proto}://${host}`;
+      const qrUrl = `${origin}/verifier?vp=${presentation.presentationId}`;
       return {
         presentationId: presentation.presentationId,
         format: "jwt-vp",
         expiresAt: presentation.expiresAt?.toISOString(),
-        qrData: presentation.presentationJwt,
+        qrData: qrUrl,
       };
     }),
   }),
@@ -632,6 +638,14 @@ export const appRouter = router({
           parsed = url.searchParams.get("token") || url.searchParams.get("vp") || url.searchParams.get("vc") || qrData;
         } catch {
           // Not a valid URL, use raw data
+        }
+      }
+
+      // If parsed looks like a presentationId (not JWT/JSON), resolve from DB
+      if (!parsed.startsWith("{") && !parsed.startsWith("eyJ") && !parsed.startsWith("http") && parsed.length < 300) {
+        const storedPresentation = await db.getIssuedPresentationByPresentationId(parsed);
+        if (storedPresentation?.presentationJwt) {
+          parsed = storedPresentation.presentationJwt;
         }
       }
 
