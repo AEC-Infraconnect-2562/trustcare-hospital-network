@@ -10,7 +10,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Upload, FileText, Image, File, ChevronDown, ChevronRight, Plus, Trash2, ShieldCheck, Package, Download, Eye, ZoomIn, ZoomOut, RotateCw, X } from "lucide-react";
+import { Upload, FileText, Image, File, ChevronDown, ChevronRight, Plus, Trash2, ShieldCheck, Package, Download, Eye, ZoomIn, ZoomOut, RotateCw, X, Scan } from "lucide-react";
+import { DicomViewer } from "@/components/DicomViewer";
 
 interface Props {
   caseType: string;
@@ -31,9 +32,10 @@ interface PreviewFile {
 
 const PREVIEWABLE_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp", "image/svg+xml", "image/bmp"];
 const PREVIEWABLE_PDF_TYPES = ["application/pdf"];
+const DICOM_TYPES = ["application/dicom"];
 
-function isPreviewable(mimeType: string): boolean {
-  return PREVIEWABLE_IMAGE_TYPES.includes(mimeType) || PREVIEWABLE_PDF_TYPES.includes(mimeType);
+function isPreviewable(mimeType: string, fileName?: string): boolean {
+  return PREVIEWABLE_IMAGE_TYPES.includes(mimeType) || PREVIEWABLE_PDF_TYPES.includes(mimeType) || isDicomType(mimeType, fileName);
 }
 
 function isImageType(mimeType: string): boolean {
@@ -44,7 +46,14 @@ function isPdfType(mimeType: string): boolean {
   return PREVIEWABLE_PDF_TYPES.includes(mimeType);
 }
 
-const fileTypeIcon = (mimeType: string) => {
+function isDicomType(mimeType: string, fileName?: string): boolean {
+  if (DICOM_TYPES.includes(mimeType)) return true;
+  if (fileName && fileName.toLowerCase().endsWith(".dcm")) return true;
+  return false;
+}
+
+const fileTypeIcon = (mimeType: string, fileName?: string) => {
+  if (isDicomType(mimeType, fileName)) return <Scan className="h-4 w-4 text-cyan-600" />;
   if (mimeType?.startsWith("image/")) return <Image className="h-4 w-4 text-blue-500" />;
   if (mimeType?.includes("pdf")) return <FileText className="h-4 w-4 text-red-500" />;
   if (mimeType?.includes("word") || mimeType?.includes("document")) return <FileText className="h-4 w-4 text-blue-700" />;
@@ -241,7 +250,7 @@ export function BundleManager({ caseType, caseId }: Props) {
       toast.error("ไม่สามารถแสดงตัวอย่างได้ — ไม่มี URL ไฟล์");
       return;
     }
-    if (!isPreviewable(file.mimeType)) {
+    if (!isPreviewable(file.mimeType, file.fileName)) {
       toast.info("ไฟล์ประเภทนี้ไม่รองรับการแสดงตัวอย่าง กรุณาดาวน์โหลดแทน");
       return;
     }
@@ -271,7 +280,10 @@ export function BundleManager({ caseType, caseId }: Props) {
             </div>
           </DialogHeader>
           <div className="flex-1 overflow-hidden">
-            {previewFile && isImageType(previewFile.mimeType) && (
+            {previewFile && isDicomType(previewFile.mimeType, previewFile.fileName) && (
+              <DicomViewer src={previewFile.fileUrl} fileName={previewFile.fileName} />
+            )}
+            {previewFile && isImageType(previewFile.mimeType) && !isDicomType(previewFile.mimeType, previewFile.fileName) && (
               <ImagePreview src={previewFile.fileUrl} alt={previewFile.fileName} />
             )}
             {previewFile && isPdfType(previewFile.mimeType) && (
@@ -376,7 +388,7 @@ export function BundleManager({ caseType, caseId }: Props) {
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <span className="text-[10px] text-muted-foreground">{file.fileSize ? `${(file.fileSize / 1024).toFixed(0)} KB` : ""}</span>
                         {/* Preview button */}
-                        {file.fileUrl && isPreviewable(file.mimeType) && (
+                        {file.fileUrl && isPreviewable(file.mimeType, file.fileName) && (
                           <Button
                             size="sm"
                             variant="ghost"

@@ -500,3 +500,13 @@
 - [x] Graceful fallback for unsupported file types (show download link instead)
 - [x] TypeScript compilation: 0 errors
 - [x] Tests passing (178/178)
+
+## v3.7.2 - DICOM Viewer Integration
+
+- [x] Install cornerstone-core and dicom-parser npm packages (MIT licensed, lightweight)
+- [x] Create DicomViewer React component with windowing (W/L), zoom, pan controls
+- [x] Integrate DicomViewer into BundleManager preview dialog for .dcm MIME types
+- [x] Add DICOM metadata display panel (patient name, modality, study date, series)
+- [x] Support application/dicom and .dcm file extension detection
+- [x] TypeScript compilation: 0 errors
+- [x] Tests passing (193 tests)
