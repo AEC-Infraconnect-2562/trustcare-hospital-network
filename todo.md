@@ -544,3 +544,38 @@
 - [x] Full test suite: 251 tests passing (21 test files)
 - [x] TypeScript compilation: 0 errors
 - [x] Push to GitHub
+
+## v3.9.0 - Document Request Import Flow & VP Packet QR Verification
+
+### Feature 1: Document Request Import Flow (Webhook/API)
+- [x] Create Express webhook endpoint POST /api/webhook/document-import for HIS/LIS systems
+- [x] Implement HMAC-SHA256 signature verification for webhook security
+- [x] Handle status transitions: requested → imported → converted_to_vc (automatic)
+- [x] On import: store raw document payload, update status to 'imported'
+- [x] On convert: auto-issue VC from imported document, link to wallet card, update status to 'converted_to_vc'
+- [x] Create tRPC procedure for manual import (staff can trigger import from UI)
+- [x] Add webhook configuration management (register external systems, API keys)
+- [x] Create audit trail entries for each status transition
+- [x] Send notification to patient when document is imported/converted
+- [x] Handle error cases: invalid document, duplicate import, expired request
+
+### Feature 2: VP Packet QR Verification at Service Point (Staff Scanner)
+- [x] Create /service-verify page for staff to scan VP Packet QR codes
+- [x] Integrate html5-qrcode camera scanner component
+- [x] Parse VP packet from QR (decode JWT, extract VP payload)
+- [x] Verify VP signature against patient's DID
+- [x] Verify each embedded VC against issuer trust registry
+- [x] Display verification results: patient identity, readiness score, document list
+- [x] Show trust badges (green/amber/red) for each verified credential
+- [x] Display clinical-risk-ordered content (allergy → medication → conditions → labs)
+- [x] Add service confirmation button (mark patient as checked-in/verified)
+- [x] Record verification event in audit trail
+- [x] Add menu item in sidebar for staff roles (nurse, doctor, hospital_admin)
+
+### Shared
+- [x] Write vitest tests for webhook endpoint (signature verification, status transitions)
+- [x] Write vitest tests for VP verification logic
+- [x] Full test suite passing (302 tests, 23 test files)
+- [x] TypeScript compilation: 0 errors
+- [x] Update ARCHITECTURE.md
+- [x] Push to GitHub

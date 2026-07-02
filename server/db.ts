@@ -1830,3 +1830,74 @@ export async function updateDocumentBundleHash(bundleId: number, integrityHash: 
     .set({ integrityHash })
     .where(eq(documentBundles.id, bundleId));
 }
+
+
+// ============================================================
+// Wallet Document Request - Extended Helpers (for webhook import flow)
+// ============================================================
+
+export async function getWalletDocumentRequestByRequestId(requestId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select()
+    .from(walletDocumentRequests)
+    .where(eq(walletDocumentRequests.requestId, requestId))
+    .limit(1);
+  return result[0];
+}
+
+export async function updateWalletDocumentRequestStatus(
+  id: number,
+  status: "draft" | "pending_consent" | "requested" | "imported" | "needs_review" | "converted_to_vc" | "rejected" | "cancelled",
+  metadata?: Record<string, any>
+) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(walletDocumentRequests).where(eq(walletDocumentRequests.id, id)).limit(1);
+  if (!existing[0]) return;
+  const existingMeta = (existing[0].metadata as Record<string, any>) || {};
+  await db.update(walletDocumentRequests)
+    .set({
+      status,
+      metadata: metadata ? { ...existingMeta, ...metadata } : existingMeta,
+    })
+    .where(eq(walletDocumentRequests.id, id));
+}
+
+// ============================================================
+// Service Verification - VP Packet verification at service point
+// ============================================================
+
+export async function recordServiceVerification(data: {
+  presentationId: string;
+  patientId: number;
+  verifiedBy?: number;
+  verifierRole?: string;
+  context?: string;
+  score?: number;
+  credentialCount?: number;
+  trustLevel?: string;
+  verified?: boolean;
+  serviceName?: string;
+  hospitalId?: number;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await createAuditEvent({
+    actorId: data.verifiedBy,
+    actorRole: data.verifierRole,
+    action: "service_point.vp_verified",
+    resourceType: "verifiable_presentation",
+    resourceId: data.presentationId,
+    details: {
+      patientId: data.patientId,
+      context: data.context,
+      score: data.score,
+      credentialCount: data.credentialCount,
+      trustLevel: data.trustLevel,
+      verified: data.verified,
+      serviceName: data.serviceName,
+      hospitalId: data.hospitalId,
+    },
+  });
+}

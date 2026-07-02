@@ -93,6 +93,16 @@ async function startServer() {
     return consentExpiryReminderHandler(req, res);
   });
 
+  // Document Import Webhook (for HIS/LIS/RIS/PACS external systems)
+  app.post("/api/webhook/document-import", async (req, res) => {
+    const { handleDocumentImportWebhook } = await import("../webhookDocumentImport");
+    return handleDocumentImportWebhook(req, res);
+  });
+  app.get("/api/webhook/document-import/config", async (req, res) => {
+    const { handleWebhookConfigList } = await import("../webhookDocumentImport");
+    return handleWebhookConfigList(req, res);
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",

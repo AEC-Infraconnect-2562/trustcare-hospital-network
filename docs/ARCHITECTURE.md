@@ -1341,3 +1341,125 @@ The VP is signed with the patient's `did:key` and can be verified by any party i
 | 5.2 | 2026-06-30 | Executive dashboard, claim analytics, DICOM viewer |
 | 5.1 | 2026-06-29 | TAO Trust Framework, schema registry, consent expiry notifications |
 | 5.0 | 2026-06-28 | System Realignment: multi-role, maker/checker, portability engine |
+| 5.5 | 2026-07-03 | Document Import Webhook, VP Packet QR Verification at Service Point |
+
+---
+
+## 28. Document Request Import Flow (Webhook/API)
+
+### 28.1 Overview
+
+The Document Import Webhook enables external clinical systems (HIS, LIS, RIS, PACS) to push documents back to TrustCare when a patient's wallet has requested them. This closes the loop between the Service Readiness module (which identifies missing documents) and the external systems that hold the source data.
+
+### 28.2 Endpoint
+
+| Method | Path | Security |
+|--------|------|----------|
+| POST | `/api/webhook/document-import` | HMAC-SHA256 (`X-Webhook-Signature` header) |
+| GET | `/api/webhook/document-import/config` | Public (integration documentation) |
+
+### 28.3 Supported Actions
+
+| Action | Status Transition | Description |
+|--------|------------------|-------------|
+| `import` | requested → imported | Raw document received from external system |
+| `convert` | requested/imported → converted_to_vc | Document converted to Verifiable Credential and added to patient wallet |
+| `reject` | requested → rejected | External system cannot fulfill the request |
+
+### 28.4 Convert Action Flow
+
+```
+External System → POST /api/webhook/document-import (action: "convert")
+  ├─ Verify HMAC-SHA256 signature
+  ├─ Look up walletDocumentRequest by requestId
+  ├─ Issue VC via portability/vc.ts issueCredential()
+  ├─ Store credential in issued_credentials table
+  ├─ Create wallet card in wallet_cards table
+  ├─ Update document request status → converted_to_vc
+  ├─ Create audit event
+  └─ Send notification to patient
+```
+
+### 28.5 Security
+
+- All webhook calls require HMAC-SHA256 signature in `X-Webhook-Signature` header
+- Secret key configured via `WEBHOOK_DOCUMENT_IMPORT_SECRET` environment variable
+- Fallback to `WEBHOOK_SECRET` or default development key
+- Source system identified via `X-Source-System` header
+
+### 28.6 Files
+
+| File | Purpose |
+|------|---------|
+| `server/webhookDocumentImport.ts` | Webhook handler implementation |
+| `server/webhookDocumentImport.test.ts` | Unit tests (22 tests) |
+| `server/_core/index.ts` | Route registration |
+
+---
+
+## 29. VP Packet QR Verification at Service Point
+
+### 29.1 Overview
+
+The Service Point Verification feature allows clinical staff (nurses, doctors, hospital admins) to scan a patient's VP Service Packet QR code at the point of care. This verifies the patient's identity, displays their readiness score, and shows all included credentials in clinical-risk order.
+
+### 29.2 Backend Procedures
+
+| Procedure | Type | Description |
+|-----------|------|-------------|
+| `verifier.verifyServicePacket` | mutation | Verify VP by presentationId, return patient info + credentials |
+| `verifier.confirmServiceCheckin` | mutation | Record service check-in audit event |
+
+### 29.3 Verification Flow
+
+```
+Staff scans QR → Extract presentationId
+  ├─ Look up issued_presentations by presentationId
+  ├─ Check expiration and status
+  ├─ Verify JWT via portability/verifyPresentation()
+  ├─ Load patient info
+  ├─ Load all credentials (by credentialRowIds)
+  ├─ Sort by clinical priority (allergy → medication → patient_summary → ...)
+  ├─ Determine trust level (green/amber/red)
+  ├─ Record audit event (service_verification)
+  └─ Return verification result
+```
+
+### 29.4 Clinical Priority Order
+
+| Priority | Credential Type | Rationale |
+|----------|----------------|-----------|
+| 1 | allergy_alert | Life-threatening risk |
+| 2 | medication_summary | Drug interaction risk |
+| 3 | patient_summary | Clinical context |
+| 4 | lab_result | Diagnostic data |
+| 5 | diagnostic_report | Imaging/pathology |
+| 6 | discharge_summary | Recent care history |
+| 7 | immunization | Preventive care |
+| 8-19 | Other types | Administrative/financial |
+
+### 29.5 Trust Level Badges
+
+| Level | Color | Meaning |
+|-------|-------|---------|
+| green | Emerald | VP cryptographically verified, all credentials valid |
+| amber | Amber | Credentials present but VP not fully verified |
+| red | Red | Verification failed or no valid credentials |
+
+### 29.6 Frontend Page
+
+- Route: `/service-verify`
+- Menu: "ตรวจสอบจุดบริการ" (Service Point Verify) in service_readiness group
+- Roles: system_admin, hospital_admin, doctor, nurse
+- Features: Camera QR scanner, auto-verify from URL param, credential preview, confirm check-in
+
+### 29.7 Files
+
+| File | Purpose |
+|------|---------|
+| `server/routers.ts` | verifyServicePacket + confirmServiceCheckin procedures |
+| `server/serviceVerification.test.ts` | Unit tests (29 tests) |
+| `client/src/pages/ServiceVerify.tsx` | Staff scanner UI |
+| `shared/menuConfig.ts` | Menu item definition |
+
+---

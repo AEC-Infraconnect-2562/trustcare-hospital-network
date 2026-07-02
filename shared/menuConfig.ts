@@ -55,6 +55,17 @@ export const menuItems: MenuItem[] = [
     groupLabelEn: "Service Readiness",
   },
   {
+    id: "service-verify",
+    label: "ตรวจสอบจุดบริการ",
+    labelEn: "Service Point Verify",
+    icon: "ScanLine",
+    path: "/service-verify",
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse"],
+    group: "service_readiness",
+    groupLabel: "ความพร้อมก่อนรับบริการ",
+    groupLabelEn: "Service Readiness",
+  },
+  {
     id: "wallet",
     label: "กระเป๋าสุขภาพ",
     labelEn: "Health Wallet",

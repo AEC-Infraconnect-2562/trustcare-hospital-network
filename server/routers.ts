@@ -915,6 +915,173 @@ export const appRouter = router({
 
       return { ...result, scanSource: source };
     }),
+    // VP Packet verification at service point (staff scanner)
+    verifyServicePacket: protectedProcedure.input(z.object({
+      presentationId: z.string().min(1, "Presentation ID is required"),
+    })).mutation(async ({ ctx, input }) => {
+      // 1. Look up the stored presentation
+      const storedPresentation = await db.getIssuedPresentationByPresentationId(input.presentationId);
+      if (!storedPresentation) {
+        return {
+          verified: false,
+          trustLevel: "red" as const,
+          error: "Presentation not found. The QR code may be invalid or expired.",
+          patient: null,
+          credentials: [],
+          readiness: null,
+        };
+      }
+
+      // 2. Check expiration
+      const isExpired = storedPresentation.expiresAt && new Date(storedPresentation.expiresAt) < new Date();
+      if (isExpired || storedPresentation.status !== "active") {
+        return {
+          verified: false,
+          trustLevel: "red" as const,
+          error: isExpired ? "This service packet has expired." : `Presentation status: ${storedPresentation.status}`,
+          patient: null,
+          credentials: [],
+          readiness: null,
+        };
+      }
+
+      // 3. Verify the JWT
+      let verificationResult: any;
+      if (storedPresentation.presentationJwt) {
+        const { verifyPresentation } = await import("./portability");
+        verificationResult = await verifyPresentation({ jwt: storedPresentation.presentationJwt });
+      }
+
+      // 4. Get patient info
+      const patient = await db.getUserById(storedPresentation.patientId);
+
+      // 5. Get the credentials included in this presentation
+      const credentialRowIds = (storedPresentation.credentialRowIds as number[]) || [];
+      const credentials = [];
+      for (const credId of credentialRowIds) {
+        const cred = await db.getCredentialById(credId);
+        if (cred) {
+          credentials.push({
+            id: cred.id,
+            credentialId: cred.credentialId,
+            type: cred.type,
+            status: cred.status,
+            documentCategory: cred.documentCategory,
+            issuedAt: cred.issuedAt,
+            expiresAt: cred.expiresAt,
+            credentialData: cred.credentialData,
+            issuerHospitalId: cred.issuerHospitalId,
+          });
+        }
+      }
+
+      // 6. Get readiness metadata from the presentation
+      const meta = (storedPresentation.metadata as any) || {};
+      const readiness = {
+        score: meta.readinessScore ?? null,
+        criticalReady: meta.criticalReady ?? null,
+        context: storedPresentation.context,
+        purpose: storedPresentation.purpose,
+      };
+
+      // 7. Clinical-risk ordering of credentials
+      const clinicalPriority: Record<string, number> = {
+        allergy_alert: 1,
+        medication_summary: 2,
+        patient_summary: 3,
+        lab_result: 4,
+        diagnostic_report: 5,
+        discharge_summary: 6,
+        immunization: 7,
+        prescription: 8,
+        pharmacy_dispense: 9,
+        referral_vc: 10,
+        medical_certificate: 11,
+        consent_receipt: 12,
+        patient_identity: 13,
+        insurance_eligibility: 14,
+        claim_package: 15,
+        travel_document_verification: 16,
+        quotation: 17,
+        guarantee_letter: 18,
+        visa_support_letter: 19,
+      };
+      credentials.sort((a, b) => (clinicalPriority[a.type] ?? 99) - (clinicalPriority[b.type] ?? 99));
+
+      // 8. Determine trust level
+      const trustLevel = verificationResult?.verified
+        ? (verificationResult.trustLevel || "green")
+        : (credentials.length > 0 ? "amber" : "red");
+
+      // 9. Audit trail
+      await db.recordServiceVerification({
+        presentationId: input.presentationId,
+        patientId: storedPresentation.patientId,
+        verifiedBy: ctx.user.id,
+        verifierRole: (ctx.user as any).systemRole,
+        context: storedPresentation.context,
+        score: meta.readinessScore,
+        credentialCount: credentials.length,
+        trustLevel,
+        verified: verificationResult?.verified ?? false,
+      });
+
+      return {
+        verified: verificationResult?.verified ?? (credentials.length > 0),
+        trustLevel,
+        patient: patient ? {
+          id: patient.id,
+          name: patient.name,
+          openId: patient.openId,
+          avatarUrl: patient.avatarUrl,
+        } : null,
+        credentials,
+        readiness,
+        presentation: {
+          id: storedPresentation.presentationId,
+          context: storedPresentation.context,
+          purpose: storedPresentation.purpose,
+          audience: storedPresentation.audience,
+          createdAt: storedPresentation.createdAt,
+          expiresAt: storedPresentation.expiresAt,
+          holderDid: storedPresentation.holderDid,
+        },
+        warnings: verificationResult?.warnings || [],
+      };
+    }),
+    // Confirm service check-in after VP verification
+    confirmServiceCheckin: protectedProcedure.input(z.object({
+      presentationId: z.string().min(1),
+      serviceName: z.string().optional(),
+      hospitalId: z.number().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const storedPresentation = await db.getIssuedPresentationByPresentationId(input.presentationId);
+      if (!storedPresentation) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Presentation not found" });
+      }
+      // Record the service check-in event
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "service_point.patient_checked_in",
+        resourceType: "verifiable_presentation",
+        resourceId: input.presentationId,
+        details: {
+          patientId: storedPresentation.patientId,
+          context: storedPresentation.context,
+          serviceName: input.serviceName,
+          hospitalId: input.hospitalId,
+          notes: input.notes,
+          verifiedBy: ctx.user.id,
+        },
+      });
+      return {
+        success: true,
+        patientId: storedPresentation.patientId,
+        checkedInAt: new Date().toISOString(),
+      };
+    }),
   }),
 
   // ============================================================
