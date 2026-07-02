@@ -96,14 +96,16 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(async (opts) => {
       if (!opts.ctx.user) return null;
-      const systemRole = (opts.ctx.user as any).systemRole ?? "patient";
+      const latestUser = await db.getUserById(opts.ctx.user.id).catch(() => undefined);
+      const user = latestUser ? { ...opts.ctx.user, ...latestUser } : opts.ctx.user;
+      const systemRole = (user as any).systemRole ?? "patient";
       const additionalRoles = sanitizeAdditionalRolesForSystemRole(
         systemRole,
-        (await db.getUserAdditionalRoles(opts.ctx.user.id)).map(r => r.role),
+        (await db.getUserAdditionalRoles(user.id)).map(r => r.role),
       );
       const activeRoleCookie = opts.ctx.req.cookies?.["trustcare_active_role"];
       return {
-        ...opts.ctx.user,
+        ...user,
         additionalRoles,
         activeRole: normalizeActiveRole(systemRole, activeRoleCookie, additionalRoles),
       };

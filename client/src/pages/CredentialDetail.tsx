@@ -19,6 +19,7 @@ import QRCode from "qrcode";
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { toast } from "sonner";
+import { resolvePatientAvatarUrl } from "@/lib/avatar";
 
 const typeLabels: Record<string, string> = {
   patient_identity: "บัตรประจำตัวผู้ป่วย",
@@ -132,6 +133,19 @@ export default function CredentialDetail() {
 
   const status = statusConfig[credential.status] || statusConfig.active;
   const credData = credential.credentialData as Record<string, any> | null;
+  const subject = credData?.credentialSubject || credData || {};
+  const renderPatient = subject?.humanDocument?.renderData?.patient || {};
+  const patient = subject?.patient || {};
+  const patientPhotoUrl = resolvePatientAvatarUrl({
+    avatarUrl:
+      patientPhoto?.avatarUrl ||
+      renderPatient.photoUrl ||
+      renderPatient.avatarUrl ||
+      patient.photoUrl ||
+      patient.avatarUrl,
+    gender: patient.gender || patient.sex,
+    name: renderPatient.fullNameTh || renderPatient.fullNameEn || patient.nameTh || patient.fullNameTh || patient.nameEn,
+  });
 
   return (
     <DashboardLayout>
@@ -228,7 +242,7 @@ export default function CredentialDetail() {
               hospitalCode={String(credential.issuerHospitalId)}
               hospitalName={`Hospital #${credential.issuerHospitalId}`}
               patientName={`Patient #${credential.subjectId}`}
-              patientPhotoUrl={patientPhoto?.avatarUrl}
+              patientPhotoUrl={patientPhotoUrl}
             />
 
             {/* Raw data expandable */}
