@@ -452,14 +452,14 @@
 - [ ] Document workspace (upload, type assignment, hash, preview, submit for review)
 
 ### Governance & Trust
-- [ ] Verify Maker/Checker enforcement on VC issuance from case documents
-- [ ] Verify patient role blocked from Partner Portal and Maker/Checker operations
-- [ ] Verify outbound documents use VC/VP trust layer (not raw PDF sharing)
-- [ ] Verify SHL used as transport/share package only (not as trust proof)
+- [x] Verify Maker/Checker enforcement on VC issuance from case documents (canActAsCredentialMaker/Checker in rolePolicy.ts)
+- [x] Verify patient role blocked from Partner Portal and Maker/Checker operations (staffProcedure added to careTransition + partnerPortal)
+- [x] Verify outbound documents use VC/VP trust layer (generatePackage → createSmartHealthLinkPackage → createShlTrustArtifacts creates VC/VP)
+- [x] Verify SHL used as transport/share package only (SHL = encrypted FHIR bundle delivery, VC = trust proof)
 
 ### Tests & Verification
 - [x] TypeScript compilation: 0 errors
 - [x] All existing tests pass (172 tests, 15 files)
 - [x] New care-transition tests pass (4 tests in care-transition.test.ts)
 - [x] Smoke test: /referral, /cross-border, /international, /partner-portal - all render correctly
-- [ ] Push to GitHub
+- [x] Push to GitHub

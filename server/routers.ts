@@ -106,6 +106,15 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   return next({ ctx });
 });
 
+// Staff-only guard (blocks patient role from clinical/partner operations)
+const staffProcedure = protectedProcedure.use(({ ctx, next }) => {
+  const systemRole = (ctx.user as any).systemRole;
+  if (!systemRole || systemRole === "patient") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Staff access required. Patients cannot perform this operation." });
+  }
+  return next({ ctx });
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -1815,7 +1824,7 @@ export const appRouter = router({
   // CARE TRANSITION WORKBENCH
   // ============================================================
   careTransition: router({
-    overview: protectedProcedure.query(async () => {
+    overview: staffProcedure.query(async () => {
       const [stats, documents, tasks, packages, connectors] = await Promise.all([
         db.getCareTransitionStats(),
         db.listCaseDocuments({ verificationStatus: "needs_review" }),
@@ -1831,7 +1840,7 @@ export const appRouter = router({
         connectors: connectors.slice(0, 8),
       };
     }),
-    workspace: protectedProcedure.input(z.object({
+    workspace: staffProcedure.input(z.object({
       caseType: z.enum(caseTypeValues),
       caseId: z.number(),
     })).query(async ({ input }) => {
@@ -1845,7 +1854,7 @@ export const appRouter = router({
       ]);
       return { case: caseRecord, documents, tasks, packages, decisions, events };
     }),
-    initializeCase: protectedProcedure.input(z.object({
+    initializeCase: staffProcedure.input(z.object({
       caseType: z.enum(caseTypeValues),
       caseId: z.number(),
       translationRequired: z.boolean().optional(),
@@ -1876,7 +1885,7 @@ export const appRouter = router({
       } as any);
       return { success: true, taskCount: existing.length === 0 ? defaultTasksForCase(input.caseType, input).length : existing.length };
     }),
-    addDocument: protectedProcedure.input(z.object({
+    addDocument: staffProcedure.input(z.object({
       caseType: z.enum(caseTypeValues),
       caseId: z.number(),
       direction: z.enum(["inbound", "outbound"]).default("inbound"),
@@ -1948,7 +1957,7 @@ export const appRouter = router({
       } as any);
       return { id, fhirDocumentReferenceId: documentRefId, hash: content.hash, verificationStatus: "needs_review" };
     }),
-    verifyDocument: protectedProcedure.input(z.object({
+    verifyDocument: staffProcedure.input(z.object({
       id: z.number(),
       verificationStatus: z.enum(["verified", "rejected", "converted_to_vc"]),
       notes: z.string().optional(),
@@ -2019,7 +2028,7 @@ export const appRouter = router({
       } as any);
       return { success: true, vcRequest };
     }),
-    updateTask: protectedProcedure.input(z.object({
+    updateTask: staffProcedure.input(z.object({
       id: z.number(),
       status: z.enum(["created", "ready", "in_progress", "blocked", "completed", "failed", "cancelled"]),
       notes: z.string().optional(),
@@ -2035,7 +2044,7 @@ export const appRouter = router({
       await db.createAuditEvent({ actorId: ctx.user.id, actorRole: (ctx.user as any).systemRole, action: `care_transition.task.${input.status}`, resourceType: "case_task", resourceId: String(input.id) });
       return { success: true };
     }),
-    recordDecision: protectedProcedure.input(z.object({
+    recordDecision: staffProcedure.input(z.object({
       caseType: z.enum(caseTypeValues),
       caseId: z.number(),
       decisionType: z.enum(["clinical_acceptance", "document_acceptance", "financial_acceptance", "legal_acceptance", "admission_acceptance", "discharge_clearance"]),
@@ -2055,7 +2064,7 @@ export const appRouter = router({
       } as any);
       return { id };
     }),
-    generatePackage: protectedProcedure.input(z.object({
+    generatePackage: staffProcedure.input(z.object({
       caseType: z.enum(caseTypeValues),
       caseId: z.number(),
       packageType: z.enum(packageTypeValues).optional(),
@@ -2173,7 +2182,7 @@ export const appRouter = router({
   // PARTNER PORTAL
   // ============================================================
   partnerPortal: router({
-    dashboard: protectedProcedure.query(async () => {
+    dashboard: staffProcedure.query(async () => {
       const [stats, connectors, documents, packages] = await Promise.all([
         db.getCareTransitionStats(),
         db.listPartnerSourceConnectors({}),
@@ -2187,14 +2196,14 @@ export const appRouter = router({
         outboundPackages: packages.slice(0, 12),
       };
     }),
-    listConnectors: protectedProcedure.input(z.object({
+    listConnectors: staffProcedure.input(z.object({
       partnerOrgId: z.number().optional(),
       connectorType: z.enum(connectorTypeValues).optional(),
       status: z.string().optional(),
     }).optional()).query(async ({ input }) => {
       return db.listPartnerSourceConnectors(input);
     }),
-    createConnector: protectedProcedure.input(z.object({
+    createConnector: staffProcedure.input(z.object({
       partnerOrgId: z.number().optional(),
       partnerName: z.string().min(1),
       connectorType: z.enum(connectorTypeValues),
@@ -2226,7 +2235,7 @@ export const appRouter = router({
       });
       return { id, validation };
     }),
-    validateConnector: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+    validateConnector: staffProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
       const connector = await db.getPartnerSourceConnectorById(input.id);
       if (!connector) throw new TRPCError({ code: "NOT_FOUND", message: "Connector not found" });
       const validation = validatePartnerConnector(connector as any);
@@ -2238,7 +2247,7 @@ export const appRouter = router({
       await db.createAuditEvent({ actorId: ctx.user.id, actorRole: (ctx.user as any).systemRole, action: "partner.connector.validated", resourceType: "partner_source_connector", resourceId: String(input.id), details: validation });
       return validation;
     }),
-    activateConnector: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+    activateConnector: staffProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
       const connector = await db.getPartnerSourceConnectorById(input.id);
       if (!connector) throw new TRPCError({ code: "NOT_FOUND", message: "Connector not found" });
       const validation = validatePartnerConnector(connector as any);
@@ -2252,7 +2261,7 @@ export const appRouter = router({
       await db.createAuditEvent({ actorId: ctx.user.id, actorRole: (ctx.user as any).systemRole, action: "partner.connector.activated", resourceType: "partner_source_connector", resourceId: String(input.id), details: validation });
       return { success: true, validation };
     }),
-    submitCase: protectedProcedure.input(z.object({
+    submitCase: staffProcedure.input(z.object({
       flowType: z.enum(["external_partner", "cross_border_inbound", "medical_tourist"]),
       connectorId: z.number().optional(),
       partnerOrgName: z.string().min(1),
@@ -2360,7 +2369,7 @@ export const appRouter = router({
       }
       return { caseType, caseId, status: "submitted", connector: connector ? { id: connector.id, connectorType: connector.connectorType, status: connector.status } : null };
     }),
-    sendDocument: protectedProcedure.input(z.object({
+    sendDocument: staffProcedure.input(z.object({
       caseType: z.enum(caseTypeValues),
       caseId: z.number(),
       documentType: z.enum(caseDocumentTypeValues),
