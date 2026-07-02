@@ -361,3 +361,6 @@
 
 ## v4.6 - QR Code Fix
 - [x] Fix QR Code generation error: VP data too large for QR Code - use URL-based approach instead
+
+## v2.2 - Avatar Image Improvements
+- [x] Replace cartoon/illustration avatars in Credentials with realistic photos appropriate for each role (patient, doctor)

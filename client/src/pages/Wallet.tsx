@@ -28,10 +28,10 @@ import { Switch } from "@/components/ui/switch";
 import { Wifi, WifiOff, CloudDownload, Download } from "lucide-react";
 import { exportWalletCardPdf } from "@/lib/pdfExport";
 
-// Avatar URLs for wallet card thumbnails
+// Avatar URLs for wallet card thumbnails (AI-generated realistic photos)
 const AVATAR_URLS = {
-  male: "/manus-storage/patient-avatar-male_c0b881f4.png",
-  female: "/manus-storage/patient-avatar-female_838fe3a6.png",
+  male: "/manus-storage/patient_male_realistic_80909bf8.jpg",
+  female: "/manus-storage/patient_female_realistic_1fd9c678.jpg",
 };
 
 const PHOTO_TYPES = ["patient_identity", "identity", "medical_certificate"];

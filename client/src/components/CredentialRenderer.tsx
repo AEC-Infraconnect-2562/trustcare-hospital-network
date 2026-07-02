@@ -23,11 +23,12 @@ import {
   Clock,
 } from "lucide-react";
 
-// Avatar URLs for demo (uploaded to manus-storage, optimized 400x400 JPEG ~17KB)
+// Avatar URLs for demo (AI-generated realistic photos, 400x400 JPEG)
 const AVATAR_URLS = {
-  male: "/manus-storage/patient-avatar-male-optimized_1fd5181b.jpg",
-  female: "/manus-storage/patient-avatar-female-optimized_88a544db.jpg",
-  doctor: "/manus-storage/doctor-avatar-male-optimized_b4e08290.jpg",
+  male: "/manus-storage/patient_male_realistic_80909bf8.jpg",
+  female: "/manus-storage/patient_female_realistic_1fd9c678.jpg",
+  doctor: "/manus-storage/doctor_male_realistic_e51286cb.jpg",
+  doctorFemale: "/manus-storage/doctor_female_realistic_ac88a81f.jpg",
 };
 
 // Hospital brand colors based on actual TrustCare network hospitals
@@ -246,9 +247,11 @@ function DocumentFooter({ issuedAt, expiresAt, documentNo }: {
 // ─── Practitioner Section ────────────────────────────────────────────────────
 function PractitionerSection({ practitioner, role }: { practitioner: any; role?: string }) {
   if (!practitioner?.name) return null;
+  const isFemale = practitioner.name?.includes("พญ.") || practitioner.name?.includes("นพญ.") || practitioner.gender === "female";
+  const doctorAvatar = isFemale ? AVATAR_URLS.doctorFemale : AVATAR_URLS.doctor;
   return (
     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <img src={AVATAR_URLS.doctor} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" onError={(e) => { (e.target as HTMLImageElement).src = 'https://api.dicebear.com/7.x/notionists/svg?seed=doctor'; }} />
+      <img src={doctorAvatar} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" onError={(e) => { (e.target as HTMLImageElement).src = 'https://api.dicebear.com/7.x/notionists/svg?seed=doctor'; }} />
       <div>
         <p className="font-medium">{practitioner.name}</p>
         <p className="text-xs text-muted-foreground">
