@@ -1,6 +1,6 @@
 # Contributing to TrustCare Hospital Network
 
-**Version:** 4.3
+**Version:** 5.0
 **Last updated:** 2026-07-02
 
 ---
@@ -42,13 +42,15 @@ pnpm check
 Before opening a Pull Request, ensure:
 
 - [ ] `pnpm check` (TypeScript) passes with zero errors
-- [ ] `pnpm test` passes all unit tests (currently 164 tests)
+- [ ] `pnpm test` passes all unit tests (currently 168 tests)
 - [ ] `pnpm build` succeeds (Vite bundle-size warnings are acceptable)
 - [ ] New migrations are generated if schema changed
 - [ ] `docs/ARCHITECTURE.md` is updated if:
   - New tables are added
   - New credential types are introduced
   - Router structure changes (currently 27 routers)
+  - Avatar/photo system changes
+  - Scheduled handler additions
   - Portability module is modified
   - New reusable components are added
   - Verification flow changes
@@ -115,7 +117,7 @@ Both `server/seed.ts` and `server/portability/reseed.ts` reference this array. *
 
 ## Router Organization
 
-The `server/routers.ts` file contains **27 routers** (~3577 lines). When it exceeds 4000 lines, split into:
+The `server/routers.ts` file contains **27 routers** (~3628 lines). When it exceeds 4000 lines, split into:
 
 ```
 server/routers/
@@ -131,8 +133,9 @@ server/routers/
 ```
 auth · seed · makerChecker · hospital · credential · wallet · verifier ·
 consent · referral · fhir · terminology · audit · notification · dashboard ·
-users · patientIdentity · integration · trustRegistry · shl · claim ·
-international · crossBorderReferral · portability · executiveDashboard ·
+users (incl. uploadPhoto/getPhoto) · patientIdentity · integration ·
+trustRegistry · shl · claim (incl. analytics) · international ·
+crossBorderReferral · portability (incl. DQI) · executiveDashboard ·
 tao · schemaRegistry
 ```
 
@@ -283,7 +286,7 @@ The `buildTrustRegistryPolicy()` function in `server/portability/trust.ts`:
 
 ## Testing Requirements
 
-### Current Test Suite: 164 tests (14 unit + 1 E2E)
+### Current Test Suite: 168 tests (15 unit + 1 E2E)
 
 | Change Type | Required Tests |
 |-------------|---------------|

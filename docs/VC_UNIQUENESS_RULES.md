@@ -118,7 +118,7 @@ This follows FHIR DocumentReference lifecycle:
 
 ## Audit Trail
 
-All revocations due to supersession are logged in `audit_logs` with:
+All revocations due to supersession are logged in `audit_events` with:
 - `action = "credential_superseded"`
 - `details = { oldCredentialId, newCredentialId, reason: "superseded" }`
 - `performedBy` = the issuer who created the new credential

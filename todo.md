@@ -371,3 +371,12 @@
 - [x] Integrate uploaded patient photo into credential rendering (fallback to demo avatar if no photo)
 - [x] Generate nurse and pharmacist avatar images for credentials
 - [x] Integrate nurse and pharmacist avatars into credential rendering
+
+## v2.4 - Additional Role Avatars & Architecture Docs Update
+- [x] Generate radiologist avatar (Thai radiologist in white coat)
+- [x] Generate medical technologist avatar (Thai med tech in lab coat)
+- [x] Integrate radiologist and med tech avatars into credential rendering
+- [x] Update docs/ARCHITECTURE.md with all recent changes (avatars, DQI scoring, consent expiry, claim analytics, patient profile)
+- [x] Update docs/CONTRIBUTING.md with current development state
+- [ ] Push all changes to GitHub
+- [x] Fix stale audit_logs reference in VC_UNIQUENESS_RULES.md (corrected to audit_events)

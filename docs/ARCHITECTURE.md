@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 4.3 (Hospital Consolidation + Data Integrity Verified)
+**Version:** 5.0 (Patient Photo Upload + DQI Scoring + Consent Reminders + Claim Analytics)
 **Last updated:** 2026-07-02
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -72,16 +72,18 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 ### 1.3 Module Dependency Graph
 
 ```
-routers.ts (3577 lines, 27 routers)
+routers.ts (3628 lines, 27 routers)
   ├── db.ts (query helpers)
   │     └── drizzle/schema.ts (42 table definitions)
   ├── shared/rolePolicy.ts (role authorization logic)
   ├── shared/menuConfig.ts (menu visibility per role)
+  ├── scheduledHandlers/ (periodic task handlers)
+  │     └── consentExpiry.ts (consent expiry reminder notifications)
   └── portability/ (17 modules)
         ├── index.ts (re-exports all public APIs)
         ├── vc.ts (issue/verify VC, create/verify VP)
         ├── did.ts (DID generation: did:web, did:key)
-        ├── fhir.ts (HIS → FHIR R4 canonicalization)
+        ├── fhir.ts (HIS → FHIR R4 canonicalization + DQI scoring)
         ├── policy.ts (consent-based access control)
         ├── presentation.ts (JSON VP verification)
         ├── syncBack.ts (HIS/Legacy sync-back plans)
@@ -91,7 +93,7 @@ routers.ts (3577 lines, 27 routers)
         ├── labels.ts (document taxonomy + storage metadata)
         ├── trust.ts (trust registry policy builder)
         ├── clinicalDocuments.ts (FHIR Composition builders)
-        ├── types.ts (shared type definitions)
+        ├── types.ts (shared type definitions + DataQualityScore)
         ├── shl.ts (SHL payload, passcode hash, JWE manifest helpers)
         ├── shlSimulator.ts (realistic HIS/legacy source scenarios for SHL QA)
         └── utils.ts (sha256, nanoid, date helpers)
@@ -186,7 +188,7 @@ The system supports 24 verifiable credential types organized into 9 document cat
 
 **Step-by-step:**
 
-1. **Source Ingestion** — Clinical data arrives from HIS (REST API, Legacy DB View, CSV, HL7v2) and is canonicalized into FHIR R4 IPS Bundle via `canonicalizeHisPayload()`.
+1. **Source Ingestion** — Clinical data arrives from HIS (REST API, Legacy DB View, CSV, HL7v2) and is canonicalized into FHIR R4 IPS Bundle via `canonicalizeHisPayload()`. The canonicalization also produces an automated **Data Quality Index (DQI) score** via `calculateDqiScore()`, grading data completeness, conformance, and consistency on a 0–100 scale (grades A–F).
 
 2. **Maker Submission** — A user with `systemRole = "maker"` and appropriate `credentialEntitlements.makerTypes` submits a credential issuance request. The request is stored in `credential_issuance_requests` with status `submitted`.
 
@@ -198,7 +200,7 @@ The system supports 24 verifiable credential types organized into 9 document cat
    - Updates the request status to `issued`
    - Logs an audit event
 
-4. **Wallet Delivery** — The credential appears in the patient's digital wallet with appropriate card type and display metadata.
+4. **Wallet Delivery** — The credential appears in the patient's digital wallet with appropriate card type and display metadata. Credential previews include a **"สำเนา / COPY" watermark overlay** to prevent screenshot misuse. Patient photos are displayed from the user's uploaded avatar (S3) or a role-appropriate AI-generated realistic fallback.
 
 ### 3.3 Direct Issuance (Admin/Seed)
 
@@ -654,12 +656,14 @@ trustcare-hospital-network/
 ├── server/
 │   ├── _core/                     ← Framework plumbing (DO NOT EDIT)
 │   ├── portability/               ← VC/VP engine (17 modules)
-│   ├── routers.ts                 ← tRPC procedures (3577 lines, 27 routers)
+│   ├── scheduledHandlers/         ← Periodic task handlers
+│   │   └── consentExpiry.ts       ← Consent expiry reminder notifications
+│   ├── routers.ts                 ← tRPC procedures (3628 lines, 27 routers)
 │   ├── db.ts                      ← Database query helpers
 │   ├── seed.ts                    ← Demo user + hospital seeding
 │   └── storage.ts                 ← S3 storage helpers
 ├── client/
-│   ├── src/pages/                 ← 30 page components
+│   ├── src/pages/                 ← 32 page components
 │   ├── src/components/            ← Reusable UI components (shadcn/ui)
 │   └── src/lib/trpc.ts            ← tRPC client binding
 ├── shared/
@@ -675,39 +679,40 @@ trustcare-hospital-network/
 
 ---
 
-## 14. Frontend Pages (30 Pages)
+## 14. Frontend Pages (32 Pages)
 
 | Page | Route | Purpose |
-|------|-------|---------|
+|------|-------|--------|
 | Home | `/` | Landing page with demo login |
 | Dashboard | `/dashboard` | Main dashboard overview |
 | Wallet | `/wallet` | Patient health card wallet |
 | SmartHealthLinks | `/shl` | SHL management |
-| ShlViewer | `/shl/view/:token` | Public SHL viewer |
-| Consent | `/consent` | Consent management |
-| MakerQueue | `/maker` | Credential request submission |
-| CheckerQueue | `/checker` | Credential approval queue |
+| ShlViewer | `/shl-viewer` | Public SHL viewer |
+| Consent | `/consent` | Consent management (incl. expiry alerts) |
+| MakerQueue | `/maker-queue` | Credential request submission |
+| CheckerQueue | `/checker-queue` | Credential approval queue |
 | Issuer | `/issuer` | Credential issuance |
+| CredentialDetail | `/issuer/:id` | Single credential view |
 | Verifier | `/verifier` | Credential verification |
-| PortabilityWorkbench | `/portability` | VC/VP workbench |
+| PortabilityWorkbench | `/portability` | VC/VP workbench + DQI scoring |
 | Hospitals | `/hospitals` | Hospital management |
 | Users | `/users` | User management |
 | TrustRegistry | `/trust-registry` | Trust registry management |
 | CrossBorder | `/cross-border` | Cross-border referrals |
 | International | `/international` | Medical tourism |
-| ClaimCenter | `/claims` | Insurance claims |
+| ClaimCenter | `/claim-center` | Insurance claims |
+| ClaimAnalytics | `/claim-analytics` | Claim analytics dashboard |
 | Integration | `/integration` | System integration |
 | Terminology | `/terminology` | Terminology mappings |
 | FhirMapping | `/fhir-mapping` | FHIR field mappings |
 | PatientIdentity | `/patient-identity` | MPI management |
+| PatientProfile | `/profile` | Patient photo upload & profile |
 | Referral | `/referral` | Referral management |
 | Audit | `/audit` | Audit trail |
 | ExecutiveDashboard | `/executive` | Executive analytics |
 | Settings | `/settings` | System settings |
-| CredentialDetail | `/credentials/:id` | Single credential view |
 | PartnerWizard | `/partner-wizard` | Partner onboarding |
 | AdapterSdk | `/adapter-sdk` | Adapter SDK docs |
-| ComponentShowcase | `/components` | UI component showcase |
 | NotFound | `*` | 404 page |
 
 ---
@@ -723,22 +728,22 @@ trustcare-hospital-network/
 | `credential` | Credential management | list, getById, revoke |
 | `wallet` | Patient wallet | listCards, getCard |
 | `verifier` | Credential verification | verify, verifyQrScan |
-| `consent` | Consent management | listPolicies, grantConsent, revokeConsent |
+| `consent` | Consent management | listPolicies, grantConsent, revokeConsent, expiringWithinDays |
 | `referral` | Referrals | create, list, accept |
 | `fhir` | FHIR mappings | getMappings, updateMapping |
 | `terminology` | Code mappings | list, create, update |
 | `audit` | Audit trail | list, getEvent |
 | `notification` | Notifications | list, markRead |
 | `dashboard` | Dashboard stats | getStats, getCharts |
-| `users` | User management | list, create, update, delete |
+| `users` | User management | list, create, update, delete, uploadPhoto, getPhoto |
 | `patientIdentity` | MPI | search, link, unlink |
 | `integration` | Adapters | listAdapters, createAdapter, healthCheck |
 | `trustRegistry` | Trust registry | list, create, update, verify |
 | `shl` | Smart Health Links | create, list, revoke, getManifest |
-| `claim` | Insurance claims | create, list, submit |
+| `claim` | Insurance claims | create, list, submit, analytics |
 | `international` | Medical tourism | createCase, listCases |
 | `crossBorderReferral` | Cross-border | create, list, accept |
-| `portability` | VC/VP engine | createPacket, verify, reseedDb, auditSeedDb |
+| `portability` | VC/VP engine | createPacket, verify, reseedDb, auditSeedDb, canonicalize (with DQI) |
 | `executiveDashboard` | Executive analytics | getMetrics, getTrends |
 | `tao` | TAO framework | listIssuers, listVerifiers, listPolicies |
 | `schemaRegistry` | VC schema versions | list, getActive, register |
@@ -773,7 +778,7 @@ The role policy module centralizes all authorization logic for the multi-role sy
 
 | Category | Files | Command |
 |----------|-------|---------|
-| Unit tests | 14 files in `server/*.test.ts` | `pnpm test` |
+| Unit tests | 15 files in `server/*.test.ts` | `pnpm test` |
 | E2E tests | 1 file in `e2e/*.test.ts` | `pnpm test:e2e` |
 | TypeScript check | — | `pnpm check` |
 | Full CI | — | `pnpm ci` |
@@ -781,10 +786,11 @@ The role policy module centralizes all authorization logic for the multi-role sy
 ### 17.2 Unit Test Files
 
 - `auth.logout.test.ts` — Auth flow
+- `claimAnalytics.test.ts` — Claim analytics aggregation
 - `demo-login.test.ts` — Demo login system
 - `maker-checker.test.ts` — Credential workflow
 - `multi-role.test.ts` — Multi-role switching
-- `portability.test.ts` — VC/VP issuance and verification
+- `portability.test.ts` — VC/VP issuance, verification, and DQI scoring
 - `qrScanner.test.ts` — QR code scanning
 - `role-guard.test.ts` — Role-based access guards
 - `role-menu.test.ts` — Menu visibility per role
@@ -815,6 +821,10 @@ The `portability-flow.e2e.test.ts` tests the full VC/VP lifecycle:
 - Trust registry verification requires `trustLevel = "verified"` for internal issuers
 - TAO framework uses multi-level trust (accredited, recognized, self_declared)
 - All mutations are logged in `audit_events` with actor, action, and resource details
+- Credential previews display "สำเนา / COPY" watermark to prevent screenshot-based forgery
+- Patient photo uploads are validated (max 5MB, image/* MIME types only) and stored in S3
+- Consent expiry reminders run on a scheduled heartbeat (daily) to notify patients 7 days before expiration
+- Claim analytics data is aggregated server-side; no raw claim data is exposed to the frontend
 
 ---
 
@@ -840,6 +850,143 @@ Credential schemas evolve over time. The schema versioning system tracks which v
 2. `credential_templates.schemaVersion` — The current default version for new issuances.
 3. Verification checks the credential's `schemaVersion` against the registry.
 4. Reseed uses the latest active schema version for each credential type.
+
+---
+
+## 20. Patient Photo & Avatar System
+
+### 20.1 Photo Upload Flow
+
+```
+Patient Profile Page → Upload Photo (max 5MB, image/*)
+  → Frontend base64 encodes → trpc.users.uploadPhoto
+  → Server validates + stores via storagePut()
+  → Returns S3 URL → Saved in users.avatarUrl
+```
+
+### 20.2 Avatar Fallback Hierarchy
+
+When rendering credentials, the system selects the patient/practitioner photo in this order:
+
+1. **Uploaded photo** — `patientPhotoUrl` from `users.avatarUrl` (S3)
+2. **Role-based AI avatar** — Pre-generated realistic photos per role:
+   - `patientMale` / `patientFemale` — Thai patients (~40 years old)
+   - `doctorMale` / `doctorFemale` — Thai doctors in white coats
+   - `nurse` — Thai female nurse in white uniform
+   - `pharmacist` — Thai male pharmacist in lab coat
+   - `radiologist` — Thai male radiologist with imaging equipment
+   - `medTech` — Thai female medical technologist in lab coat
+3. **Dicebear fallback** — Generated cartoon avatar (last resort, `onError` handler)
+
+### 20.3 Practitioner Role Detection
+
+The `PractitionerSection` component auto-selects the appropriate avatar based on:
+- Name prefix: พญ./นพ. → doctor, พย. → nurse, ภก. → pharmacist
+- Title keywords: รังสี → radiologist, เทคนิค → medTech
+- Gender detection from prefix for male/female doctor variants
+
+---
+
+## 21. Data Quality Index (DQI) Scoring
+
+### 21.1 Score Calculation
+
+`calculateDqiScore(issues: DataQualityIssue[])` produces:
+
+```typescript
+interface DataQualityScore {
+  overall: number;        // 0–100
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  completeness: number;   // 0–100
+  conformance: number;    // 0–100
+  consistency: number;    // 0–100
+  issueCount: { error: number; warning: number; info: number };
+}
+```
+
+### 21.2 Grading Scale
+
+| Grade | Score Range | Meaning |
+|-------|-------------|--------|
+| A | 90–100 | Excellent data quality |
+| B | 75–89 | Good, minor issues |
+| C | 60–74 | Acceptable, needs attention |
+| D | 40–59 | Poor, significant issues |
+| F | 0–39 | Failing, critical problems |
+
+### 21.3 Penalty Weights
+
+- `error` severity: -10 points per issue
+- `warning` severity: -5 points per issue
+- `info` severity: -1 point per issue
+
+DQI score is returned as part of `canonicalizeHisPayload()` result and displayed in the Portability Workbench.
+
+---
+
+## 22. Consent Expiry Reminder System
+
+### 22.1 Scheduled Handler
+
+Endpoint: `POST /api/scheduled/consent-expiry-check`
+
+Authenticated via `x-manus-heartbeat-token` header (Manus Heartbeat system).
+
+### 22.2 Logic Flow
+
+```
+Daily heartbeat trigger
+  → Query consent_records WHERE expiresAt BETWEEN now AND now+7days
+  → For each expiring consent:
+    → Check if reminder already sent (notifications table)
+    → If not sent: createNotification(type: 'consent_expiry_reminder')
+  → Return { checked, reminded, alreadyNotified }
+```
+
+### 22.3 Frontend Display
+
+The Consent page shows a `ConsentExpiryAlert` banner when there are consents expiring within 7 days, with count and link to review.
+
+---
+
+## 23. Claim Analytics Dashboard
+
+### 23.1 Aggregation Procedure
+
+`trpc.claim.analytics` returns:
+
+```typescript
+{
+  totalClaims: number;
+  approvedCount: number;
+  rejectedCount: number;
+  pendingCount: number;
+  approvalRate: number;          // percentage
+  avgProcessingDays: number;
+  byStatus: { status, count }[];
+  byType: { type, count }[];
+  monthlyTrend: { month, total, approved, rejected }[];
+  topRejectionReasons: { reason, count }[];
+}
+```
+
+### 23.2 Dashboard Visualizations
+
+- KPI cards: total claims, approval rate, avg processing time, pending count
+- Status breakdown pie chart (CSS-based)
+- Monthly trend bar chart
+- Type distribution and top rejection reasons tables
+
+---
+
+## 24. Credential Watermark System
+
+All credential previews (in Wallet, CredentialDetail, and Issuer views) display a diagonal watermark overlay:
+
+- Text: "สำเนา / COPY"
+- Style: Rotated -30°, semi-transparent (opacity 0.08), repeated pattern
+- Purpose: Prevent screenshot-based credential forgery
+- Implementation: `WatermarkOverlay` component wraps the credential card with `pointer-events: none`
 
 ---
 

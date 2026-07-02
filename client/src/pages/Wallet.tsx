@@ -34,6 +34,8 @@ const AVATAR_URLS = {
   female: "/manus-storage/patient_female_realistic_opt_d0edb245.jpg",
   nurse: "/manus-storage/nurse_female_realistic_opt_d0e35459.jpg",
   pharmacist: "/manus-storage/pharmacist_male_realistic_opt_2b3b0f56.jpg",
+  radiologist: "/manus-storage/radiologist_realistic_bd97425d.jpg",
+  medTech: "/manus-storage/med_tech_realistic_78575c20.jpg",
 };
 
 const PHOTO_TYPES = ["patient_identity", "identity", "medical_certificate"];

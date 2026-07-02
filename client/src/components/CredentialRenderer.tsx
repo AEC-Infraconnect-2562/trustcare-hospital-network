@@ -31,6 +31,8 @@ const AVATAR_URLS = {
   doctorFemale: "/manus-storage/doctor_female_realistic_opt_56d94f1d.jpg",
   nurse: "/manus-storage/nurse_female_realistic_opt_d0e35459.jpg",
   pharmacist: "/manus-storage/pharmacist_male_realistic_opt_2b3b0f56.jpg",
+  radiologist: "/manus-storage/radiologist_realistic_bd97425d.jpg",
+  medTech: "/manus-storage/med_tech_realistic_78575c20.jpg",
 };
 
 // Hospital brand colors based on actual TrustCare network hospitals
@@ -255,7 +257,13 @@ function PractitionerSection({ practitioner, role }: { practitioner: any; role?:
   // Determine avatar based on role keywords
   const isNurse = role?.includes("พยาบาล") || practitioner.role === "nurse";
   const isPharmacist = role?.includes("เภสัช") || practitioner.role === "pharmacist";
-  const practitionerAvatar = isNurse ? AVATAR_URLS.nurse : isPharmacist ? AVATAR_URLS.pharmacist : (isFemale ? AVATAR_URLS.doctorFemale : AVATAR_URLS.doctor);
+  const isRadiologist = role?.includes("รังสี") || practitioner.role === "radiologist";
+  const isMedTech = role?.includes("เทคนิคการแพทย์") || role?.includes("นักเทคนิค") || practitioner.role === "med_tech";
+  const practitionerAvatar = isNurse ? AVATAR_URLS.nurse 
+    : isPharmacist ? AVATAR_URLS.pharmacist 
+    : isRadiologist ? AVATAR_URLS.radiologist 
+    : isMedTech ? AVATAR_URLS.medTech 
+    : (isFemale ? AVATAR_URLS.doctorFemale : AVATAR_URLS.doctor);
   return (
     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
       <img src={practitionerAvatar} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" onError={(e) => { (e.target as HTMLImageElement).src = 'https://api.dicebear.com/7.x/notionists/svg?seed=doctor'; }} />
