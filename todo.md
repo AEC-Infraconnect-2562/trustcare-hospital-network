@@ -466,8 +466,8 @@
 
 ## v3.7 - File Bundle System for Care Transition Cases
 ### Research & Design
-- [ ] Deep research healthcare document bundle standards (IHE XDS, FHIR DocumentReference, HL7 attachments)
-- [ ] Design File Bundle schema: 1 case → many bundles, 1 bundle → many files (PDF, Word, images, medical files, VC/VP, mixed)
+- [x] Deep research healthcare document bundle standards (IHE XDS, FHIR DocumentReference, HL7 attachments)
+- [x] Design File Bundle schema: 1 case → many bundles, 1 bundle → many files (PDF, Word, images, medical files, VC/VP, mixed)
 
 ### Backend
 - [x] Create migration: document_bundles table (id, caseType, caseId, title, description, status, createdBy, createdAt)
@@ -482,12 +482,12 @@
 - [ ] Integration with creation wizards (attach bundle during case creation)
 
 ### Trust Layer Integration
-- [ ] VC/VP files in bundle: link to existing credential IDs, verify on display
-- [ ] Bundle attestation: generate bundle hash for integrity verification
-- [ ] SHL package generation from bundle (select files → create encrypted FHIR bundle → SHL link)
+- [x] VC/VP files in bundle: link to existing credential IDs, verify on display
+- [x] Bundle attestation: generate bundle hash for integrity verification
+- [x] SHL package generation from bundle (select files → create encrypted FHIR bundle → SHL link)
 
 ### Tests & Verification
 - [x] TypeScript compilation: 0 errors
 - [x] Vitest tests for bundle CRUD operations
-- [ ] Smoke test: create bundle, upload files, view bundle, generate SHL from bundle
-- [ ] Push to GitHub
+- [x] Smoke test: create bundle, upload files, view bundle, generate SHL from bundle
+- [x] Push to GitHub

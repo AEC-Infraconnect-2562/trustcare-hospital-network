@@ -2235,6 +2235,83 @@ export const appRouter = router({
       const removed = await db.removeBundleFile(input.fileId, input.bundleId);
       return { success: removed };
     }),
+    // --- Trust Layer Integration ---
+    linkVcToFile: staffProcedure.input(z.object({
+      fileId: z.number(),
+      vcCredentialId: z.string(),
+    })).mutation(async ({ input }) => {
+      const credential = await db.getIssuedCredentialByCredentialId(input.vcCredentialId);
+      if (!credential) throw new TRPCError({ code: "NOT_FOUND", message: "Credential not found in trust registry" });
+      if (credential.status !== "active") throw new TRPCError({ code: "BAD_REQUEST", message: `Credential is ${credential.status}, cannot link` });
+      await db.updateCaseDocument(input.fileId, { vcCredentialId: input.vcCredentialId, verificationStatus: "converted_to_vc" });
+      return { success: true, credential: { id: credential.id, credentialId: credential.credentialId, type: credential.type, status: credential.status, issuedAt: credential.issuedAt } };
+    }),
+    verifyBundleVc: staffProcedure.input(z.object({
+      fileId: z.number(),
+    })).query(async ({ input }) => {
+      const doc = await db.getCaseDocumentById(input.fileId);
+      if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found" });
+      if (!doc.vcCredentialId) return { verified: false, reason: "No VC linked to this document" };
+      const credential = await db.getIssuedCredentialByCredentialId(doc.vcCredentialId);
+      if (!credential) return { verified: false, reason: "Linked credential not found in registry" };
+      if (credential.status !== "active") return { verified: false, reason: `Credential status: ${credential.status}` };
+      return { verified: true, credential: { id: credential.id, credentialId: credential.credentialId, type: credential.type, status: credential.status, issuedAt: credential.issuedAt, expiresAt: credential.expiresAt } };
+    }),
+    generateBundleHash: staffProcedure.input(z.object({
+      bundleId: z.number(),
+    })).mutation(async ({ input }) => {
+      const bundle = await db.getBundleWithFiles(input.bundleId);
+      if (!bundle) throw new TRPCError({ code: "NOT_FOUND", message: "Bundle not found" });
+      const fileHashes = (bundle.files || []).map((f: any) => f.hash || sha256({ id: f.id, fileName: f.fileName, fileKey: f.fileKey, mimeType: f.mimeType, fileSize: f.fileSize }));
+      const bundleIntegrityHash = sha256(fileHashes.join("|"));
+      await db.updateDocumentBundleHash(input.bundleId, bundleIntegrityHash);
+      return { integrityHash: bundleIntegrityHash, fileCount: fileHashes.length };
+    }),
+    generateShlFromBundle: staffProcedure.input(z.object({
+      bundleId: z.number(),
+      patientId: z.number(),
+      purpose: z.enum(shlPurposeValues).optional(),
+      label: z.string().optional(),
+      passcodeRequired: z.boolean().optional(),
+      expiresInDays: z.number().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const bundle = await db.getBundleWithFiles(input.bundleId);
+      if (!bundle) throw new TRPCError({ code: "NOT_FOUND", message: "Bundle not found" });
+      if (!bundle.files?.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Bundle has no files" });
+      const documentResources = (bundle.files || []).map((file: any) => ({
+        resourceType: "DocumentReference",
+        id: `doc-${file.id}`,
+        status: "current",
+        type: { text: file.documentType },
+        description: file.title,
+        content: [{
+          attachment: {
+            contentType: file.mimeType || "application/octet-stream",
+            url: file.fileUrl || file.fileKey || "",
+            title: file.fileName || file.title,
+            size: file.fileSize ? Number(file.fileSize) : undefined,
+            hash: file.hash || undefined,
+          },
+        }],
+        context: { related: file.vcCredentialId ? [{ reference: `Credential/${file.vcCredentialId}` }] : [] },
+      }));
+      const fhirBundle = {
+        resourceType: "Bundle",
+        type: "collection",
+        timestamp: new Date().toISOString(),
+        meta: { tag: [{ system: "urn:trustcare:bundle", code: `bundle-${input.bundleId}` }] },
+        entry: documentResources.map((r: any) => ({ fullUrl: `urn:uuid:${r.id}`, resource: r })),
+      };
+      const shlResult = await createSmartHealthLinkPackage(ctx, {
+        patientId: input.patientId,
+        purpose: input.purpose ?? "referral",
+        label: input.label ?? `Document Bundle #${input.bundleId}: ${bundle.title}`,
+        fhirBundle,
+        passcodeRequired: input.passcodeRequired ?? true,
+        expiresInDays: input.expiresInDays ?? 14,
+      });
+      return { shl: shlResult, bundleId: input.bundleId, fhirBundleHash: sha256(fhirBundle) };
+    }),
   }),
   // ============================================================
   // PARTNER PORTAL

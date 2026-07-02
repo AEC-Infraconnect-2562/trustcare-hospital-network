@@ -1781,3 +1781,11 @@ export async function removeBundleFile(fileId: number, bundleId: number) {
   await db.execute(sql`UPDATE document_bundles SET fileCount = GREATEST(fileCount - 1, 0), totalSizeBytes = GREATEST(totalSizeBytes - ${fileSize}, 0) WHERE id = ${bundleId}`);
   return true;
 }
+
+export async function updateDocumentBundleHash(bundleId: number, integrityHash: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(documentBundles)
+    .set({ integrityHash })
+    .where(eq(documentBundles.id, bundleId));
+}
