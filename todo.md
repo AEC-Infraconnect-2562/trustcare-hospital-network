@@ -491,3 +491,12 @@
 - [x] Vitest tests for bundle CRUD operations
 - [x] Smoke test: create bundle, upload files, view bundle, generate SHL from bundle
 - [x] Push to GitHub
+
+## v3.7.1 - Inline PDF & Image Preview in BundleManager
+- [x] Add preview modal/dialog for PDF files (iframe/embed with fallback)
+- [x] Add preview modal/dialog for image files (full-size view with zoom & rotate)
+- [x] Add preview button/icon to each file row in BundleManager
+- [x] Support common MIME types: application/pdf, image/png, image/jpeg, image/gif, image/webp, image/svg+xml, image/bmp
+- [x] Graceful fallback for unsupported file types (show download link instead)
+- [x] TypeScript compilation: 0 errors
+- [x] Tests passing (178/178)
