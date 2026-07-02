@@ -497,7 +497,14 @@ export const appRouter = router({
       const credMap = new Map(allCreds.map((c: any) => [c.id, c]));
       const enriched = cards.map((card: any) => {
         const cred = credMap.get(card.credentialId);
-        return { ...card, credentialStatus: cred?.status || 'active', expiresAt: cred?.expiresAt || null };
+        return {
+          ...card,
+          credentialStatus: cred?.status || 'active',
+          expiresAt: cred?.expiresAt || null,
+          credentialData: cred?.credentialData || null,
+          credentialType: cred?.type || card.cardType,
+          issuedAt: cred?.issuedAt || card.createdAt,
+        };
       });
       const grouped: Record<string, any[]> = {};
       for (const card of enriched) {

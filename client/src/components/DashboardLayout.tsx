@@ -27,21 +27,23 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Wallet, ArrowRightLeft, ShieldCheck,
   BadgeCheck, ScanLine, GitBranch, BookOpen, Building2, FileSearch, Users,
   Settings, Moon, Sun, Bell, Globe, Plane, Receipt, Plug, ShieldAlert, Link2,
-  FileJson2,
+  FileJson2, Code2,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { normalizeActiveRole, sanitizeAdditionalRolesForSystemRole } from "@shared/rolePolicy";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // Icon map
 const iconMap: Record<string, any> = {
   LayoutDashboard, Wallet, ArrowRightLeft, ShieldCheck, BadgeCheck, ScanLine,
   GitBranch, BookOpen, Building2, FileSearch, Users, Settings, Globe, Plane,
-  Receipt, Plug, ShieldAlert, Link2, FileJson2,
+  Receipt, Plug, ShieldAlert, Link2, FileJson2, Code2,
 };
 
 type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
@@ -66,6 +68,43 @@ const menuGroups = [
   { id: "admin", label: "บริหารระบบ" },
 ];
 
+// English translations for menu groups and items
+const menuGroupsEn: Record<string, string> = {
+  overview: "Overview",
+  patient_services: "Patient Services",
+  clinical: "Clinical Services",
+  credentials: "Digital Credentials",
+  claims: "Claims & Finance",
+  interop: "Interoperability",
+  admin: "Administration",
+};
+
+const menuItemsEn: Record<string, string> = {
+  dashboard: "Dashboard",
+  executive: "Executive Dashboard",
+  wallet: "Health Wallet",
+  consent: "Consent Management",
+  shl: "Smart Health Links",
+  referral: "Patient Referral",
+  "cross-border": "Cross-border Referral",
+  international: "International Patients",
+  issuer: "Issue Credentials",
+  verifier: "Verify Credentials",
+  "trust-registry": "Trust Registry",
+  "claim-center": "Claim Center",
+  integration: "HIS Integration",
+  portability: "Portability Layer",
+  "fhir-mapping": "FHIR Mapping",
+  terminology: "Terminology Mapping",
+  "adapter-sdk": "Adapter SDK",
+  "patient-identity": "Patient Identity (MPI)",
+  hospitals: "Network Management",
+  "partner-wizard": "Partner Onboarding",
+  audit: "Audit Trail",
+  users: "User Management",
+  settings: "Settings",
+};
+
 const allMenuItems: MenuItemDef[] = [
   // Overview
   { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "overview", groupLabel: "ภาพรวม" },
@@ -89,9 +128,11 @@ const allMenuItems: MenuItemDef[] = [
   { id: "portability", label: "Portability Layer", icon: "FileJson2", path: "/portability", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
   { id: "fhir-mapping", label: "แผนที่ข้อมูล FHIR", icon: "GitBranch", path: "/fhir-mapping", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
   { id: "terminology", label: "จับคู่รหัสมาตรฐาน", icon: "BookOpen", path: "/terminology", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
+  { id: "adapter-sdk", label: "Adapter SDK", icon: "Code2", path: "/adapter-sdk", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
   // Administration
   { id: "patient-identity", label: "เชื่อมโยงตัวตน (MPI)", icon: "Fingerprint", path: "/patient-identity", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "admin", groupLabel: "บริหารระบบ" },
   { id: "hospitals", label: "จัดการเครือข่าย", icon: "Building2", path: "/hospitals", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
+  { id: "partner-wizard", label: "เพิ่มพันธมิตรต่างประเทศ", icon: "Globe", path: "/partner-wizard", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
   { id: "audit", label: "บันทึกการเข้าถึง", icon: "FileSearch", path: "/audit", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
   { id: "users", label: "จัดการผู้ใช้", icon: "Users", path: "/users", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
   { id: "settings", label: "ตั้งค่าระบบ", icon: "Settings", path: "/settings", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
@@ -160,6 +201,11 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
   const activeRole = normalizeActiveRole(systemRole, (user as any)?.activeRole ?? systemRole, additionalRoles) as SystemRole;
   const grouped = getGroupedMenu(activeRole);
   const activeItem = allMenuItems.find(item => item.path === location);
+  const { lang } = useLanguage();
+
+  // Helper to get translated label
+  const getItemLabel = (item: MenuItemDef) => lang === "en" ? (menuItemsEn[item.id] || item.label) : item.label;
+  const getGroupLabel = (groupId: string, thLabel: string) => lang === "en" ? (menuGroupsEn[groupId] || thLabel) : thLabel;
 
   useEffect(() => {
     if (isCollapsed) setIsResizing(false);
@@ -201,13 +247,16 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
                 <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
               {!isCollapsed && (
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <span className="font-semibold tracking-tight truncate text-sm">
                     Trustcare
                   </span>
                   <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                     Network
                   </Badge>
+                  <div className="ml-auto">
+                    <LanguageSwitcher />
+                  </div>
                 </div>
               )}
             </div>
@@ -218,7 +267,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
               <div key={group.id} className="px-2 py-1">
                 {!isCollapsed && (
                   <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-3 py-2">
-                    {group.label}
+                    {getGroupLabel(group.id, group.label)}
                   </p>
                 )}
                 {isCollapsed && gi > 0 && <Separator className="my-1" />}
@@ -231,11 +280,11 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
                         <SidebarMenuButton
                           isActive={isActive}
                           onClick={() => setLocation(item.path)}
-                          tooltip={item.label}
+                          tooltip={getItemLabel(item)}
                           className="h-9 transition-all font-normal"
                         >
                           <Icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
-                          <span className="text-sm">{item.label}</span>
+                          <span className="text-sm">{getItemLabel(item)}</span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     );
@@ -264,6 +313,12 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem asChild className="cursor-pointer p-0">
+                  <div className="flex items-center px-2 py-1.5">
+                    <Globe className="mr-2 h-4 w-4" />
+                    <LanguageSwitcher />
+                  </div>
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={toggleTheme} className="cursor-pointer">
                   {theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
                   <span>{theme === "dark" ? "โหมดสว่าง" : "โหมดมืด"}</span>
@@ -289,11 +344,14 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
           <div className="flex border-b h-14 items-center justify-between bg-background/95 px-3 backdrop-blur sticky top-0 z-40">
             <div className="flex items-center gap-2">
               <SidebarTrigger className="h-9 w-9 rounded-lg" />
-              <span className="text-sm font-medium">{activeItem?.label ?? "เมนู"}</span>
+              <span className="text-sm font-medium">{activeItem ? getItemLabel(activeItem) : (lang === "en" ? "Menu" : "เมนู")}</span>
             </div>
-            <button onClick={toggleTheme} className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-accent">
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
+            <div className="flex items-center gap-1">
+              <LanguageSwitcher />
+              <button onClick={toggleTheme} className="h-9 w-9 flex items-center justify-center rounded-lg hover:bg-accent">
+                {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
         )}
         <main className="flex-1 p-4 md:p-6">{children}</main>

@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { CredentialRenderer } from "@/components/CredentialRenderer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,9 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import {
-  ArrowLeft, BadgeCheck, Ban, Calendar, Clock, Copy, ExternalLink, FileJson2,
+  ArrowLeft, BadgeCheck, Ban, Calendar, Clock, Copy, Download, ExternalLink, FileJson2,
   Hospital, Printer, QrCode, ShieldCheck, User,
 } from "lucide-react";
+import { exportCredentialPdf } from "@/lib/pdfExport";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useRoute } from "wouter";
@@ -175,6 +177,24 @@ export default function CredentialDetail() {
               <FileJson2 className="h-4 w-4" />คัดลอก SD-JWT
             </Button>
           )}
+          <Button variant="outline" className="gap-2" onClick={() => {
+            exportCredentialPdf({
+              type: credential.type,
+              typeLabel: typeLabels[credential.type] || credential.type,
+              credentialId: credential.credentialId,
+              status: credential.status,
+              issuedAt: new Date(credential.issuedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+              expiresAt: credential.expiresAt ? new Date(credential.expiresAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : null,
+              hospital: `Hospital #${credential.issuerHospitalId}`,
+              patient: `Patient #${credential.subjectId}`,
+              credentialData: credData,
+              documentCategory: credential.documentCategory || undefined,
+              documentSubcategory: credential.documentSubcategory || undefined,
+            });
+            toast.success("ดาวน์โหลด PDF สำเร็จ");
+          }}>
+            <Download className="h-4 w-4" />ดาวน์โหลด PDF
+          </Button>
           {credential.status === "active" && (
             <Button variant="outline" className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/5" onClick={() => setRevokeOpen(true)}>
               <Ban className="h-4 w-4" />เพิกถอน
@@ -191,31 +211,34 @@ export default function CredentialDetail() {
           </TabsList>
 
           <TabsContent value="data" className="mt-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Credential Subject Data</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {credData ? (
-                  <div className="space-y-3">
-                    {Object.entries(credData).map(([key, value]) => (
-                      <div key={key} className="flex items-start gap-3 py-2 border-b border-border/50 last:border-0">
-                        <span className="text-xs font-mono text-muted-foreground min-w-[140px] pt-0.5">{key}</span>
-                        <span className="text-sm break-all">
-                          {typeof value === "object" ? (
-                            <pre className="text-xs bg-muted/50 rounded p-2 overflow-auto max-h-32">{JSON.stringify(value, null, 2)}</pre>
-                          ) : (
-                            String(value)
-                          )}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">ไม่มีข้อมูล Credential Subject</p>
-                )}
-              </CardContent>
-            </Card>
+            {/* Rendered Document View */}
+            <CredentialRenderer
+              credentialData={credData}
+              type={credential.type}
+              status={credential.status}
+              credentialId={credential.credentialId}
+              issuedAt={typeof credential.issuedAt === 'string' ? credential.issuedAt : new Date(credential.issuedAt).toISOString()}
+              expiresAt={credential.expiresAt ? (typeof credential.expiresAt === 'string' ? credential.expiresAt : new Date(credential.expiresAt).toISOString()) : null}
+              hospitalCode={String(credential.issuerHospitalId)}
+              hospitalName={`Hospital #${credential.issuerHospitalId}`}
+              patientName={`Patient #${credential.subjectId}`}
+            />
+
+            {/* Raw data expandable */}
+            {credData && (
+              <details className="mt-4">
+                <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors py-2">
+                  แสดง Raw Credential Data (JSON)
+                </summary>
+                <Card className="mt-2">
+                  <CardContent className="p-4">
+                    <pre className="text-xs bg-muted/50 rounded-lg p-4 overflow-auto max-h-[400px] font-mono break-all whitespace-pre-wrap">
+                      {JSON.stringify(credData, null, 2)}
+                    </pre>
+                  </CardContent>
+                </Card>
+              </details>
+            )}
           </TabsContent>
 
           <TabsContent value="jwt" className="mt-4">

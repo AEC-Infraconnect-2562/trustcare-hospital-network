@@ -130,15 +130,15 @@
 - [x] Demo Seed Data — สร้าง script เพิ่มโรงพยาบาลตัวอย่าง 3-5 แห่ง พร้อมผู้ป่วย, VC, Consent, Referral ตัวอย่างเพื่อทดสอบ flow ข้ามโรงพยาบาลได้ทันที (completed in v3.0 reseed: 3 hospitals, 36 patients, 345 credentials, 6 presentations)
 - [x] Real-time Notification Center — หน้า Notification รวมการแจ้งเตือนทั้งหมด (referral ใหม่, VC หมดอายุ, claim ถูกปฏิเสธ) แบบ role-based (partial: bell+dropdown in v2.2 for maker/checker events; full role-based coverage is backlog)
 - [x] Camera QR Scanner — ใช้ WebRTC เปิดกล้องใน Verifier Portal ให้แพทย์สแกน QR จาก Wallet ของผู้ป่วยได้จริงโดยไม่ต้องพิมพ์ token (completed in v3.1 with html5-qrcode)
-- [ ] Biometric Confirmation (WebAuthn) — เพิ่ม fingerprint/face unlock ก่อนแสดง QR ใน Patient Wallet
-- [ ] Offline-first Patient Wallet — เก็บ Health Cards ใน IndexedDB ให้ผู้ป่วยแสดง QR ได้แม้ไม่มี internet
-- [ ] Multi-language Support (EN/TH toggle) — เพิ่ม i18n สำหรับ Medical Tourist ที่ไม่อ่านภาษาไทย
-- [ ] PDF Export สำหรับ Clinical Summary — ให้ผู้ป่วยดาวน์โหลด Patient Summary เป็น PDF ได้
-- [ ] Integration Adapter SDK — สร้าง SDK/template สำหรับเชื่อมต่อ HIS ที่ใช้ HL7v2, FHIR REST, หรือ Legacy DB
+- [x] Biometric Confirmation (WebAuthn) — เพิ่ม fingerprint/face unlock ก่อนแสดง QR ใน Patient Wallet
+- [x] Offline-first Patient Wallet — เก็บ Health Cards ใน IndexedDB ให้ผู้ป่วยแสดง QR ได้แม้ไม่มี internet
+- [x] Multi-language Support (EN/TH toggle) — เพิ่ม i18n สำหรับ Medical Tourist ที่ไม่อ่านภาษาไทย
+- [x] PDF Export สำหรับ Clinical Summary — ให้ผู้ป่วยดาวน์โหลด Patient Summary เป็น PDF ได้
+- [x] Integration Adapter SDK — สร้าง SDK/template สำหรับเชื่อมต่อ HIS ที่ใช้ HL7v2, FHIR REST, หรือ Legacy DB
 - [ ] Automated Data Quality Scoring — คำนวณ DQI score อัตโนมัติจาก FHIR validation rules
 - [ ] Consent Expiry Reminder — แจ้งเตือนผู้ป่วยก่อน consent หมดอายุ 7 วัน
 - [ ] Claim Analytics Dashboard — กราฟวิเคราะห์ claim approval rate, average processing time, top rejection reasons
-- [ ] Cross-border Partner Onboarding Wizard — Wizard สำหรับเพิ่ม partner hospital ต่างประเทศพร้อม trust credential exchange
+- [x] Cross-border Partner Onboarding Wizard — Wizard สำหรับเพิ่ม partner hospital ต่างประเทศพร้อม trust credential exchange
 
 ## v2.1 Upgrade - RU_VC Patterns + Test Users + UX Improvements
 - [x] Create test users for all 6 roles with demo login page (completed in v2.1.1; Manus OAuth retained as optional alongside demo-login)
@@ -146,7 +146,7 @@
 - [x] Enhance Wallet with Selective Disclosure/ZKP, QR presentation, access history
 - [x] Enhance Verifier with camera QR scanning (html5-qrcode) (completed in v3.1)
 - [x] Add persistent sidebar with back button on all guarded pages (completed in v2.1.1 DashboardLayout + RoleGuard back button; breadcrumb is backlog)
-- [ ] Move statistics boxes to bottom of pages, reduce size of action boxes at top
+- [x] Move statistics boxes to bottom of pages, reduce size of action boxes at top
 - [x] Ensure menu visibility matches role permissions correctly (completed in v2.1.1 + v2.1.2 + v2.1.3)
 
 ## v2.1.1 - Menu Visibility & Role-Based Access Fix (Current Task)
@@ -319,3 +319,10 @@
 - [x] Implement singleton enforcement in issuer.issueCredentialFromRequest
 - [x] Auto-revoke previous credential when re-issuing singleton types
 - [x] Store revoked credentials with superseded_by reference
+
+## v4.1 - Credential Display Redesign (Realistic Hospital Documents)
+- [ ] Create CredentialRenderer component with document-type-specific templates
+- [ ] Add realistic person photo to patient_identity and medical_certificate credentials
+- [ ] Redesign CredentialDetail page with hospital branding, formatted fields, photo
+- [ ] Update Wallet card display to show person photo and formatted credential preview
+- [ ] Replace raw JSON display with human-readable formatted credential view

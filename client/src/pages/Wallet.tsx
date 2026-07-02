@@ -2,6 +2,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { CredentialRenderer } from "@/components/CredentialRenderer";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -11,15 +12,29 @@ import { trpc } from "@/lib/trpc";
 import { DOCUMENT_CATEGORIES, type DocumentCategory } from "@shared/const";
 import {
   AlertTriangle, ArrowRightLeft, BadgeCheck, CalendarDays, CreditCard, Eye,
-  FileBadge, FileCheck2, FileText, Globe2, History, Landmark, Link2, Microscope,
+  FileBadge, FileCheck2, FileText, Fingerprint, Globe2, History, Landmark, Link2, Microscope,
   PackageCheck, Pill, Printer, QrCode, ReceiptText, RefreshCcw, ScanLine,
   Shield, Share2, Syringe, User, Wallet as WalletIcon,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import QRCode from "qrcode";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useWebAuthn } from "@/hooks/useWebAuthn";
+import { useOfflineWallet } from "@/hooks/useOfflineWallet";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Switch } from "@/components/ui/switch";
+import { Wifi, WifiOff, CloudDownload, Download } from "lucide-react";
+import { exportWalletCardPdf } from "@/lib/pdfExport";
+
+// Avatar URLs for wallet card thumbnails
+const AVATAR_URLS = {
+  male: "/manus-storage/patient-avatar-male_c0b881f4.png",
+  female: "/manus-storage/patient-avatar-female_838fe3a6.png",
+};
+
+const PHOTO_TYPES = ["patient_identity", "identity", "medical_certificate"];
 
 const categoryIconMap: Record<string, any> = {
   User, FileText, Pill, Microscope, ArrowRightLeft, ReceiptText, Globe2, RefreshCcw, CalendarDays,
@@ -55,6 +70,22 @@ export default function Wallet() {
   const { data: grouped, isLoading } = trpc.wallet.cardsByCategory.useQuery();
   const { data: superseded, isLoading: supersededLoading } = trpc.wallet.superseded.useQuery();
   const { data: history, isLoading: histLoading } = trpc.wallet.history.useQuery();
+  const webAuthn = useWebAuthn();
+  const { user: auth } = useAuth();
+  const offlineWallet = useOfflineWallet();
+
+  // Auto-sync cards to IndexedDB when online data loads
+  const allOnlineCards = useMemo(() => {
+    if (!grouped) return [];
+    return Object.values(grouped).flat();
+  }, [grouped]);
+
+  // Sync to offline storage when cards load (useEffect for side-effects)
+  useEffect(() => {
+    if (allOnlineCards.length > 0 && offlineWallet.isOnline) {
+      offlineWallet.syncCards(allOnlineCards);
+    }
+  }, [allOnlineCards.length, offlineWallet.isOnline]);
 
   const [activeCategory, setActiveCategory] = useState<DocumentCategory | "all">("all");
   const [selectedCard, setSelectedCard] = useState<any>(null);
@@ -66,8 +97,13 @@ export default function Wallet() {
   const presentMutation = trpc.wallet.present.useMutation({
     onSuccess: async (data) => {
       setPresentation(data);
-      setQrDataUrl(await QRCode.toDataURL(data.qrData, { margin: 1, width: 240 }));
+      const qr = await QRCode.toDataURL(data.qrData, { margin: 1, width: 240 });
+      setQrDataUrl(qr);
       setQrMode(true);
+      // Cache QR for offline use
+      if (selectedCard) {
+        offlineWallet.cacheQR(selectedCard.id, data.qrData, data.presentationId, data.expiresAt);
+      }
       toast.success("สร้าง VP QR สำเร็จ");
     },
     onError: (error) => toast.error(error.message),
@@ -83,10 +119,15 @@ export default function Wallet() {
   }, [grouped]);
 
   const displayCards = useMemo(() => {
+    // If offline and no online data, use cached offline cards
+    if (!offlineWallet.isOnline && !grouped) {
+      if (activeCategory === "all") return offlineWallet.offlineCards;
+      return offlineWallet.offlineCards.filter(c => c.documentCategory === activeCategory);
+    }
     if (!grouped) return [];
     if (activeCategory === "all") return Object.values(grouped).flat();
     return (grouped as any)[activeCategory] || [];
-  }, [grouped, activeCategory]);
+  }, [grouped, activeCategory, offlineWallet.isOnline, offlineWallet.offlineCards]);
 
   const totalCards = useMemo(() => {
     if (!grouped) return 0;
@@ -104,9 +145,31 @@ export default function Wallet() {
   const [shareOpen, setShareOpen] = useState(false);
   const [disclosureFields, setDisclosureFields] = useState<Record<string, boolean>>({});
 
-  const handleGenerateQR = useCallback(() => {
-    if (selectedCard) presentMutation.mutate({ cardId: selectedCard.id });
-  }, [selectedCard, presentMutation]);
+  const handleGenerateQR = useCallback(async () => {
+    if (!selectedCard) return;
+    // If WebAuthn is registered, require biometric confirmation before showing QR
+    if (webAuthn.isRegistered) {
+      const ok = await webAuthn.authenticate();
+      if (!ok) {
+        toast.error(webAuthn.error || "ยืนยันตัวตนไม่สำเร็จ กรุณาลองอีกครั้ง");
+        return;
+      }
+    }
+    // If offline, try to load cached QR
+    if (!offlineWallet.isOnline) {
+      const cached = await offlineWallet.getOfflineQR(selectedCard.id);
+      if (cached) {
+        setQrDataUrl(cached.qrDataUrl);
+        setPresentation({ presentationId: cached.presentationId, expiresAt: cached.expiresAt });
+        setQrMode(true);
+        toast.info("แสดง QR จากแคช (Offline)");
+        return;
+      }
+      toast.error("ไม่มี QR ที่แคชไว้ กรุณาเชื่อมต่ออินเทอร์เน็ตแล้วสร้าง QR ใหม่");
+      return;
+    }
+    presentMutation.mutate({ cardId: selectedCard.id });
+  }, [selectedCard, presentMutation, webAuthn, offlineWallet]);
 
   const handleShareClick = useCallback(() => {
     if (!selectedCard) return;
@@ -135,7 +198,37 @@ export default function Wallet() {
             </h1>
             <p className="text-sm text-muted-foreground mt-1">Health Cards ทั้งหมด {totalCards} ใบ • {Object.keys(categoryCounts).length} หมวดหมู่</p>
           </div>
-          <Badge variant="outline" className="text-xs"><CreditCard className="h-3 w-3 mr-1" />{totalCards} Cards</Badge>
+          <div className="flex items-center gap-3">
+            {/* Offline status indicator */}
+            <div className={`flex items-center gap-1.5 border rounded-lg px-2.5 py-1.5 text-xs font-medium ${offlineWallet.isOnline ? "border-emerald-200 text-emerald-700 bg-emerald-50" : "border-amber-200 text-amber-700 bg-amber-50"}`}>
+              {offlineWallet.isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+              {offlineWallet.isOnline ? "Online" : "Offline"}
+              {offlineWallet.offlineCardCount > 0 && (
+                <span className="ml-1 text-[10px] opacity-70">({offlineWallet.offlineCardCount} cached)</span>
+              )}
+            </div>
+            {webAuthn.isSupported && (
+              <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5">
+                <Fingerprint className={`h-4 w-4 ${webAuthn.isRegistered ? "text-emerald-600" : "text-muted-foreground"}`} />
+                <span className="text-xs font-medium">{webAuthn.isRegistered ? "ปกป้องแล้ว" : "ตั้งค่า Biometric"}</span>
+                <Switch
+                  checked={webAuthn.isRegistered}
+                  onCheckedChange={async (checked) => {
+                    if (checked) {
+                      const ok = await webAuthn.register(String(auth?.id || "user"), auth?.name || "Patient");
+                      if (ok) toast.success("ลงทะเบียน Biometric สำเร็จ ต่อไปต้องยืนยันตัวตนก่อนแสดง QR");
+                      else toast.error(webAuthn.error || "ไม่สามารถลงทะเบียน Biometric ได้");
+                    } else {
+                      webAuthn.unregister();
+                      toast.info("ยกเลิกการปกป้องด้วย Biometric");
+                    }
+                  }}
+                  className="h-5 w-9"
+                />
+              </div>
+            )}
+            <Badge variant="outline" className="text-xs"><CreditCard className="h-3 w-3 mr-1" />{totalCards} Cards</Badge>
+          </div>
         </div>
 
         <Tabs defaultValue="cards" className="w-full">
@@ -189,11 +282,18 @@ export default function Wallet() {
                         const Icon = config.icon;
                         const isRevoked = card.credentialStatus === "revoked";
                         const isExpired = card.credentialStatus === "expired";
+                        const showPhoto = PHOTO_TYPES.includes(card.cardType);
                         return (
-                          <button key={card.id} onClick={() => handleCardClick(card)} className={`relative overflow-hidden rounded-xl p-4 text-left text-white shadow-lg hover:shadow-xl transition-all duration-200 bg-gradient-to-br ${config.bgGradient} hover:-translate-y-1 active:scale-[0.97] ${isRevoked || isExpired ? "opacity-60" : ""}`} style={{ minHeight: "150px" }}>
+                          <button key={card.id} onClick={() => handleCardClick(card)} className={`relative overflow-hidden rounded-xl p-4 text-left text-white shadow-lg hover:shadow-xl transition-all duration-200 bg-gradient-to-br ${config.bgGradient} hover:-translate-y-1 active:scale-[0.97] ${isRevoked || isExpired ? "opacity-60" : ""}`} style={{ minHeight: "160px" }}>
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex items-center gap-3 min-w-0">
-                                <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm shrink-0"><Icon className="h-5 w-5" /></div>
+                                {showPhoto ? (
+                                  <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-white/30 shadow-sm shrink-0">
+                                    <img src={AVATAR_URLS.male} alt="" className="h-full w-full object-cover" />
+                                  </div>
+                                ) : (
+                                  <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm shrink-0"><Icon className="h-5 w-5" /></div>
+                                )}
                                 <div className="min-w-0">
                                   <h3 className="font-semibold text-sm truncate">{card.displayName}</h3>
                                   <p className="text-xs opacity-80 truncate">{card.issuerHospitalName || "TrustCare Network"}</p>
@@ -257,7 +357,7 @@ export default function Wallet() {
       </div>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           {selectedCard && !qrMode && (
             <>
               <DialogHeader>
@@ -268,22 +368,51 @@ export default function Wallet() {
                 <DialogDescription>{selectedCard.displayNameEn || selectedCard.cardType}</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-2">
-                <div className={`rounded-xl p-4 text-white bg-gradient-to-br ${(cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity).bgGradient}`}>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center">{(() => { const Icon = (cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity).icon; return <Icon className="h-5 w-5" />; })()}</div>
-                    <div><p className="font-semibold text-sm">{selectedCard.displayName}</p><p className="text-xs opacity-80">{selectedCard.issuerHospitalName || "TrustCare Network"}</p></div>
+                {/* Rendered Document View */}
+                {selectedCard.credentialData ? (
+                  <CredentialRenderer
+                    credentialData={selectedCard.credentialData}
+                    type={selectedCard.credentialType || selectedCard.cardType}
+                    status={selectedCard.credentialStatus || "active"}
+                    credentialId={String(selectedCard.credentialId)}
+                    issuedAt={selectedCard.issuedAt || selectedCard.createdAt}
+                    expiresAt={selectedCard.expiresAt}
+                    hospitalName={selectedCard.issuerHospitalName}
+                  />
+                ) : (
+                  <div className={`rounded-xl p-4 text-white bg-gradient-to-br ${(cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity).bgGradient}`}>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center">{(() => { const Icon = (cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity).icon; return <Icon className="h-5 w-5" />; })()}</div>
+                      <div><p className="font-semibold text-sm">{selectedCard.displayName}</p><p className="text-xs opacity-80">{selectedCard.issuerHospitalName || "TrustCare Network"}</p></div>
+                    </div>
+                    <Separator className="bg-white/20 mb-3" />
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div><p className="opacity-60">หมวดหมู่</p><p className="opacity-90">{DOCUMENT_CATEGORIES[selectedCard.documentCategory as DocumentCategory]?.th || selectedCard.cardType}</p></div>
+                      <div><p className="opacity-60">สร้างเมื่อ</p><p className="opacity-90">{new Date(selectedCard.createdAt).toLocaleDateString("th-TH")}</p></div>
+                      <div><p className="opacity-60">สถานะ</p><p className="opacity-90">{selectedCard.credentialStatus === "active" ? "ใช้งานได้" : selectedCard.credentialStatus}</p></div>
+                      {selectedCard.expiresAt && <div><p className="opacity-60">หมดอายุ</p><p className="opacity-90">{new Date(selectedCard.expiresAt).toLocaleDateString("th-TH")}</p></div>}
+                    </div>
                   </div>
-                  <Separator className="bg-white/20 mb-3" />
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div><p className="opacity-60">หมวดหมู่</p><p className="opacity-90">{DOCUMENT_CATEGORIES[selectedCard.documentCategory as DocumentCategory]?.th || selectedCard.cardType}</p></div>
-                    <div><p className="opacity-60">สร้างเมื่อ</p><p className="opacity-90">{new Date(selectedCard.createdAt).toLocaleDateString("th-TH")}</p></div>
-                    <div><p className="opacity-60">สถานะ</p><p className="opacity-90">{selectedCard.credentialStatus === "active" ? "ใช้งานได้" : selectedCard.credentialStatus}</p></div>
-                    {selectedCard.expiresAt && <div><p className="opacity-60">หมดอายุ</p><p className="opacity-90">{new Date(selectedCard.expiresAt).toLocaleDateString("th-TH")}</p></div>}
-                  </div>
-                </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
-                  <Button onClick={handleGenerateQR} disabled={presentMutation.isPending || selectedCard.credentialStatus !== "active"} className="gap-2"><QrCode className="h-4 w-4" />{presentMutation.isPending ? "กำลังสร้าง..." : "สร้าง VP QR"}</Button>
+                  <Button onClick={handleGenerateQR} disabled={presentMutation.isPending || webAuthn.isAuthenticating || selectedCard.credentialStatus !== "active"} className="gap-2">
+                    {webAuthn.isRegistered && <Fingerprint className="h-4 w-4" />}
+                    <QrCode className="h-4 w-4" />
+                    {presentMutation.isPending || webAuthn.isAuthenticating ? "กำลังยืนยัน..." : webAuthn.isRegistered ? "ยืนยัน + QR" : "สร้าง VP QR"}
+                  </Button>
                   <Button variant="outline" className="gap-2" onClick={handleShareClick}><Share2 className="h-4 w-4" />แชร์ (Selective)</Button>
+                  <Button variant="outline" className="gap-2" onClick={() => {
+                    exportWalletCardPdf({
+                      title: selectedCard.title,
+                      type: selectedCard.cardType,
+                      issuedAt: selectedCard.issuedAt,
+                      expiresAt: selectedCard.expiresAt,
+                      issuerName: selectedCard.issuerName || "Trustcare Hospital",
+                      credentialId: selectedCard.credentialId,
+                      credentialData: selectedCard.metadata as Record<string, any> | null,
+                    });
+                    toast.success("ดาวน์โหลด PDF สำเร็จ");
+                  }}><Download className="h-4 w-4" />PDF</Button>
                 </div>
                 <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
                   <p><span className="font-medium">Credential ID:</span> #{selectedCard.credentialId}</p>

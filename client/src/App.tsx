@@ -30,6 +30,8 @@ import PortabilityWorkbench from "./pages/PortabilityWorkbench";
 import MakerQueue from "./pages/MakerQueue";
 import CheckerQueue from "./pages/CheckerQueue";
 import CredentialDetail from "./pages/CredentialDetail";
+import AdapterSdk from "./pages/AdapterSdk";
+import PartnerWizard from "./pages/PartnerWizard";
 import RoleGuard from "./components/RoleGuard";
 
 function Router() {
@@ -50,6 +52,8 @@ function Router() {
       <Route path="/international" component={International} />
       <Route path="/claim-center" component={ClaimCenter} />
       <Route path="/integration" component={Integration} />
+      <Route path="/adapter-sdk" component={AdapterSdk} />
+      <Route path="/partner-wizard" component={PartnerWizard} />
       <Route path="/fhir-mapping" component={FhirMapping} />
       <Route path="/terminology" component={Terminology} />
       <Route path="/trust-registry" component={TrustRegistry} />
