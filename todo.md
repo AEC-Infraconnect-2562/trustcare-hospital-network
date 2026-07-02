@@ -479,7 +479,7 @@
 - [x] Bundle upload UI in CareTransitionWorkspace Bundles tab (drag-drop, multi-file, progress)
 - [x] Bundle viewer: list bundles per case, expand to see files, preview/download
 - [x] File type indicators (PDF icon, Word icon, Image thumbnail, VC/VP badge)
-- [ ] Integration with creation wizards (attach bundle during case creation)
+- [x] Integration with creation wizards (attach bundle during case creation, PartnerWizard real file upload + DID trust verification)
 
 ### Trust Layer Integration
 - [x] VC/VP files in bundle: link to existing credential IDs, verify on display
