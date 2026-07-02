@@ -27,7 +27,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Wallet, ArrowRightLeft, ShieldCheck,
   BadgeCheck, ScanLine, GitBranch, BookOpen, Building2, FileSearch, Users,
   Settings, Moon, Sun, Bell, Globe, Plane, Receipt, Plug, ShieldAlert, Link2,
-  FileJson2, Code2,
+  FileJson2, Code2, UserCircle,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -43,7 +43,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 const iconMap: Record<string, any> = {
   LayoutDashboard, Wallet, ArrowRightLeft, ShieldCheck, BadgeCheck, ScanLine,
   GitBranch, BookOpen, Building2, FileSearch, Users, Settings, Globe, Plane,
-  Receipt, Plug, ShieldAlert, Link2, FileJson2, Code2,
+  Receipt, Plug, ShieldAlert, Link2, FileJson2, Code2, UserCircle,
 };
 
 type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
@@ -82,6 +82,7 @@ const menuGroupsEn: Record<string, string> = {
 const menuItemsEn: Record<string, string> = {
   dashboard: "Dashboard",
   executive: "Executive Dashboard",
+  profile: "Patient Profile",
   wallet: "Health Wallet",
   consent: "Consent Management",
   shl: "Smart Health Links",
@@ -111,6 +112,7 @@ const allMenuItems: MenuItemDef[] = [
   { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "overview", groupLabel: "ภาพรวม" },
   { id: "executive", label: "แดชบอร์ดผู้บริหาร", icon: "BarChart3", path: "/executive", roles: ["system_admin", "hospital_admin"], group: "overview", groupLabel: "ภาพรวม" },
   // Patient Services
+  { id: "profile", label: "โปรไฟล์ผู้ป่วย", icon: "UserCircle", path: "/profile", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient", "maker", "checker"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   { id: "wallet", label: "กระเป๋าสุขภาพ", icon: "Wallet", path: "/wallet", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient", "maker", "checker"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   { id: "consent", label: "จัดการความยินยอม", icon: "ShieldCheck", path: "/consent", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
   { id: "shl", label: "ลิงก์แชร์สุขภาพ", icon: "Link2", path: "/shl", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },

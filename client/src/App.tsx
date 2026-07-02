@@ -34,6 +34,7 @@ import CredentialDetail from "./pages/CredentialDetail";
 import AdapterSdk from "./pages/AdapterSdk";
 import PartnerWizard from "./pages/PartnerWizard";
 import RoleGuard from "./components/RoleGuard";
+import PatientProfile from "./pages/PatientProfile";
 
 function Router() {
   return (
@@ -63,6 +64,7 @@ function Router() {
       <Route path="/shl" component={SmartHealthLinks} />
       <Route path="/executive" component={ExecutiveDashboard} />
       <Route path="/patient-identity" component={PatientIdentity} />
+      <Route path="/profile" component={PatientProfile} />
       <Route path="/portability" component={PortabilityWorkbench} />
       <Route path="/audit" component={Audit} />
       <Route path="/users" component={Users} />

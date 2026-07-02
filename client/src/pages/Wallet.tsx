@@ -32,6 +32,8 @@ import { exportWalletCardPdf } from "@/lib/pdfExport";
 const AVATAR_URLS = {
   male: "/manus-storage/patient_male_realistic_80909bf8.jpg",
   female: "/manus-storage/patient_female_realistic_1fd9c678.jpg",
+  nurse: "/manus-storage/nurse_female_realistic_7385561e.jpg",
+  pharmacist: "/manus-storage/pharmacist_male_realistic_ffc30382.jpg",
 };
 
 const PHOTO_TYPES = ["patient_identity", "identity", "medical_certificate"];
@@ -385,6 +387,7 @@ export default function Wallet() {
                     issuedAt={selectedCard.issuedAt || selectedCard.createdAt}
                     expiresAt={selectedCard.expiresAt}
                     hospitalName={selectedCard.issuerHospitalName}
+                    patientPhotoUrl={(auth as any)?.avatarUrl}
                   />
                 ) : (
                   <div className={`rounded-xl p-4 text-white bg-gradient-to-br ${(cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity).bgGradient}`}>

@@ -29,6 +29,8 @@ const AVATAR_URLS = {
   female: "/manus-storage/patient_female_realistic_1fd9c678.jpg",
   doctor: "/manus-storage/doctor_male_realistic_e51286cb.jpg",
   doctorFemale: "/manus-storage/doctor_female_realistic_ac88a81f.jpg",
+  nurse: "/manus-storage/nurse_female_realistic_7385561e.jpg",
+  pharmacist: "/manus-storage/pharmacist_male_realistic_ffc30382.jpg",
 };
 
 // Hospital brand colors based on actual TrustCare network hospitals
@@ -53,6 +55,7 @@ interface CredentialRendererProps {
   hospitalCode?: string;
   hospitalName?: string;
   patientName?: string;
+  patientPhotoUrl?: string | null;
   compact?: boolean;
 }
 
@@ -195,12 +198,13 @@ function DocumentHeader({ icon: Icon, title, brand, renderData, status }: {
 }
 
 // ─── Patient Info Section ────────────────────────────────────────────────────
-function PatientInfoSection({ renderData, showPhoto, gender }: {
+function PatientInfoSection({ renderData, showPhoto, gender, patientPhotoUrl }: {
   renderData: ReturnType<typeof extractRenderData>;
   showPhoto?: boolean;
   gender?: "male" | "female";
+  patientPhotoUrl?: string | null;
 }) {
-  const avatarUrl = gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male;
+  const avatarUrl = patientPhotoUrl || (gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male);
   return (
     <div className="flex gap-4 items-start">
       {showPhoto && (
@@ -248,10 +252,13 @@ function DocumentFooter({ issuedAt, expiresAt, documentNo }: {
 function PractitionerSection({ practitioner, role }: { practitioner: any; role?: string }) {
   if (!practitioner?.name) return null;
   const isFemale = practitioner.name?.includes("พญ.") || practitioner.name?.includes("นพญ.") || practitioner.gender === "female";
-  const doctorAvatar = isFemale ? AVATAR_URLS.doctorFemale : AVATAR_URLS.doctor;
+  // Determine avatar based on role keywords
+  const isNurse = role?.includes("พยาบาล") || practitioner.role === "nurse";
+  const isPharmacist = role?.includes("เภสัช") || practitioner.role === "pharmacist";
+  const practitionerAvatar = isNurse ? AVATAR_URLS.nurse : isPharmacist ? AVATAR_URLS.pharmacist : (isFemale ? AVATAR_URLS.doctorFemale : AVATAR_URLS.doctor);
   return (
     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <img src={doctorAvatar} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" onError={(e) => { (e.target as HTMLImageElement).src = 'https://api.dicebear.com/7.x/notionists/svg?seed=doctor'; }} />
+      <img src={practitionerAvatar} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" onError={(e) => { (e.target as HTMLImageElement).src = 'https://api.dicebear.com/7.x/notionists/svg?seed=doctor'; }} />
       <div>
         <p className="font-medium">{practitioner.name}</p>
         <p className="text-xs text-muted-foreground">
@@ -322,7 +329,7 @@ function PatientIdentityCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
   const gender = extractPatientGender(props.credentialData);
-  const avatarUrl = gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male;
+  const avatarUrl = props.patientPhotoUrl || (gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male);
   const clinical = extractClinicalInfo(props.credentialData);
 
   return (
@@ -381,7 +388,7 @@ function MedicalCertificateCard({ props }: { props: CredentialRendererProps }) {
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
       <DocumentHeader icon={Stethoscope} title="ใบรับรองแพทย์" brand={brand} renderData={renderData} status={props.status} />
       <CardContent className="p-6 space-y-4">
-        <PatientInfoSection renderData={renderData} showPhoto gender={gender} />
+        <PatientInfoSection renderData={renderData} showPhoto gender={gender} patientPhotoUrl={props.patientPhotoUrl} />
         <Separator />
 
         {clinical.diagnosisText && (
@@ -581,7 +588,7 @@ function PatientSummaryCard({ props }: { props: CredentialRendererProps }) {
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
       <DocumentHeader icon={ClipboardList} title="สรุปข้อมูลผู้ป่วย" brand={brand} renderData={renderData} status={props.status} />
       <CardContent className="p-6 space-y-4">
-        <PatientInfoSection renderData={renderData} showPhoto gender={gender} />
+        <PatientInfoSection renderData={renderData} showPhoto gender={gender} patientPhotoUrl={props.patientPhotoUrl} />
         <Separator />
         <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
         <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์เจ้าของไข้" />
@@ -1090,7 +1097,7 @@ export function CredentialCompactCard({ props }: { props: CredentialRendererProp
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
   const gender = extractPatientGender(props.credentialData);
   const needsPhoto = ["patient_identity", "medical_certificate"].includes(props.type);
-  const avatarUrl = gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male;
+  const avatarUrl = props.patientPhotoUrl || (gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male);
 
   const typeLabels: Record<string, string> = {
     patient_identity: "บัตรประจำตัวผู้ป่วย",

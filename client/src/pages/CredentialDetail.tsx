@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
 import {
   ArrowLeft, BadgeCheck, Ban, Calendar, Clock, Copy, Download, ExternalLink, FileJson2,
   Hospital, Printer, QrCode, ShieldCheck, User,
@@ -61,6 +62,11 @@ export default function CredentialDetail() {
   const { data: credential, isLoading, refetch } = trpc.credential.getById.useQuery(
     { id: credentialId },
     { enabled: credentialId > 0 }
+  );
+
+  const { data: patientPhoto } = trpc.users.getPhoto.useQuery(
+    { userId: credential?.subjectId || 0 },
+    { enabled: !!credential?.subjectId }
   );
 
   const [revokeOpen, setRevokeOpen] = useState(false);
@@ -222,6 +228,7 @@ export default function CredentialDetail() {
               hospitalCode={String(credential.issuerHospitalId)}
               hospitalName={`Hospital #${credential.issuerHospitalId}`}
               patientName={`Patient #${credential.subjectId}`}
+              patientPhotoUrl={patientPhoto?.avatarUrl}
             />
 
             {/* Raw data expandable */}

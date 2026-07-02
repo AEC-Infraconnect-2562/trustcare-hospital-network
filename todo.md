@@ -364,3 +364,10 @@
 
 ## v2.2 - Avatar Image Improvements
 - [x] Replace cartoon/illustration avatars in Credentials with realistic photos appropriate for each role (patient, doctor)
+
+## v2.3 - Patient Photo Upload & Additional Role Avatars
+- [x] Add patient photo upload feature via patient profile (schema + backend API + S3 storage)
+- [x] Add patient photo upload UI in patient profile page
+- [x] Integrate uploaded patient photo into credential rendering (fallback to demo avatar if no photo)
+- [x] Generate nurse and pharmacist avatar images for credentials
+- [x] Integrate nurse and pharmacist avatars into credential rendering

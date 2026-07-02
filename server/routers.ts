@@ -61,6 +61,7 @@ import {
 } from "./portability";
 import { sha256 } from "./portability/utils";
 import { resolveShlManifestAccessPacket, ShlAccessError } from "./shlAccess";
+import { storagePut } from "./storage";
 
 const credentialTypeValues = [
   "patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization",
@@ -1112,6 +1113,25 @@ export const appRouter = router({
         credentialEntitlements: normalizeCredentialEntitlements(input.systemRole, input.credentialEntitlements),
       } as any);
       return { success: true };
+    }),
+    uploadPhoto: protectedProcedure.input(z.object({
+      photoBase64: z.string().min(1),
+      mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]).default("image/jpeg"),
+    })).mutation(async ({ ctx, input }) => {
+      const buffer = Buffer.from(input.photoBase64, "base64");
+      // Limit to 2MB
+      if (buffer.length > 2 * 1024 * 1024) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Photo must be under 2MB" });
+      }
+      const ext = input.mimeType === "image/png" ? "png" : input.mimeType === "image/webp" ? "webp" : "jpg";
+      const fileKey = `patient-photos/${ctx.user.id}/avatar.${ext}`;
+      const { url } = await storagePut(fileKey, buffer, input.mimeType);
+      await db.updateUserProfile(ctx.user.id, { avatarUrl: url } as any);
+      return { url };
+    }),
+    getPhoto: publicProcedure.input(z.object({ userId: z.number() })).query(async ({ input }) => {
+      const user = await db.getUserById(input.userId);
+      return { avatarUrl: user?.avatarUrl || null };
     }),
   }),
 
