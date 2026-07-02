@@ -326,3 +326,11 @@
 - [ ] Redesign CredentialDetail page with hospital branding, formatted fields, photo
 - [ ] Update Wallet card display to show person photo and formatted credential preview
 - [ ] Replace raw JSON display with human-readable formatted credential view
+
+## v4.2 - Hospital Consolidation (Fix Duplicate Hospital Data)
+- [x] Unify hospital codes: merge TC-BKK/TC-CM/TC-PKT into TCC/TCP/TCM (single source of truth)
+- [x] Update seed.ts to use TCC/TCP/TCM codes with proper Thai/English names
+- [x] Remove duplicate hospital rows from DB (keep TCC/TCP/TCM, remove TC-BKK/TC-CM/TC-PKT)
+- [x] Re-bind users/departments to correct hospital IDs
+- [x] Verify Trust Registry binding is correct (only 3 hospitals)
+- [x] Verify UI shows exactly 3 hospitals

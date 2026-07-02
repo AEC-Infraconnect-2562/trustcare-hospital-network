@@ -75,7 +75,7 @@ describe("Smart Health Links transport and trust helpers", () => {
   it("generates realistic simulator payloads that canonicalize to FHIR bundles", () => {
     const payload = buildSimulatedHisPayload({
       patient: { id: 7, name: "Demo Patient", hn: "HN-0007" },
-      hospital: { id: 1, code: "TC-BKK", nameEn: "Trustcare Bangkok" },
+      hospital: { id: 4, code: "TCC", nameEn: "TrustCare Central Hospital" },
       purpose: "insurance",
       context: "e_claim",
       credentials: [{ credentialId: "vc-claim-001", type: "claim_package", credentialData: { total: 4200 } }],
@@ -83,8 +83,8 @@ describe("Smart Health Links transport and trust helpers", () => {
     const canonical = canonicalizeHisPayload({
       sourceFormat: "db_view",
       payload,
-      sourceSystem: "TC-BKK-SHL-SIM",
-      sourceOrganizationId: "TC-BKK",
+      sourceSystem: "TCC-SHL-SIM",
+      sourceOrganizationId: "TCC",
     });
 
     expect(scenarioForShlPurpose("insurance", "e_claim")).toBe("e_claim");

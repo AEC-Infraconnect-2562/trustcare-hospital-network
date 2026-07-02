@@ -142,7 +142,7 @@ export default function Terminology() {
                         </div>
                         <div className="flex gap-1">
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-emerald-600" onClick={() => acceptMutation.mutate({
-                            hospitalId: 1, localCode, localDisplay, standardCode: s.standardCode, standardDisplay: s.standardDisplay,
+                            hospitalId: 4 /* TCC - should use active hospital */, localCode, localDisplay, standardCode: s.standardCode, standardDisplay: s.standardDisplay,
                             codeSystem: codeSystem as any,
                           })}>
                             <Check className="h-4 w-4" />
@@ -227,7 +227,7 @@ function AddTermForm({ onSuccess }: { onSuccess: () => void }) {
   });
 
   return (
-    <form onSubmit={e => { e.preventDefault(); createMutation.mutate({ ...form, hospitalId: 1, codeSystem: form.codeSystem as any }); }} className="space-y-4">
+    <form onSubmit={e => { e.preventDefault(); createMutation.mutate({ ...form, hospitalId: 4 /* TCC - should use active hospital */, codeSystem: form.codeSystem as any }); }} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>รหัสท้องถิ่น</Label>

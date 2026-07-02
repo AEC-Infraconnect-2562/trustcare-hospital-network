@@ -175,7 +175,7 @@ export default function CrossBorder() {
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary">{statusLabels[r.status] || r.status}</Badge>
                           {r.status === "consent_granted" && (
-                            <Button size="sm" variant="outline" onClick={() => generatePacket.mutate({ id: r.id, patientId: 1, hospitalId: 1 })}>
+                            <Button size="sm" variant="outline" onClick={() => generatePacket.mutate({ id: r.id, patientId: 1, hospitalId: 4 /* TCC - should use active hospital */ })}>
                               <Package className="h-3 w-3 mr-1" />สร้าง Packet
                             </Button>
                           )}
