@@ -211,7 +211,7 @@ function PatientInfoSection({ renderData, showPhoto, gender, patientPhotoUrl }: 
     <div className="flex gap-4 items-start">
       {showPhoto && (
         <div className="h-20 w-16 rounded-xl overflow-hidden border-2 border-gray-200 shadow-md shrink-0">
-          <img src={avatarUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
         </div>
       )}
       <div className="space-y-1 flex-1">
@@ -266,7 +266,7 @@ function PractitionerSection({ practitioner, role }: { practitioner: any; role?:
     : (isFemale ? AVATAR_URLS.doctorFemale : AVATAR_URLS.doctor);
   return (
     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <img src={practitionerAvatar} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" loading="lazy" />
+      <img src={practitionerAvatar} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" />
       <div>
         <p className="font-medium">{practitioner.name}</p>
         <p className="text-xs text-muted-foreground">
@@ -347,7 +347,7 @@ function PatientIdentityCard({ props }: { props: CredentialRendererProps }) {
         <div className="flex gap-5">
           <div className="shrink-0">
             <div className="h-32 w-24 rounded-xl overflow-hidden border-2 border-gray-200 shadow-lg ring-2 ring-offset-2 ring-gray-100">
-              <img src={avatarUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+              <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
             </div>
           </div>
           <div className="flex-1 space-y-3">
@@ -1138,7 +1138,7 @@ export function CredentialCompactCard({ props }: { props: CredentialRendererProp
     <div className="flex items-center gap-3 p-3 rounded-xl border bg-card hover:shadow-lg transition-all duration-200 cursor-pointer group">
       {needsPhoto ? (
         <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-gray-200 shadow-sm shrink-0 group-hover:border-primary/30 transition-colors">
-          <img src={avatarUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
         </div>
       ) : (
         <div className={`h-11 w-11 rounded-xl bg-gradient-to-br ${brand.gradient} flex items-center justify-center shrink-0 shadow-sm`}>

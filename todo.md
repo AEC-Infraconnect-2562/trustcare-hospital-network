@@ -398,3 +398,7 @@
 ## v2.7.1 - Avatar Image Fix (Production) & VP Back Button
 - [x] Fix avatar image not displaying on production (DB updated all patients/staff with /manus-storage/ paths)
 - [x] Add Back/Close button to Wallet credential detail (VP) view - both normal view and QR mode have explicit "ปิด" button
+
+## v2.7.2 - Mobile Avatar Fix & VP Scroll Fix
+- [x] Fix avatar image not showing on mobile (works on desktop but not mobile)
+- [x] Fix VP detail dialog cannot scroll on mobile (content cut off, no overflow scroll)

@@ -1,7 +1,7 @@
 /// Service Worker — Trustcare Hospital Network
 /// Cache-first strategy for static assets (avatars, vendor chunks)
 
-const CACHE_NAME = "trustcare-sw-v1";
+const CACHE_NAME = "trustcare-sw-v3";
 
 // Patterns to cache with cache-first strategy
 const CACHE_FIRST_PATTERNS = [

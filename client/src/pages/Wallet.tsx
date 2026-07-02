@@ -314,7 +314,7 @@ export default function Wallet() {
                                       const name = patient.nameTh || patient.fullNameTh || patient.nameEn || card.displayName || "";
                                       if (name.startsWith("นาง") || name.startsWith("Ms.") || name.startsWith("Mrs.")) return AVATAR_URLS.female;
                                       return AVATAR_URLS.male;
-                                    })()} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                    })()} alt="" className="h-full w-full object-cover" width={40} height={48} />
                                   </div>
                                 ) : (
                                   <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm shrink-0"><Icon className="h-5 w-5" /></div>
@@ -382,7 +382,7 @@ export default function Wallet() {
       </div>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden" style={{ WebkitOverflowScrolling: 'touch' }}>
           {selectedCard && !qrMode && (
             <>
               <DialogHeader>
@@ -392,7 +392,7 @@ export default function Wallet() {
                 </DialogTitle>
                 <DialogDescription>{selectedCard.displayNameEn || selectedCard.cardType}</DialogDescription>
               </DialogHeader>
-              <div className="space-y-4 py-2">
+              <div className="space-y-4 py-2 overflow-y-auto flex-1 overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {/* Rendered Document View */}
                 {selectedCard.credentialData ? (
                   <CredentialRenderer
@@ -458,8 +458,8 @@ export default function Wallet() {
                 <DialogTitle className="text-center">Verifiable Presentation QR</DialogTitle>
                 <DialogDescription className="text-center">{selectedCard.displayName}</DialogDescription>
               </DialogHeader>
-              <div className="flex flex-col items-center gap-4 py-4">
-                <div className="rounded-lg border p-3 bg-white shadow-sm"><img src={qrDataUrl} alt="VP QR" className="h-56 w-56" loading="lazy" /></div>
+              <div className="flex flex-col items-center gap-4 py-4 overflow-y-auto flex-1 overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <div className="rounded-lg border p-3 bg-white shadow-sm"><img src={qrDataUrl} alt="VP QR" className="h-56 w-56" /></div>
                 <div className="text-center space-y-1 max-w-full">
                   <p className="text-sm font-medium">{selectedCard.displayName}</p>
                   <p className="text-xs text-muted-foreground font-mono break-all">{presentation?.presentationId}</p>
