@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.3 (File Bundle System + Inline Preview)
+**Version:** 5.4 (Service Readiness + Wallet Requests)
 **Last updated:** 2026-07-02
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -54,7 +54,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        DATABASE (MySQL/TiDB)                         │
-│  52 tables · 13 migrations (0000–0012) + document_bundles/files     │
+│  53 tables · migrations through 0013 + document_bundles/files       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -79,7 +79,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 ```
 routers.ts (care transition release, 29 routers)
   ├── db.ts (query helpers)
-  │     └── drizzle/schema.ts (52 table definitions)
+  │     └── drizzle/schema.ts (53 table definitions)
   ├── shared/rolePolicy.ts (role authorization logic)
   ├── shared/menuConfig.ts (menu visibility per role)
   ├── scheduledHandlers/ (periodic task handlers)
@@ -298,7 +298,9 @@ The `user_roles` table allows users to hold multiple roles simultaneously. Users
 
 ## 5. Database Schema
 
-### 5.1 Table Inventory (42 Tables)
+### 5.1 Table Inventory (53 Tables)
+
+Service readiness release note: migration `0013_service_readiness_wallet_requests` adds `service_readiness_checks` for readiness/VP packet history and `wallet_document_requests` for missing document retrieval/import requests. Use `drizzle/schema.ts` as the canonical full table definition list.
 
 | # | Table | Purpose | Key Relations |
 |---|-------|---------|---------------|
@@ -450,6 +452,8 @@ Migrations must be applied sequentially. Each migration builds on the previous s
 | 9 | `0009_mediumtext_jwt_columns` | Large JWT storage | ALTER sdJwtVc and presentationJwt to MEDIUMTEXT |
 | 10 | `0010_vc_schema_versioning` | VC schema registry | vc_schema_registry, schemaVersion columns |
 | 11 | `0011_shl_transport_vc_trust_layer` | SHL production transport and trust layer | smart_health_links manifest/passcode/VC/VP fields, shl_files, shl_manifest_versions, expanded shl_access_logs |
+| 12 | `0012_care_transition_partner_portal` | Care transition and partner portal | care transition cases, document bundles/files, partner source connectors, care packages |
+| 13 | `0013_service_readiness_wallet_requests` | Service readiness and Wallet document requests | service_readiness_checks, wallet_document_requests |
 
 ---
 
@@ -685,13 +689,14 @@ trustcare-hospital-network/
 
 ---
 
-## 14. Frontend Pages (33 Pages)
+## 14. Frontend Pages (34 Pages)
 
 | Page | Route | Purpose |
 |------|-------|--------|
 | Home | `/` | Landing page with demo login |
 | Dashboard | `/dashboard` | Main dashboard overview |
 | Wallet | `/wallet` | Patient health card wallet |
+| PrepareForService | `/prepare-service` | Service readiness cockpit, document request wizard, contextual consent, VP packet QR |
 | SmartHealthLinks | `/shl` | SHL management |
 | ShlViewer | `/shl-viewer` | Public SHL viewer |
 | Consent | `/consent` | Consent management (incl. expiry alerts) |
@@ -734,7 +739,7 @@ trustcare-hospital-network/
 | `makerChecker` | Credential workflow | submitRequest, approveRequest, rejectRequest |
 | `hospital` | Hospital CRUD | list, create, update |
 | `credential` | Credential management | list, getById, revoke |
-| `wallet` | Patient wallet | listCards, getCard |
+| `wallet` | Patient wallet and service readiness | listCards, getCard, readiness, documentRequests, requestDocument, buildServicePacket |
 | `verifier` | Credential verification | verify, verifyQrScan |
 | `consent` | Consent management | listPolicies, grantConsent, revokeConsent, expiringWithinDays |
 | `referral` | Referrals | create, list, accept |
@@ -1086,6 +1091,7 @@ See [FILE_BUNDLE_STANDARDS.md](./FILE_BUNDLE_STANDARDS.md) for detailed standard
 - [W3C Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
 - [SMART Health Links Protocol](https://docs.smarthealthit.org/smart-health-links/spec/)
 - [TrustCare SHL Context Versioning](./SHL_CONTEXT_VERSIONING.md)
+- [TrustCare System Realignment Handoff](./TRUSTCARE_SYSTEM_REALIGNMENT_HANDOFF.md)
 - [Care Transition and Partner Portal](./CARE_TRANSITION_PARTNER_PORTAL.md)
 - [File Bundle Standards Research](./FILE_BUNDLE_STANDARDS.md)
 - [Manus Care Transition Handoff](./MANUS_CARE_TRANSITION_HANDOFF.md)

@@ -27,7 +27,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Wallet, ArrowRightLeft, ShieldCheck,
   BadgeCheck, ScanLine, GitBranch, BookOpen, Building2, FileSearch, Users,
   Settings, Moon, Sun, Bell, Globe, Plane, Receipt, Plug, ShieldAlert, Link2,
-  FileJson2, Code2, UserCircle, Handshake,
+  FileJson2, Code2, UserCircle, Handshake, HeartPulse, FilePlus, ClipboardCheck,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -43,7 +43,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 const iconMap: Record<string, any> = {
   LayoutDashboard, Wallet, ArrowRightLeft, ShieldCheck, BadgeCheck, ScanLine,
   GitBranch, BookOpen, Building2, FileSearch, Users, Settings, Globe, Plane,
-  Receipt, Plug, ShieldAlert, Link2, FileJson2, Code2, UserCircle, Handshake,
+  Receipt, Plug, ShieldAlert, Link2, FileJson2, Code2, UserCircle, Handshake, HeartPulse,
+  FilePlus, ClipboardCheck,
 };
 
 type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
@@ -59,38 +60,36 @@ interface MenuItemDef {
 }
 
 const menuGroups = [
-  { id: "overview", label: "ภาพรวม" },
-  { id: "patient_services", label: "บริการผู้ป่วย" },
-  { id: "clinical", label: "บริการทางคลินิก" },
-  { id: "credentials", label: "ใบรับรองดิจิทัล" },
-  { id: "claims", label: "เคลมและการเงิน" },
-  { id: "interop", label: "เชื่อมต่อและมาตรฐาน" },
-  { id: "admin", label: "บริหารระบบ" },
+  { id: "service_readiness", label: "ความพร้อมก่อนรับบริการ" },
+  { id: "care_transition", label: "การส่งต่อการรักษา" },
+  { id: "verified_documents", label: "เอกสารรับรอง" },
+  { id: "hospital_ops", label: "งานโรงพยาบาล" },
+  { id: "integration_governance", label: "เชื่อมต่อและกำกับดูแล" },
 ];
 
-// English translations for menu groups and items
 const menuGroupsEn: Record<string, string> = {
-  overview: "Overview",
-  patient_services: "Patient Services",
-  clinical: "Clinical Services",
-  credentials: "Digital Credentials",
-  claims: "Claims & Finance",
-  interop: "Interoperability",
-  admin: "Administration",
+  service_readiness: "Service Readiness",
+  care_transition: "Care Transition",
+  verified_documents: "Verified Documents",
+  hospital_ops: "Hospital Operations",
+  integration_governance: "Integration & Governance",
 };
 
 const menuItemsEn: Record<string, string> = {
   dashboard: "Dashboard",
   executive: "Executive Dashboard",
   profile: "Patient Profile",
+  "prepare-service": "Prepare for Service",
   wallet: "Health Wallet",
-  consent: "Consent Management",
-  shl: "Smart Health Links",
+  consent: "Consent History",
+  shl: "Smart Share",
   referral: "Patient Referral",
   "cross-border": "Cross-border Referral",
   international: "International Patients",
   "partner-portal": "Partner Portal",
-  issuer: "Issue Credentials",
+  issuer: "Issue to Wallet",
+  "maker-queue": "Maker Queue",
+  "checker-queue": "Checker Queue",
   verifier: "Verify Credentials",
   "trust-registry": "Trust Registry",
   "claim-center": "Claim Center",
@@ -109,39 +108,35 @@ const menuItemsEn: Record<string, string> = {
 };
 
 const allMenuItems: MenuItemDef[] = [
-  // Overview
-  { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "overview", groupLabel: "ภาพรวม" },
-  { id: "executive", label: "แดชบอร์ดผู้บริหาร", icon: "BarChart3", path: "/executive", roles: ["system_admin", "hospital_admin"], group: "overview", groupLabel: "ภาพรวม" },
-  // Patient Services
-  { id: "profile", label: "โปรไฟล์ผู้ป่วย", icon: "UserCircle", path: "/profile", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient", "maker", "checker"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
-  { id: "wallet", label: "กระเป๋าสุขภาพ", icon: "Wallet", path: "/wallet", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient", "maker", "checker"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
-  { id: "consent", label: "จัดการความยินยอม", icon: "ShieldCheck", path: "/consent", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
-  { id: "shl", label: "ลิงก์แชร์สุขภาพ", icon: "Link2", path: "/shl", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "patient_services", groupLabel: "บริการผู้ป่วย" },
-  // Clinical Services
-  { id: "referral", label: "ส่งต่อผู้ป่วย", icon: "ArrowRightLeft", path: "/referral", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "clinical", groupLabel: "บริการทางคลินิก" },
-  { id: "cross-border", label: "ส่งต่อข้ามเครือข่าย", icon: "Globe", path: "/cross-border", roles: ["system_admin", "hospital_admin", "doctor"], group: "clinical", groupLabel: "บริการทางคลินิก" },
-  { id: "international", label: "ผู้ป่วยต่างชาติ", icon: "Plane", path: "/international", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "clinical", groupLabel: "บริการทางคลินิก" },
-  { id: "partner-portal", label: "Partner Portal", icon: "Handshake", path: "/partner-portal", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer"], group: "clinical", groupLabel: "Clinical Services" },
-  // Digital Credentials
-  { id: "issuer", label: "ออกใบรับรอง", icon: "BadgeCheck", path: "/issuer", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
-  { id: "verifier", label: "ตรวจสอบใบรับรอง", icon: "ScanLine", path: "/verifier", roles: ["system_admin", "hospital_admin", "checker", "doctor", "nurse"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
-  { id: "trust-registry", label: "ทะเบียนความน่าเชื่อถือ", icon: "ShieldAlert", path: "/trust-registry", roles: ["system_admin", "hospital_admin"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
-  // Claims & Finance
-  { id: "claim-center", label: "ศูนย์เคลม", icon: "Receipt", path: "/claim-center", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "claims", groupLabel: "เคลมและการเงิน" },
-  { id: "claim-analytics", label: "วิเคราะห์เคลม", icon: "BarChart3", path: "/claim-analytics", roles: ["system_admin", "hospital_admin"], group: "claims", groupLabel: "เคลมและการเงิน" },
-  // Interoperability
-  { id: "integration", label: "เชื่อมต่อระบบ HIS", icon: "Plug", path: "/integration", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
-  { id: "portability", label: "Portability Layer", icon: "FileJson2", path: "/portability", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
-  { id: "fhir-mapping", label: "แผนที่ข้อมูล FHIR", icon: "GitBranch", path: "/fhir-mapping", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
-  { id: "terminology", label: "จับคู่รหัสมาตรฐาน", icon: "BookOpen", path: "/terminology", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
-  { id: "adapter-sdk", label: "Adapter SDK", icon: "Code2", path: "/adapter-sdk", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
-  // Administration
-  { id: "patient-identity", label: "เชื่อมโยงตัวตน (MPI)", icon: "Fingerprint", path: "/patient-identity", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "admin", groupLabel: "บริหารระบบ" },
-  { id: "hospitals", label: "จัดการเครือข่าย", icon: "Building2", path: "/hospitals", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
-  { id: "partner-wizard", label: "เพิ่มพันธมิตรต่างประเทศ", icon: "Globe", path: "/partner-wizard", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
-  { id: "audit", label: "บันทึกการเข้าถึง", icon: "FileSearch", path: "/audit", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
-  { id: "users", label: "จัดการผู้ใช้", icon: "Users", path: "/users", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
-  { id: "settings", label: "ตั้งค่าระบบ", icon: "Settings", path: "/settings", roles: ["system_admin", "hospital_admin"], group: "admin", groupLabel: "บริหารระบบ" },
+  { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
+  { id: "executive", label: "แดชบอร์ดผู้บริหาร", icon: "BarChart3", path: "/executive", roles: ["system_admin", "hospital_admin"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
+  { id: "profile", label: "โปรไฟล์ผู้ป่วย", icon: "UserCircle", path: "/profile", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient", "maker", "checker"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
+  { id: "prepare-service", label: "เตรียมเข้ารับบริการ", icon: "HeartPulse", path: "/prepare-service", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
+  { id: "wallet", label: "กระเป๋าสุขภาพ", icon: "Wallet", path: "/wallet", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient", "maker", "checker"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
+  { id: "consent", label: "ประวัติความยินยอม", icon: "ShieldCheck", path: "/consent", roles: [], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
+  { id: "shl", label: "ลิงก์แชร์สุขภาพ", icon: "Link2", path: "/shl", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
+  { id: "referral", label: "ส่งต่อผู้ป่วย", icon: "ArrowRightLeft", path: "/referral", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "care_transition", groupLabel: "การส่งต่อการรักษา" },
+  { id: "cross-border", label: "ส่งต่อข้ามเครือข่าย", icon: "Globe", path: "/cross-border", roles: ["system_admin", "hospital_admin", "doctor"], group: "care_transition", groupLabel: "การส่งต่อการรักษา" },
+  { id: "international", label: "ผู้ป่วยต่างชาติ", icon: "Plane", path: "/international", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "care_transition", groupLabel: "การส่งต่อการรักษา" },
+  { id: "partner-portal", label: "Partner Portal", icon: "Handshake", path: "/partner-portal", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer"], group: "care_transition", groupLabel: "การส่งต่อการรักษา" },
+  { id: "issuer", label: "ออกเอกสารเข้ากระเป๋า", icon: "BadgeCheck", path: "/issuer", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor"], group: "verified_documents", groupLabel: "เอกสารรับรอง" },
+  { id: "maker-queue", label: "สร้างคำขอ VC (Maker)", icon: "FilePlus", path: "/maker-queue", roles: ["system_admin", "hospital_admin", "maker", "doctor", "nurse"], group: "verified_documents", groupLabel: "เอกสารรับรอง" },
+  { id: "checker-queue", label: "ตรวจสอบคำขอ (Checker)", icon: "ClipboardCheck", path: "/checker-queue", roles: ["system_admin", "hospital_admin", "checker", "doctor"], group: "verified_documents", groupLabel: "เอกสารรับรอง" },
+  { id: "verifier", label: "ตรวจสอบเอกสารรับรอง", icon: "ScanLine", path: "/verifier", roles: ["system_admin", "hospital_admin", "checker", "doctor", "nurse"], group: "verified_documents", groupLabel: "เอกสารรับรอง" },
+  { id: "trust-registry", label: "ทะเบียนความน่าเชื่อถือ", icon: "ShieldAlert", path: "/trust-registry", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "claim-center", label: "ศูนย์เคลม", icon: "Receipt", path: "/claim-center", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
+  { id: "claim-analytics", label: "วิเคราะห์เคลม", icon: "BarChart3", path: "/claim-analytics", roles: ["system_admin", "hospital_admin"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
+  { id: "integration", label: "เชื่อมต่อระบบ HIS", icon: "Plug", path: "/integration", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "portability", label: "Portability Layer", icon: "FileJson2", path: "/portability", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "integration_engineer"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "fhir-mapping", label: "แผนที่ข้อมูล FHIR", icon: "GitBranch", path: "/fhir-mapping", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "terminology", label: "จับคู่รหัสมาตรฐาน", icon: "BookOpen", path: "/terminology", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "adapter-sdk", label: "Adapter SDK", icon: "Code2", path: "/adapter-sdk", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "patient-identity", label: "เชื่อมโยงตัวตน (MPI)", icon: "Fingerprint", path: "/patient-identity", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "hospitals", label: "จัดการเครือข่าย", icon: "Building2", path: "/hospitals", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "partner-wizard", label: "เพิ่มพันธมิตรต่างประเทศ", icon: "Globe", path: "/partner-wizard", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "audit", label: "บันทึกการเข้าถึง", icon: "FileSearch", path: "/audit", roles: ["system_admin", "hospital_admin"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
+  { id: "users", label: "จัดการผู้ใช้", icon: "Users", path: "/users", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "settings", label: "ตั้งค่าระบบ", icon: "Settings", path: "/settings", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
 ];
 
 function getMenuForRole(role: SystemRole) {
@@ -379,3 +374,4 @@ function getRoleLabel(role: SystemRole): string {
   };
   return map[role] || role;
 }
+

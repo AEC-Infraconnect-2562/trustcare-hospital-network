@@ -38,6 +38,7 @@ const AdapterSdk = lazy(() => import("./pages/AdapterSdk"));
 const PartnerWizard = lazy(() => import("./pages/PartnerWizard"));
 const PartnerPortal = lazy(() => import("./pages/PartnerPortal"));
 const PatientProfile = lazy(() => import("./pages/PatientProfile"));
+const PrepareForService = lazy(() => import("./pages/PrepareForService"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 function PageLoader() {
@@ -82,6 +83,7 @@ function Router() {
         <Route path="/executive" component={ExecutiveDashboard} />
         <Route path="/patient-identity" component={PatientIdentity} />
         <Route path="/profile" component={PatientProfile} />
+        <Route path="/prepare-service" component={PrepareForService} />
         <Route path="/portability" component={PortabilityWorkbench} />
         <Route path="/audit" component={Audit} />
         <Route path="/users" component={Users} />

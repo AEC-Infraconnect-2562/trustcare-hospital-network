@@ -182,6 +182,53 @@ export const presentationHistory = mysqlTable("presentation_history", {
 
 export type PresentationHistory = typeof presentationHistory.$inferSelect;
 
+export const serviceReadinessChecks = mysqlTable("service_readiness_checks", {
+  id: int("id").autoincrement().primaryKey(),
+  patientId: int("patientId").notNull(),
+  context: mysqlEnum("context", ["opd_visit", "emergency", "referral", "cross_border", "medical_tourist", "insurance_claim", "pharmacy_dispense"]).notNull(),
+  hospitalId: int("hospitalId"),
+  serviceName: varchar("serviceName", { length: 255 }),
+  score: int("score").notNull(),
+  criticalReady: boolean("criticalReady").default(false).notNull(),
+  requiredMissing: json("requiredMissing"),
+  recommendedMissing: json("recommendedMissing"),
+  selectedCredentialIds: json("selectedCredentialIds"),
+  packetPresentationId: varchar("packetPresentationId", { length: 255 }),
+  shlId: int("shlId"),
+  status: mysqlEnum("status", ["draft", "ready", "shared", "completed", "cancelled"]).default("draft").notNull(),
+  metadata: json("metadata"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ServiceReadinessCheck = typeof serviceReadinessChecks.$inferSelect;
+export type InsertServiceReadinessCheck = typeof serviceReadinessChecks.$inferInsert;
+
+export const walletDocumentRequests = mysqlTable("wallet_document_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  requestId: varchar("requestId", { length: 255 }).notNull().unique(),
+  patientId: int("patientId").notNull(),
+  context: mysqlEnum("context", ["opd_visit", "emergency", "referral", "cross_border", "medical_tourist", "insurance_claim", "pharmacy_dispense"]).notNull(),
+  documentType: varchar("documentType", { length: 100 }).notNull(),
+  documentCategory: varchar("documentCategory", { length: 64 }),
+  sourceType: mysqlEnum("sourceType", ["his", "lis", "ris", "pacs", "hospital_app", "national_app", "partner_portal", "payer", "patient_upload", "personal_health_app", "other"]).default("his").notNull(),
+  sourceName: varchar("sourceName", { length: 255 }),
+  targetHospitalId: int("targetHospitalId"),
+  status: mysqlEnum("status", ["draft", "pending_consent", "requested", "imported", "needs_review", "converted_to_vc", "rejected", "cancelled"]).default("requested").notNull(),
+  requestedBy: int("requestedBy"),
+  consentRecordId: int("consentRecordId"),
+  caseDocumentId: int("caseDocumentId"),
+  credentialRequestId: int("credentialRequestId"),
+  notes: text("notes"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type WalletDocumentRequest = typeof walletDocumentRequests.$inferSelect;
+export type InsertWalletDocumentRequest = typeof walletDocumentRequests.$inferInsert;
+
 export const issuedPresentations = mysqlTable("issued_presentations", {
   id: int("id").autoincrement().primaryKey(),
   presentationId: varchar("presentationId", { length: 255 }).notNull().unique(),

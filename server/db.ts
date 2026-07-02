@@ -20,6 +20,8 @@ import {
   notifications, InsertNotification,
   userRoles, InsertUserRole,
   credentialRequests, InsertCredentialRequest,
+  serviceReadinessChecks, InsertServiceReadinessCheck,
+  walletDocumentRequests, InsertWalletDocumentRequest,
   careTransitionCaseEvents, InsertCareTransitionCaseEvent,
   caseDocuments, InsertCaseDocument,
   caseTasks, InsertCaseTask,
@@ -283,6 +285,45 @@ export async function createWalletCard(data: InsertWalletCard) {
   if (!db) return;
   const result = await db.insert(walletCards).values(data);
   return result[0].insertId;
+}
+
+export async function createServiceReadinessCheck(data: InsertServiceReadinessCheck) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(serviceReadinessChecks).values(data);
+  return result[0].insertId;
+}
+
+export async function listServiceReadinessChecks(filter: { patientId: number; context?: string; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(serviceReadinessChecks.patientId, filter.patientId)];
+  if (filter.context) conditions.push(eq(serviceReadinessChecks.context, filter.context as any));
+  return db.select()
+    .from(serviceReadinessChecks)
+    .where(and(...conditions))
+    .orderBy(desc(serviceReadinessChecks.createdAt))
+    .limit(filter.limit ?? 10);
+}
+
+export async function createWalletDocumentRequest(data: InsertWalletDocumentRequest) {
+  const db = await getDb();
+  if (!db) return;
+  const result = await db.insert(walletDocumentRequests).values(data);
+  return result[0].insertId;
+}
+
+export async function listWalletDocumentRequests(filter: { patientId: number; context?: string; status?: string; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(walletDocumentRequests.patientId, filter.patientId)];
+  if (filter.context) conditions.push(eq(walletDocumentRequests.context, filter.context as any));
+  if (filter.status) conditions.push(eq(walletDocumentRequests.status, filter.status as any));
+  return db.select()
+    .from(walletDocumentRequests)
+    .where(and(...conditions))
+    .orderBy(desc(walletDocumentRequests.createdAt))
+    .limit(filter.limit ?? 50);
 }
 
 export async function listIssuedPresentations(filter?: { patientId?: number; status?: string; limit?: number }) {

@@ -92,6 +92,13 @@
       "when": 1783000200000,
       "tag": "0012_care_transition_partner_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1783003800000,
+      "tag": "0013_service_readiness_wallet_requests",
+      "breakpoints": true
     }
   ]
 }

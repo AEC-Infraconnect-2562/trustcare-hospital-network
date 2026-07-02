@@ -14,7 +14,7 @@ import {
   AlertTriangle, ArrowLeft, ArrowRightLeft, BadgeCheck, CalendarDays, CreditCard, Eye,
   FileBadge, FileCheck2, FileText, Fingerprint, Globe2, History, Landmark, Link2, Microscope,
   PackageCheck, Pill, Printer, QrCode, ReceiptText, RefreshCcw, ScanLine,
-  Shield, Share2, Syringe, User, Wallet as WalletIcon, X,
+  Shield, Share2, Syringe, User, Wallet as WalletIcon, X, HeartPulse,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -243,6 +243,10 @@ export default function Wallet() {
                 />
               </div>
             )}
+            <Button onClick={() => { window.location.href = "/prepare-service"; }} className="gap-2">
+              <HeartPulse className="h-4 w-4" />
+              เตรียมเข้ารับบริการ
+            </Button>
             <Badge variant="outline" className="text-xs"><CreditCard className="h-3 w-3 mr-1" />{totalCards} Cards</Badge>
           </div>
         </div>
