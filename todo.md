@@ -510,3 +510,12 @@
 - [x] Support application/dicom and .dcm file extension detection
 - [x] TypeScript compilation: 0 errors
 - [x] Tests passing (193 tests)
+
+## v3.7.3 - Mobile Avatar Fix & UX/UI Improvements (RU_VC Style)
+
+- [x] Fix patient avatar images not displaying on mobile (showing ? placeholder)
+- [x] Improve credential detail dialog layout to match RU_VC style
+- [x] Ensure card thumbnails/icons render properly on mobile Safari/Chrome
+- [x] Match card list styling with RU_VC wallet card design
+- [x] TypeScript compilation: 0 errors
+- [x] Tests passing (193 tests)

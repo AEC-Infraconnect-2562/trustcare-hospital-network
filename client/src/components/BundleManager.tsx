@@ -105,6 +105,7 @@ function ImagePreview({ src, alt }: { src: string; alt: string }) {
         <img
           src={src}
           alt={alt}
+          crossOrigin="anonymous"
           className="max-w-none transition-transform duration-200 ease-out select-none"
           style={{
             transform: `scale(${zoom}) rotate(${rotation}deg)`,

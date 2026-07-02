@@ -304,7 +304,7 @@ export default function Wallet() {
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex items-center gap-3 min-w-0">
                                 {showPhoto ? (
-                                  <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-white/30 shadow-sm shrink-0">
+                                  <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-white/30 shadow-sm shrink-0 bg-white/10">
                                     <img src={(() => {
                                       // Prefer user's actual avatar from auth (uploaded or DB-stored)
                                       if ((auth as any)?.avatarUrl) return (auth as any).avatarUrl;
@@ -314,7 +314,7 @@ export default function Wallet() {
                                       const name = patient.nameTh || patient.fullNameTh || patient.nameEn || card.displayName || "";
                                       if (name.startsWith("นาง") || name.startsWith("Ms.") || name.startsWith("Mrs.")) return AVATAR_URLS.female;
                                       return AVATAR_URLS.male;
-                                    })()} alt="" className="h-full w-full object-cover" width={40} height={48} />
+                                    })()} alt="" className="h-full w-full object-cover" width={40} height={48} loading="eager" crossOrigin="anonymous" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                   </div>
                                 ) : (
                                   <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm shrink-0"><Icon className="h-5 w-5" /></div>
