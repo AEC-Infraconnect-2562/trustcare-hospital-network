@@ -4,15 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import {
   ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, FileCheck2,
-  Globe, Key, Mail, MapPin, Shield, Upload, Users,
+  FileText, Globe, Key, Loader2, Mail, Shield, Trash2, Upload, Users, X,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type WizardStep = 1 | 2 | 3 | 4 | 5;
@@ -47,10 +48,17 @@ const credentialTypes = [
   { id: "insurance_eligibility", label: "Insurance Eligibility" },
 ];
 
+interface UploadedDoc {
+  name: string;
+  fileKey: string;
+  fileUrl: string;
+  size: number;
+  category: string;
+}
+
 export default function PartnerWizard() {
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
   const [formData, setFormData] = useState({
-    // Step 1: Hospital Info
     hospitalName: "",
     hospitalNameEn: "",
     country: "",
@@ -58,32 +66,40 @@ export default function PartnerWizard() {
     hospitalType: "",
     bedCount: "",
     accreditation: "",
-    // Step 2: Contact
     contactName: "",
     contactEmail: "",
     contactPhone: "",
     contactUrl: "",
     technicalContactName: "",
     technicalContactEmail: "",
-    // Step 3: Trust
     did: "",
     publicKeyJwk: "",
     supportedCredentials: [] as string[],
     preferredProtocol: "fhir_rest",
-    // Step 4: Documents
-    accreditationDoc: "",
-    mou: "",
-    dataProcessingAgreement: "",
     notes: "",
   });
+
+  // Trust verification state
+  const [trustVerifying, setTrustVerifying] = useState(false);
+  const [trustResult, setTrustResult] = useState<{ verified: boolean; message: string } | null>(null);
+
+  // File upload state
+  const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const registerMutation = trpc.trustRegistry.create.useMutation({
     onSuccess: () => {
       toast.success("ส่งคำขอลงทะเบียนพันธมิตรสำเร็จ! กรุณารอการตรวจสอบ");
-      setCurrentStep(5);
     },
     onError: (e: any) => toast.error(e.message),
   });
+
+  const checkTrust = trpc.tao.checkIssuerTrust.useQuery(
+    { issuerDid: formData.did, credentialType: formData.supportedCredentials[0] || "patient_summary" },
+    { enabled: false }
+  );
 
   const updateField = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -96,6 +112,89 @@ export default function PartnerWizard() {
         ? prev.supportedCredentials.filter((c) => c !== id)
         : [...prev.supportedCredentials, id],
     }));
+  };
+
+  const verifyDid = async () => {
+    if (!formData.did) {
+      toast.error("กรุณากรอก DID ก่อนตรวจสอบ");
+      return;
+    }
+    setTrustVerifying(true);
+    setTrustResult(null);
+    try {
+      const result = await checkTrust.refetch();
+      if (result.data) {
+        const trusted = result.data.trusted;
+        setTrustResult({
+          verified: trusted,
+          message: trusted
+            ? `DID ผ่านการตรวจสอบ — Trust Level: ${result.data.level || "verified"}`
+            : "DID ยังไม่ได้ลงทะเบียนใน Trust Registry — จะถูกเพิ่มหลังอนุมัติ",
+        });
+      } else {
+        setTrustResult({ verified: false, message: "DID ยังไม่ได้ลงทะเบียนใน Trust Registry" });
+      }
+    } catch {
+      setTrustResult({ verified: false, message: "ไม่สามารถตรวจสอบ DID ได้ — จะถูกตรวจสอบอีกครั้งหลังส่งคำขอ" });
+    } finally {
+      setTrustVerifying(false);
+    }
+  };
+
+  const handleFileUpload = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setUploadProgress(0);
+
+    const totalFiles = files.length;
+    let uploaded = 0;
+
+    for (const file of Array.from(files)) {
+      const formDataUpload = new FormData();
+      formDataUpload.append("file", file);
+      formDataUpload.append("bundleId", "0"); // placeholder - not tied to a specific bundle
+      formDataUpload.append("documentType", "partner_document");
+      formDataUpload.append("title", file.name);
+
+      try {
+        const resp = await fetch("/api/upload/bundle-file", {
+          method: "POST",
+          body: formDataUpload,
+          credentials: "include",
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setUploadedDocs((prev) => [...prev, {
+            name: file.name,
+            fileKey: data.fileKey || "",
+            fileUrl: data.fileUrl || "",
+            size: file.size,
+            category: guessCategory(file.name),
+          }]);
+        } else {
+          toast.error(`อัปโหลด ${file.name} ล้มเหลว`);
+        }
+      } catch {
+        toast.error(`อัปโหลด ${file.name} ล้มเหลว`);
+      }
+      uploaded++;
+      setUploadProgress(Math.round((uploaded / totalFiles) * 100));
+    }
+
+    setUploading(false);
+    setUploadProgress(0);
+  }, []);
+
+  const guessCategory = (name: string): string => {
+    const lower = name.toLowerCase();
+    if (lower.includes("accredit") || lower.includes("jci") || lower.includes("iso")) return "accreditation";
+    if (lower.includes("mou") || lower.includes("agreement") || lower.includes("partner")) return "mou";
+    if (lower.includes("dpa") || lower.includes("pdpa") || lower.includes("gdpr") || lower.includes("data")) return "dpa";
+    return "other";
+  };
+
+  const removeDoc = (idx: number) => {
+    setUploadedDocs((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const canProceed = () => {
@@ -125,9 +224,15 @@ export default function PartnerWizard() {
         technicalContact: formData.technicalContactEmail,
         preferredProtocol: formData.preferredProtocol,
         notes: formData.notes,
+        uploadedDocuments: uploadedDocs.map((d) => ({ name: d.name, fileKey: d.fileKey, category: d.category })),
       },
     });
   };
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    handleFileUpload(e.dataTransfer.files);
+  }, [handleFileUpload]);
 
   return (
     <DashboardLayout>
@@ -275,8 +380,28 @@ export default function PartnerWizard() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label>DID (Decentralized Identifier)</Label>
-                    <Input value={formData.did} onChange={(e) => updateField("did", e.target.value)} placeholder="did:web:hospital.sg" className="font-mono text-sm" />
+                    <div className="flex gap-2">
+                      <Input value={formData.did} onChange={(e) => updateField("did", e.target.value)} placeholder="did:web:hospital.sg" className="font-mono text-sm" />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={verifyDid}
+                        disabled={trustVerifying || !formData.did}
+                        className="shrink-0"
+                      >
+                        {trustVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
+                        <span className="ml-1">ตรวจสอบ</span>
+                      </Button>
+                    </div>
                     <p className="text-xs text-muted-foreground">หากยังไม่มี DID ระบบจะสร้างให้อัตโนมัติหลังอนุมัติ</p>
+                    {trustResult && (
+                      <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${
+                        trustResult.verified ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"
+                      }`}>
+                        {trustResult.verified ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <Shield className="h-4 w-4 shrink-0" />}
+                        {trustResult.message}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Preferred Integration Protocol</Label>
@@ -329,38 +454,75 @@ export default function PartnerWizard() {
                 <p className="text-sm text-muted-foreground">
                   อัปโหลดเอกสารที่จำเป็นสำหรับการตรวจสอบและอนุมัติ (ไม่บังคับ สามารถส่งภายหลังได้)
                 </p>
-                <div className="space-y-4">
-                  <div className="p-4 rounded-lg border border-dashed flex items-center gap-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => toast.info("อัปโหลดเอกสาร (Feature coming soon)")}>
-                    <Upload className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">Accreditation Certificate</p>
-                      <p className="text-xs text-muted-foreground">JCI, ISO, NABH certificate (PDF)</p>
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-lg border border-dashed flex items-center gap-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => toast.info("อัปโหลดเอกสาร (Feature coming soon)")}>
-                    <Upload className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">MOU / Partnership Agreement</p>
-                      <p className="text-xs text-muted-foreground">บันทึกข้อตกลงความร่วมมือ (PDF)</p>
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-lg border border-dashed flex items-center gap-3 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => toast.info("อัปโหลดเอกสาร (Feature coming soon)")}>
-                    <Upload className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">Data Processing Agreement (DPA)</p>
-                      <p className="text-xs text-muted-foreground">ข้อตกลงประมวลผลข้อมูล PDPA/GDPR (PDF)</p>
-                    </div>
-                  </div>
-                  <Separator />
+
+                {/* Drop zone */}
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-8 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 transition-colors cursor-pointer text-center"
+                >
+                  <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm font-medium">ลากไฟล์มาวาง หรือคลิกเพื่อเลือก</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    รองรับ: PDF, Word, รูปภาพ (สูงสุด 10MB ต่อไฟล์)
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    เอกสารแนะนำ: Accreditation Certificate, MOU, DPA
+                  </p>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  className="hidden"
+                  onChange={(e) => handleFileUpload(e.target.files)}
+                />
+
+                {/* Upload progress */}
+                {uploading && (
                   <div className="space-y-2">
-                    <Label>หมายเหตุเพิ่มเติม</Label>
-                    <Textarea
-                      value={formData.notes}
-                      onChange={(e) => updateField("notes", e.target.value)}
-                      placeholder="ข้อมูลเพิ่มเติมที่ต้องการแจ้ง เช่น ระบบ HIS ที่ใช้, ภาษาที่รองรับ, timezone"
-                      rows={3}
-                    />
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      กำลังอัปโหลด...
+                    </div>
+                    <Progress value={uploadProgress} className="h-2" />
                   </div>
+                )}
+
+                {/* Uploaded files list */}
+                {uploadedDocs.length > 0 && (
+                  <div className="space-y-2">
+                    <Label className="text-sm">เอกสารที่อัปโหลดแล้ว ({uploadedDocs.length})</Label>
+                    {uploadedDocs.map((doc, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                        <div className="flex items-center gap-3">
+                          <FileText className="h-5 w-5 text-blue-500" />
+                          <div>
+                            <p className="text-sm font-medium">{doc.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {(doc.size / 1024).toFixed(1)} KB — {doc.category === "accreditation" ? "Accreditation" : doc.category === "mou" ? "MOU" : doc.category === "dpa" ? "DPA" : "อื่นๆ"}
+                            </p>
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => removeDoc(idx)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Separator />
+                <div className="space-y-2">
+                  <Label>หมายเหตุเพิ่มเติม</Label>
+                  <Textarea
+                    value={formData.notes}
+                    onChange={(e) => updateField("notes", e.target.value)}
+                    placeholder="ข้อมูลเพิ่มเติมที่ต้องการแจ้ง เช่น ระบบ HIS ที่ใช้, ภาษาที่รองรับ, timezone"
+                    rows={3}
+                  />
                 </div>
               </div>
             )}
@@ -405,6 +567,16 @@ export default function PartnerWizard() {
                           <Badge key={c} variant="secondary" className="text-xs">{credentialTypes.find(ct => ct.id === c)?.label || c}</Badge>
                         ))}
                       </div>
+                      {uploadedDocs.length > 0 && (
+                        <div className="mt-2 pt-2 border-t">
+                          <p className="text-muted-foreground">เอกสารแนบ: {uploadedDocs.length} ไฟล์</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {uploadedDocs.map((d, i) => (
+                              <Badge key={i} variant="outline" className="text-xs">{d.name}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
