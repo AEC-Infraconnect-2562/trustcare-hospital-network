@@ -5,9 +5,36 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
-import { ShieldCheck, FileText, Clock, XCircle, CheckCircle2, Info, History } from "lucide-react";
+import { ShieldCheck, FileText, Clock, XCircle, CheckCircle2, Info, History, AlertTriangle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
+function ConsentExpiryAlert() {
+  const { data: expiring } = trpc.consent.expiringWithinDays.useQuery({ days: 7 });
+  if (!expiring || expiring.length === 0) return null;
+  return (
+    <Card className="border-amber-200 bg-amber-50/50">
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <p className="font-medium text-amber-900">ความยินยอมใกล้หมดอายุ</p>
+            <p className="text-amber-700 mt-1">คุณมี {expiring.length} รายการที่จะหมดอายุภายใน 7 วัน</p>
+            <ul className="mt-2 space-y-1">
+              {expiring.slice(0, 3).map((item: any) => (
+                <li key={item.id} className="text-xs text-amber-700">
+                  • {purposeLabels[item.purpose] || item.purpose} — หมดอายุใน {item.daysUntilExpiry} วัน
+                  ({new Date(item.expiresAt).toLocaleDateString("th-TH")})
+                </li>
+              ))}
+              {expiring.length > 3 && <li className="text-xs text-amber-600">...และอีก {expiring.length - 3} รายการ</li>}
+            </ul>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 const purposeLabels: Record<string, string> = {
   treatment: "การรักษา",
@@ -48,6 +75,9 @@ export default function Consent() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Consent Expiry Reminder Alert */}
+        <ConsentExpiryAlert />
 
         <Tabs defaultValue="records">
           <TabsList>

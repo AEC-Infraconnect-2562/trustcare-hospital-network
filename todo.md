@@ -135,9 +135,9 @@
 - [x] Multi-language Support (EN/TH toggle) — เพิ่ม i18n สำหรับ Medical Tourist ที่ไม่อ่านภาษาไทย
 - [x] PDF Export สำหรับ Clinical Summary — ให้ผู้ป่วยดาวน์โหลด Patient Summary เป็น PDF ได้
 - [x] Integration Adapter SDK — สร้าง SDK/template สำหรับเชื่อมต่อ HIS ที่ใช้ HL7v2, FHIR REST, หรือ Legacy DB
-- [ ] Automated Data Quality Scoring — คำนวณ DQI score อัตโนมัติจาก FHIR validation rules
-- [ ] Consent Expiry Reminder — แจ้งเตือนผู้ป่วยก่อน consent หมดอายุ 7 วัน
-- [ ] Claim Analytics Dashboard — กราฟวิเคราะห์ claim approval rate, average processing time, top rejection reasons
+- [x] Automated Data Quality Scoring — คำนวณ DQI score อัตโนมัติจาก FHIR validation rules
+- [x] Consent Expiry Reminder — แจ้งเตือนผู้ป่วยก่อน consent หมดอายุ 7 วัน
+- [x] Claim Analytics Dashboard — กราฟวิเคราะห์ claim approval rate, average processing time, top rejection reasons
 - [x] Cross-border Partner Onboarding Wizard — Wizard สำหรับเพิ่ม partner hospital ต่างประเทศพร้อม trust credential exchange
 
 ## v2.1 Upgrade - RU_VC Patterns + Test Users + UX Improvements
@@ -352,7 +352,7 @@
 - [x] Fix person photo display: Patient photo and Doctor photo show broken images
 - [x] Redesign VP/credential display to show as friendly real documents (not raw fields)
 - [x] Improve seed data quality: Single Source of Truth for demo/seed patients, complete clinical data
-- [ ] Add 'สำเนา' watermark on credential document previews
+- [x] Add 'สำเนา' watermark on credential document previews
 - [x] Push all changes to GitHub
 
 ## v4.5 - HIS Adapter Fix & UI Overflow

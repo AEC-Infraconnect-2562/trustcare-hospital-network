@@ -75,12 +75,25 @@ export interface HisIngestionInput {
   receivedAt?: string;
 }
 
+export interface DataQualityScore {
+  overall: number; // 0-100
+  completeness: number; // 0-100: required fields present
+  conformance: number; // 0-100: FHIR profile compliance
+  consistency: number; // 0-100: cross-resource consistency
+  grade: "A" | "B" | "C" | "D" | "F";
+  errorCount: number;
+  warningCount: number;
+  totalRulesEvaluated: number;
+  rulesPassed: number;
+}
+
 export interface CanonicalFhirResult {
   bundle: JsonRecord;
   patient: JsonRecord;
   clinicalResources: JsonRecord[];
   provenanceResources: JsonRecord[];
   issues: DataQualityIssue[];
+  dqiScore: DataQualityScore;
   summary: {
     patientId: string;
     patientName: string;

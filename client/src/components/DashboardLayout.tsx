@@ -92,6 +92,7 @@ const menuItemsEn: Record<string, string> = {
   verifier: "Verify Credentials",
   "trust-registry": "Trust Registry",
   "claim-center": "Claim Center",
+  "claim-analytics": "Claim Analytics",
   integration: "HIS Integration",
   portability: "Portability Layer",
   "fhir-mapping": "FHIR Mapping",
@@ -123,6 +124,7 @@ const allMenuItems: MenuItemDef[] = [
   { id: "trust-registry", label: "ทะเบียนความน่าเชื่อถือ", icon: "ShieldAlert", path: "/trust-registry", roles: ["system_admin", "hospital_admin"], group: "credentials", groupLabel: "ใบรับรองดิจิทัล" },
   // Claims & Finance
   { id: "claim-center", label: "ศูนย์เคลม", icon: "Receipt", path: "/claim-center", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], group: "claims", groupLabel: "เคลมและการเงิน" },
+  { id: "claim-analytics", label: "วิเคราะห์เคลม", icon: "BarChart3", path: "/claim-analytics", roles: ["system_admin", "hospital_admin"], group: "claims", groupLabel: "เคลมและการเงิน" },
   // Interoperability
   { id: "integration", label: "เชื่อมต่อระบบ HIS", icon: "Plug", path: "/integration", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },
   { id: "portability", label: "Portability Layer", icon: "FileJson2", path: "/portability", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "integration_engineer"], group: "interop", groupLabel: "เชื่อมต่อและมาตรฐาน" },

@@ -1,4 +1,4 @@
-import type { CanonicalFhirResult, DataQualityIssue, HisIngestionInput, JsonRecord, JsonValue } from "./types";
+import type { CanonicalFhirResult, DataQualityIssue, DataQualityScore, HisIngestionInput, JsonRecord, JsonValue } from "./types";
 import { asArray, asRecord, compactId, dateOnly, dateTime, isoNow, optionalString, sha256, stringValue } from "./utils";
 
 const FHIR_VERSION = "4.0.1";
@@ -137,12 +137,15 @@ export function canonicalizeHisPayload(input: HisIngestionInput): CanonicalFhirR
     });
   }
 
+  const dqiScore = calculateDqiScore(issues, resourcesWithPatient, normalized);
+
   return {
     bundle,
     patient,
     clinicalResources,
     provenanceResources,
     issues,
+    dqiScore,
     summary: {
       patientId: stringValue(patient.id),
       patientName: patientName(patient),
@@ -524,3 +527,87 @@ function normalizeSeverity(value: unknown): string | undefined {
   if (["low", "mild"].includes(text)) return "mild";
   return undefined;
 }
+
+
+// ─── Automated Data Quality Index (DQI) Scoring ─────────────────────────────
+// Evaluates FHIR bundle quality based on completeness, conformance, and consistency rules.
+// Score is 0-100 with letter grade (A/B/C/D/F).
+
+const DQI_RULES = [
+  // Completeness rules (required fields present)
+  { id: "CMP-001", category: "completeness", check: (patient: JsonRecord) => !!(patient.identifier && (patient.identifier as JsonValue[]).length > 0), desc: "Patient has at least one identifier" },
+  { id: "CMP-002", category: "completeness", check: (patient: JsonRecord) => !!patient.birthDate, desc: "Patient has birthDate" },
+  { id: "CMP-003", category: "completeness", check: (patient: JsonRecord) => !!(patient.name && (patient.name as JsonValue[]).length > 0), desc: "Patient has name" },
+  { id: "CMP-004", category: "completeness", check: (patient: JsonRecord) => !!patient.gender, desc: "Patient has gender" },
+  { id: "CMP-005", category: "completeness", check: (patient: JsonRecord) => !!(patient.telecom && (patient.telecom as JsonValue[]).length > 0), desc: "Patient has contact info" },
+  // Conformance rules (FHIR profile compliance)
+  { id: "CNF-001", category: "conformance", check: (patient: JsonRecord) => !!asRecord(patient.meta).profile, desc: "Patient has meta.profile" },
+  { id: "CNF-002", category: "conformance", check: (patient: JsonRecord) => patient.resourceType === "Patient", desc: "Patient resourceType is correct" },
+  // Consistency rules (cross-resource consistency)
+  { id: "CST-001", category: "consistency", check: (_patient: JsonRecord, _resources: JsonRecord[], normalized: NormalizedHisRecord) => normalized.allergies.length > 0 || normalized.medications.length > 0 || normalized.conditions.length > 0, desc: "At least one clinical resource present" },
+  { id: "CST-002", category: "consistency", check: (_patient: JsonRecord, resources: JsonRecord[]) => resources.every(r => !!r.id), desc: "All resources have IDs" },
+  { id: "CST-003", category: "consistency", check: (_patient: JsonRecord, resources: JsonRecord[]) => resources.every(r => !!r.resourceType), desc: "All resources have resourceType" },
+] as const;
+
+function calculateDqiScore(issues: DataQualityIssue[], resources: JsonRecord[], normalized: NormalizedHisRecord): DataQualityScore {
+  const errorCount = issues.filter(i => i.severity === "error").length;
+  const warningCount = issues.filter(i => i.severity === "warning").length;
+
+  const patient = resources.find(r => r.resourceType === "Patient") || {};
+  let rulesPassed = 0;
+  const totalRulesEvaluated = DQI_RULES.length;
+
+  const categoryScores: Record<string, { passed: number; total: number }> = {
+    completeness: { passed: 0, total: 0 },
+    conformance: { passed: 0, total: 0 },
+    consistency: { passed: 0, total: 0 },
+  };
+
+  for (const rule of DQI_RULES) {
+    categoryScores[rule.category].total++;
+    try {
+      const passed = rule.check(patient, resources, normalized);
+      if (passed) {
+        rulesPassed++;
+        categoryScores[rule.category].passed++;
+      }
+    } catch {
+      // Rule evaluation failed, count as not passed
+    }
+  }
+
+  const completeness = categoryScores.completeness.total > 0
+    ? Math.round((categoryScores.completeness.passed / categoryScores.completeness.total) * 100)
+    : 100;
+  const conformance = categoryScores.conformance.total > 0
+    ? Math.round((categoryScores.conformance.passed / categoryScores.conformance.total) * 100)
+    : 100;
+  const consistency = categoryScores.consistency.total > 0
+    ? Math.round((categoryScores.consistency.passed / categoryScores.consistency.total) * 100)
+    : 100;
+
+  // Overall score: weighted average minus penalties for errors/warnings
+  let overall = Math.round(completeness * 0.4 + conformance * 0.3 + consistency * 0.3);
+  overall = Math.max(0, overall - (errorCount * 15) - (warningCount * 5));
+  overall = Math.min(100, Math.max(0, overall));
+
+  const grade: DataQualityScore["grade"] =
+    overall >= 90 ? "A" :
+    overall >= 75 ? "B" :
+    overall >= 60 ? "C" :
+    overall >= 40 ? "D" : "F";
+
+  return {
+    overall,
+    completeness,
+    conformance,
+    consistency,
+    grade,
+    errorCount,
+    warningCount,
+    totalRulesEvaluated,
+    rulesPassed,
+  };
+}
+
+export { calculateDqiScore };

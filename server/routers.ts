@@ -817,6 +817,20 @@ export const appRouter = router({
       );
       return { hasConsent: !!active, consentId: active?.id || null, expiresAt: active?.expiresAt || null };
     }),
+    expiringWithinDays: protectedProcedure.input(z.object({
+      days: z.number().min(1).max(30).default(7),
+    }).optional()).query(async ({ input }) => {
+      const days = input?.days ?? 7;
+      const records = await db.findConsentsExpiringWithinDays(days);
+      return records.map((r: any) => ({
+        id: r.id,
+        patientId: r.patientId,
+        purpose: r.purpose,
+        expiresAt: r.expiresAt,
+        grantedAt: r.grantedAt,
+        daysUntilExpiry: Math.ceil((new Date(r.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
+      }));
+    }),
     history: protectedProcedure.input(z.object({
       patientId: z.number().optional(),
     })).query(async ({ ctx, input }) => {
@@ -1619,6 +1633,9 @@ export const appRouter = router({
         validationIssues: issues,
       } as any);
       return { valid: issues.length === 0, issues };
+    }),
+    analytics: protectedProcedure.query(async () => {
+      return db.getClaimAnalytics();
     }),
   }),
 

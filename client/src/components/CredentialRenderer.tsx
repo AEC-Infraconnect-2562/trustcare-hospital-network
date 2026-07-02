@@ -1027,29 +1027,58 @@ function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
   );
 }
 
+// ─── Watermark Overlay ──────────────────────────────────────────────────────
+function CopyWatermark() {
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden z-10 select-none" aria-hidden="true">
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="rotate-[-30deg] opacity-[0.06]">
+          <p className="text-[4rem] font-bold text-gray-900 whitespace-nowrap tracking-[0.2em] leading-none">สำเนา</p>
+          <p className="text-[1.5rem] font-medium text-gray-900 text-center mt-2 tracking-wider">COPY</p>
+        </div>
+      </div>
+      {/* Repeated watermark pattern for larger documents */}
+      <div className="absolute top-[15%] left-[10%] rotate-[-30deg] opacity-[0.04]">
+        <p className="text-[2.5rem] font-bold text-gray-900 whitespace-nowrap">สำเนา</p>
+      </div>
+      <div className="absolute bottom-[15%] right-[10%] rotate-[-30deg] opacity-[0.04]">
+        <p className="text-[2.5rem] font-bold text-gray-900 whitespace-nowrap">สำเนา</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Renderer ────────────────────────────────────────────────────────────
 export function CredentialRenderer(props: CredentialRendererProps) {
   const { type } = props;
 
+  let content: React.ReactNode;
   switch (type) {
-    case "patient_identity": return <PatientIdentityCard props={props} />;
-    case "medical_certificate": return <MedicalCertificateCard props={props} />;
-    case "prescription": return <PrescriptionCard props={props} />;
-    case "lab_result": return <LabResultCard props={props} />;
-    case "immunization": return <ImmunizationCard props={props} />;
-    case "patient_summary": return <PatientSummaryCard props={props} />;
-    case "allergy_alert": return <AllergyAlertCard props={props} />;
-    case "medication_summary": return <MedicationSummaryCard props={props} />;
-    case "referral_vc": return <ReferralCard props={props} />;
-    case "discharge_summary": return <DischargeSummaryCard props={props} />;
-    case "insurance_eligibility": return <InsuranceEligibilityCard props={props} />;
-    case "consent_receipt": return <ConsentReceiptCard props={props} />;
-    case "travel_document_verification": return <TravelDocumentCard props={props} />;
+    case "patient_identity": content = <PatientIdentityCard props={props} />; break;
+    case "medical_certificate": content = <MedicalCertificateCard props={props} />; break;
+    case "prescription": content = <PrescriptionCard props={props} />; break;
+    case "lab_result": content = <LabResultCard props={props} />; break;
+    case "immunization": content = <ImmunizationCard props={props} />; break;
+    case "patient_summary": content = <PatientSummaryCard props={props} />; break;
+    case "allergy_alert": content = <AllergyAlertCard props={props} />; break;
+    case "medication_summary": content = <MedicationSummaryCard props={props} />; break;
+    case "referral_vc": content = <ReferralCard props={props} />; break;
+    case "discharge_summary": content = <DischargeSummaryCard props={props} />; break;
+    case "insurance_eligibility": content = <InsuranceEligibilityCard props={props} />; break;
+    case "consent_receipt": content = <ConsentReceiptCard props={props} />; break;
+    case "travel_document_verification": content = <TravelDocumentCard props={props} />; break;
     case "claim_package":
-    case "claim_receipt": return <ClaimCard props={props} />;
-    case "mpi_link_certificate": return <MpiLinkCard props={props} />;
-    default: return <GenericDocumentCard props={props} />;
+    case "claim_receipt": content = <ClaimCard props={props} />; break;
+    case "mpi_link_certificate": content = <MpiLinkCard props={props} />; break;
+    default: content = <GenericDocumentCard props={props} />; break;
   }
+
+  return (
+    <div className="relative">
+      <CopyWatermark />
+      {content}
+    </div>
+  );
 }
 
 // ─── Compact Card (for Wallet list) ──────────────────────────────────────────

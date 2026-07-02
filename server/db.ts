@@ -1,4 +1,4 @@
-import { eq, desc, and, sql, like, or, count } from "drizzle-orm";
+import { eq, desc, and, sql, like, or, count, gte, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -1353,4 +1353,90 @@ export async function validateCredentialAgainstSchema(credentialType: string, sc
     }
   }
   return { valid: errors.length === 0, errors };
+}
+
+
+// ============================================================
+// CONSENT EXPIRY REMINDER
+// ============================================================
+/**
+ * Find consent records expiring within the next N days that are still active (granted).
+ * Used by the scheduled consent expiry reminder to notify patients.
+ */
+export async function findConsentsExpiringWithinDays(days: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  const futureDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+  return db.select().from(consentRecords)
+    .where(and(
+      eq(consentRecords.status, "granted"),
+      gte(consentRecords.expiresAt, now),
+      lte(consentRecords.expiresAt, futureDate),
+    ))
+    .orderBy(consentRecords.expiresAt);
+}
+
+
+// ============================================================
+// CLAIM ANALYTICS
+// ============================================================
+export async function getClaimAnalytics() {
+  const db = await getDb();
+  if (!db) return { totalClaims: 0, statusBreakdown: [], typeBreakdown: [], rejectionReasons: [], avgProcessingDays: 0, monthlyTrend: [] };
+
+  // Total claims and status breakdown
+  const allClaims = await db.select().from(claimCases).orderBy(desc(claimCases.createdAt));
+
+  const statusBreakdown: Record<string, number> = {};
+  const typeBreakdown: Record<string, number> = {};
+  const rejectionReasons: Record<string, number> = {};
+  let totalProcessingMs = 0;
+  let processedCount = 0;
+  const monthlyMap: Record<string, { submitted: number; accepted: number; rejected: number; paid: number }> = {};
+
+  for (const claim of allClaims) {
+    // Status breakdown
+    statusBreakdown[claim.status] = (statusBreakdown[claim.status] || 0) + 1;
+    // Type breakdown
+    typeBreakdown[claim.claimType] = (typeBreakdown[claim.claimType] || 0) + 1;
+    // Rejection reasons
+    if (claim.status === "rejected" && claim.rejectionReason) {
+      rejectionReasons[claim.rejectionReason] = (rejectionReasons[claim.rejectionReason] || 0) + 1;
+    }
+    // Processing time (submitted -> responded)
+    if (claim.submittedAt && claim.respondedAt) {
+      totalProcessingMs += new Date(claim.respondedAt).getTime() - new Date(claim.submittedAt).getTime();
+      processedCount++;
+    }
+    // Monthly trend
+    const month = new Date(claim.createdAt).toISOString().slice(0, 7); // YYYY-MM
+    if (!monthlyMap[month]) monthlyMap[month] = { submitted: 0, accepted: 0, rejected: 0, paid: 0 };
+    if (claim.status === "submitted" || claim.submittedAt) monthlyMap[month].submitted++;
+    if (claim.status === "accepted") monthlyMap[month].accepted++;
+    if (claim.status === "rejected") monthlyMap[month].rejected++;
+    if (claim.status === "paid") monthlyMap[month].paid++;
+  }
+
+  const avgProcessingDays = processedCount > 0 ? Math.round(totalProcessingMs / processedCount / 86400000 * 10) / 10 : 0;
+  const totalClaims = allClaims.length;
+  const approvalRate = totalClaims > 0
+    ? Math.round(((statusBreakdown["accepted"] || 0) + (statusBreakdown["paid"] || 0)) / totalClaims * 100)
+    : 0;
+
+  return {
+    totalClaims,
+    approvalRate,
+    avgProcessingDays,
+    statusBreakdown: Object.entries(statusBreakdown).map(([status, count]) => ({ status, count })),
+    typeBreakdown: Object.entries(typeBreakdown).map(([type, count]) => ({ type, count })),
+    rejectionReasons: Object.entries(rejectionReasons)
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10),
+    monthlyTrend: Object.entries(monthlyMap)
+      .map(([month, data]) => ({ month, ...data }))
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .slice(-12),
+  };
 }

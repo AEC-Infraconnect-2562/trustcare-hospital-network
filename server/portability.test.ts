@@ -58,6 +58,18 @@ describe("Patient Data Portability Layer", () => {
     expect(result.summary.resourceCounts.MedicationStatement).toBe(1);
     expect(result.provenanceResources).toHaveLength(5);
     expect(result.issues.filter((issue) => issue.severity === "error")).toHaveLength(0);
+
+    // DQI Score assertions
+    expect(result.dqiScore).toBeDefined();
+    expect(result.dqiScore.overall).toBeGreaterThanOrEqual(0);
+    expect(result.dqiScore.overall).toBeLessThanOrEqual(100);
+    expect(result.dqiScore.completeness).toBeGreaterThanOrEqual(0);
+    expect(result.dqiScore.conformance).toBeGreaterThanOrEqual(0);
+    expect(result.dqiScore.consistency).toBeGreaterThanOrEqual(0);
+    expect(["A", "B", "C", "D", "F"]).toContain(result.dqiScore.grade);
+    expect(result.dqiScore.errorCount).toBe(0);
+    expect(result.dqiScore.totalRulesEvaluated).toBeGreaterThan(0);
+    expect(result.dqiScore.rulesPassed).toBeGreaterThan(0);
   });
 
   it("canonicalizes HL7 v2 payload as a second source format", () => {

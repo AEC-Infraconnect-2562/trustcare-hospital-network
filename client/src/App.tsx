@@ -18,6 +18,7 @@ import Audit from "./pages/Audit";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import ClaimCenter from "./pages/ClaimCenter";
+import ClaimAnalytics from "./pages/ClaimAnalytics";
 import International from "./pages/International";
 import CrossBorder from "./pages/CrossBorder";
 import Integration from "./pages/Integration";
@@ -51,6 +52,7 @@ function Router() {
       <Route path="/cross-border" component={CrossBorder} />
       <Route path="/international" component={International} />
       <Route path="/claim-center" component={ClaimCenter} />
+      <Route path="/claim-analytics" component={ClaimAnalytics} />
       <Route path="/integration" component={Integration} />
       <Route path="/adapter-sdk" component={AdapterSdk} />
       <Route path="/partner-wizard" component={PartnerWizard} />
