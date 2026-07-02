@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Upload, User, Mail, Phone, IdCard, Building2, Check } from "lucide-react";
+import { ArrowLeft, Camera, Upload, User, Mail, Phone, IdCard, Building2, Check } from "lucide-react";
 import { toast } from "sonner";
 
 export default function PatientProfile() {
@@ -64,6 +64,10 @@ export default function PatientProfile() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
+      {/* Back button */}
+      <Button variant="ghost" onClick={() => window.history.back()} className="text-muted-foreground hover:text-foreground -ml-2">
+        <ArrowLeft className="h-4 w-4 mr-2" />กลับ
+      </Button>
       <div>
         <h1 className="text-2xl font-bold">โปรไฟล์ผู้ป่วย</h1>
         <p className="text-muted-foreground mt-1">จัดการข้อมูลส่วนตัวและรูปถ่ายสำหรับเอกสารรับรอง</p>

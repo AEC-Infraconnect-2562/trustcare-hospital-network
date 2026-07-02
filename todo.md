@@ -389,3 +389,8 @@
 ## v2.6 - Performance Optimization
 - [x] Add loading="lazy" to below-the-fold images across all components (CredentialRenderer, CredentialDetail, Wallet)
 - [x] Implement Service Worker for static asset caching (cache-first for /manus-storage/ and vendor chunks, production-only registration)
+
+## v2.7 - Avatar Fix, Identity Priority, Back Navigation
+- [x] Fix patient avatar images still showing cartoon/dicebear instead of realistic photos (DB updated, generate-avatars.mjs rewritten)
+- [x] Sort Identity credentials (patient_identity) to always appear at top of Wallet and all VC/VP lists (Wallet + Issuer)
+- [x] Add Back button to Wallet page, Patient Profile page, and CredentialDetail page

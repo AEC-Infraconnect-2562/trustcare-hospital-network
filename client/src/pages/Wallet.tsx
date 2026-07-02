@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { DOCUMENT_CATEGORIES, type DocumentCategory } from "@shared/const";
 import {
-  AlertTriangle, ArrowRightLeft, BadgeCheck, CalendarDays, CreditCard, Eye,
+  AlertTriangle, ArrowLeft, ArrowRightLeft, BadgeCheck, CalendarDays, CreditCard, Eye,
   FileBadge, FileCheck2, FileText, Fingerprint, Globe2, History, Landmark, Link2, Microscope,
   PackageCheck, Pill, Printer, QrCode, ReceiptText, RefreshCcw, ScanLine,
   Shield, Share2, Syringe, User, Wallet as WalletIcon,
@@ -122,15 +122,23 @@ export default function Wallet() {
     return counts;
   }, [grouped]);
 
+  // Identity-first sort: patient_identity and identity cards always appear at the top
+  const sortIdentityFirst = (cards: any[]) => {
+    const identityTypes = ["patient_identity", "identity"];
+    const identity = cards.filter(c => identityTypes.includes(c.cardType));
+    const rest = cards.filter(c => !identityTypes.includes(c.cardType));
+    return [...identity, ...rest];
+  };
+
   const displayCards = useMemo(() => {
     // If offline and no online data, use cached offline cards
     if (!offlineWallet.isOnline && !grouped) {
-      if (activeCategory === "all") return offlineWallet.offlineCards;
-      return offlineWallet.offlineCards.filter(c => c.documentCategory === activeCategory);
+      if (activeCategory === "all") return sortIdentityFirst(offlineWallet.offlineCards);
+      return sortIdentityFirst(offlineWallet.offlineCards.filter(c => c.documentCategory === activeCategory));
     }
     if (!grouped) return [];
-    if (activeCategory === "all") return Object.values(grouped).flat();
-    return (grouped as any)[activeCategory] || [];
+    if (activeCategory === "all") return sortIdentityFirst(Object.values(grouped).flat());
+    return sortIdentityFirst((grouped as any)[activeCategory] || []);
   }, [grouped, activeCategory, offlineWallet.isOnline, offlineWallet.offlineCards]);
 
   const totalCards = useMemo(() => {
@@ -195,6 +203,10 @@ export default function Wallet() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
+        {/* Back button */}
+        <Button variant="ghost" onClick={() => window.history.back()} className="text-muted-foreground hover:text-foreground -ml-2">
+          <ArrowLeft className="h-4 w-4 mr-2" />กลับ
+        </Button>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -294,13 +306,15 @@ export default function Wallet() {
                                 {showPhoto ? (
                                   <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-white/30 shadow-sm shrink-0">
                                     <img src={(() => {
+                                      // Prefer user's actual avatar from auth (uploaded or DB-stored)
+                                      if ((auth as any)?.avatarUrl) return (auth as any).avatarUrl;
                                       const subject = card.credentialData?.credentialSubject || card.credentialData;
                                       const patient = subject?.patient || {};
                                       if (patient.gender === "female" || patient.sex === "F") return AVATAR_URLS.female;
                                       const name = patient.nameTh || patient.fullNameTh || patient.nameEn || card.displayName || "";
                                       if (name.startsWith("นาง") || name.startsWith("Ms.") || name.startsWith("Mrs.")) return AVATAR_URLS.female;
                                       return AVATAR_URLS.male;
-                                    })()} alt="" className="h-full w-full object-cover" />
+                                    })()} alt="" className="h-full w-full object-cover" loading="lazy" />
                                   </div>
                                 ) : (
                                   <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm shrink-0"><Icon className="h-5 w-5" /></div>

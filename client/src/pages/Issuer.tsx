@@ -114,7 +114,12 @@ export default function Issuer() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {credentials.map((cred: any) => {
+                      {[...credentials].sort((a: any, b: any) => {
+                        const identityTypes = ["patient_identity", "identity"];
+                        const aIsIdentity = identityTypes.includes(a.type) ? 0 : 1;
+                        const bIsIdentity = identityTypes.includes(b.type) ? 0 : 1;
+                        return aIsIdentity - bIsIdentity;
+                      }).map((cred: any) => {
                         const status = statusLabels[cred.status] || statusLabels.active;
                         return (
                           <TableRow key={cred.id} className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setLocation(`/issuer/${cred.id}`)}>
