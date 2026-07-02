@@ -2174,10 +2174,68 @@ export const appRouter = router({
         summary: `Care package generated: ${packageType}`,
         metadata: { carePackageId, shlPackage, manifestHash: packageManifest.manifestHash },
       } as any);
-      return { id: carePackageId, fhirBundleHash, manifestHash: packageManifest.manifestHash, shl: shlPackage };
+            return { id: carePackageId, fhirBundleHash, manifestHash: packageManifest.manifestHash, shl: shlPackage };
+    }),
+
+    // --- Document Bundles ---
+    createBundle: staffProcedure.input(z.object({
+      caseType: z.string(),
+      caseId: z.number(),
+      title: z.string(),
+      description: z.string().optional(),
+      bundleType: z.enum(["initial_submission", "follow_up", "lab_results", "imaging", "legal_documents", "insurance", "discharge", "mixed"]).optional(),
+    })).mutation(async ({ input, ctx }) => {
+      return db.createDocumentBundle({ ...input, submittedBy: ctx.user.id });
+    }),
+
+    getBundles: staffProcedure.input(z.object({
+      caseType: z.string(),
+      caseId: z.number(),
+    })).query(async ({ input }) => {
+      return db.getBundlesByCaseId(input.caseType, input.caseId);
+    }),
+
+    getBundleWithFiles: staffProcedure.input(z.object({
+      bundleId: z.number(),
+    })).query(async ({ input }) => {
+      return db.getBundleWithFiles(input.bundleId);
+    }),
+
+    addFileToBundle: staffProcedure.input(z.object({
+      bundleId: z.number(),
+      caseType: z.string(),
+      caseId: z.number(),
+      documentType: z.string(),
+      title: z.string(),
+      fileName: z.string().optional(),
+      fileUrl: z.string().optional(),
+      fileKey: z.string().optional(),
+      mimeType: z.string().optional(),
+      fileSize: z.number().optional(),
+      hash: z.string().optional(),
+      direction: z.string().optional(),
+      sortOrder: z.number().optional(),
+      metadata: z.any().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      return db.addFileToBundle(input.bundleId, { ...input, receivedBy: ctx.user.id });
+    }),
+
+    updateBundleStatus: staffProcedure.input(z.object({
+      bundleId: z.number(),
+      status: z.enum(["draft", "submitted", "under_review", "accepted", "rejected", "archived"]),
+    })).mutation(async ({ input, ctx }) => {
+      await db.updateBundleStatus(input.bundleId, input.status, ctx.user.id);
+      return { success: true };
+    }),
+
+    removeBundleFile: staffProcedure.input(z.object({
+      fileId: z.number(),
+      bundleId: z.number(),
+    })).mutation(async ({ input }) => {
+      const removed = await db.removeBundleFile(input.fileId, input.bundleId);
+      return { success: removed };
     }),
   }),
-
   // ============================================================
   // PARTNER PORTAL
   // ============================================================

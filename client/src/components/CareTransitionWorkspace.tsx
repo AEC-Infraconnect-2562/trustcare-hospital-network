@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,10 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import {
   CheckCircle2, ClipboardList, FileText, Package, PlayCircle, Send, Upload,
-  Scale, Clock, AlertCircle, XCircle, HelpCircle, ShieldCheck, Gavel
+  Scale, Clock, AlertCircle, XCircle, HelpCircle, ShieldCheck, Gavel,
+  FolderArchive, ChevronDown, ChevronRight, Trash2, Eye, Hash
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
+import { COOKIE_NAME } from "@shared/const";
 
 type CaseType = "internal_referral" | "cross_branch" | "cross_border" | "external_partner" | "medical_tourist";
 type PackageType = "referral" | "cross_border" | "medical_tourist" | "discharge" | "counter_referral" | "claim";
@@ -38,6 +41,26 @@ const documentLabels: Record<string, string> = {
 
 const packageOptions: PackageType[] = ["referral", "cross_border", "medical_tourist", "discharge", "counter_referral", "claim"];
 
+const bundleTypeOptions = [
+  { value: "initial_submission", label: "Initial Submission" },
+  { value: "follow_up", label: "Follow-up Documents" },
+  { value: "lab_results", label: "Lab Results" },
+  { value: "imaging", label: "Imaging / Radiology" },
+  { value: "legal_documents", label: "Legal Documents" },
+  { value: "insurance", label: "Insurance / Claims" },
+  { value: "discharge", label: "Discharge Packet" },
+  { value: "mixed", label: "Mixed" },
+] as const;
+
+const bundleStatusConfig: Record<string, { label: string; color: string }> = {
+  draft: { label: "Draft", color: "bg-gray-100 text-gray-700 border-gray-300" },
+  submitted: { label: "Submitted", color: "bg-blue-100 text-blue-800 border-blue-300" },
+  under_review: { label: "Under Review", color: "bg-amber-100 text-amber-800 border-amber-300" },
+  accepted: { label: "Accepted", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  rejected: { label: "Rejected", color: "bg-red-100 text-red-800 border-red-300" },
+  archived: { label: "Archived", color: "bg-slate-100 text-slate-700 border-slate-300" },
+};
+
 const decisionTypes = [
   { value: "clinical_acceptance", label: "Clinical Acceptance", icon: ShieldCheck },
   { value: "document_acceptance", label: "Document Acceptance", icon: FileText },
@@ -58,6 +81,29 @@ const eventTypeIcons: Record<string, any> = {
   created: PlayCircle, document_received: Upload, document_verified: CheckCircle2,
   decision_recorded: Scale, package_generated: Package,
 };
+
+function getAuthHeaders(): Record<string, string> {
+  try {
+    const demoToken = sessionStorage.getItem("demo_session_token");
+    if (demoToken) return { Authorization: `Bearer ${demoToken}` };
+    const raw = sessionStorage.getItem("manus-cookie");
+    if (raw) {
+      const prefix = `${COOKIE_NAME}=`;
+      const pair = raw.split(";").find(s => s.trim().startsWith(prefix));
+      const token = pair?.trim().slice(prefix.length);
+      if (token) return { Authorization: `Bearer ${token}` };
+    }
+  } catch { /* noop */ }
+  return {};
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}
 
 export function CareTransitionWorkspace({
   caseType, caseId, patientId, hospitalId, recipientName, defaultPackageType,
@@ -84,9 +130,19 @@ export function CareTransitionWorkspace({
     outcome: "accepted",
     reason: "",
   });
+  const [bundleForm, setBundleForm] = useState({
+    title: "", description: "", bundleType: "mixed",
+  });
+  const [expandedBundles, setExpandedBundles] = useState<Set<number>>(new Set());
+  const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
+  const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   const enabled = Boolean(caseId);
   const workspace = trpc.careTransition.workspace.useQuery(
+    { caseType, caseId: caseId || 0 },
+    { enabled },
+  );
+  const bundles = trpc.careTransition.getBundles.useQuery(
     { caseType, caseId: caseId || 0 },
     { enabled },
   );
@@ -128,6 +184,92 @@ export function CareTransitionWorkspace({
     },
     onError: (error) => toast.error(error.message),
   });
+  const createBundle = trpc.careTransition.createBundle.useMutation({
+    onSuccess: () => {
+      bundles.refetch();
+      setBundleForm({ title: "", description: "", bundleType: "mixed" });
+      toast.success("Bundle created");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const updateBundleStatus = trpc.careTransition.updateBundleStatus.useMutation({
+    onSuccess: () => {
+      bundles.refetch();
+      toast.success("Bundle status updated");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const removeBundleFile = trpc.careTransition.removeBundleFile.useMutation({
+    onSuccess: () => {
+      bundles.refetch();
+      toast.success("File removed from bundle");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const toggleBundleExpand = useCallback((bundleId: number) => {
+    setExpandedBundles(prev => {
+      const next = new Set(prev);
+      if (next.has(bundleId)) next.delete(bundleId);
+      else next.add(bundleId);
+      return next;
+    });
+  }, []);
+
+  const handleFileUpload = useCallback(async (bundleId: number, files: FileList) => {
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append("files", files[i]);
+    }
+    formData.append("caseType", caseType);
+    formData.append("caseId", String(caseId || 0));
+    formData.append("documentType", "other");
+    formData.append("direction", "inbound");
+
+    setUploadProgress(prev => ({ ...prev, [bundleId]: 0 }));
+
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api/bundles/${bundleId}/upload`);
+
+      // Add auth headers
+      const authHeaders = getAuthHeaders();
+      Object.entries(authHeaders).forEach(([key, value]) => {
+        xhr.setRequestHeader(key, value);
+      });
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(prev => ({ ...prev, [bundleId]: percent }));
+        }
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const result = JSON.parse(xhr.responseText);
+            toast.success(`${result.filesUploaded} file(s) uploaded successfully`);
+            bundles.refetch();
+            resolve();
+          } else {
+            const error = JSON.parse(xhr.responseText);
+            reject(new Error(error.error || "Upload failed"));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.send(formData);
+      });
+    } catch (err: any) {
+      toast.error(err.message || "Upload failed");
+    } finally {
+      setUploadProgress(prev => {
+        const next = { ...prev };
+        delete next[bundleId];
+        return next;
+      });
+    }
+  }, [caseType, caseId, bundles]);
 
   if (!enabled) {
     return (
@@ -148,12 +290,13 @@ export function CareTransitionWorkspace({
         <Metric title="Open tasks" value={data?.tasks.filter((t: any) => !["completed", "cancelled"].includes(t.status)).length ?? 0} />
         <Metric title="Decisions" value={data?.decisions.length ?? 0} />
         <Metric title="Packages" value={data?.packages.length ?? 0} />
-        <Metric title="Events" value={data?.events.length ?? 0} />
+        <Metric title="Bundles" value={bundles.data?.length ?? 0} />
       </div>
 
       <Tabs defaultValue="documents">
         <TabsList className="flex flex-wrap h-auto justify-start">
           <TabsTrigger value="documents"><FileText className="h-4 w-4 mr-2" />Documents</TabsTrigger>
+          <TabsTrigger value="bundles"><FolderArchive className="h-4 w-4 mr-2" />Bundles</TabsTrigger>
           <TabsTrigger value="tasks"><ClipboardList className="h-4 w-4 mr-2" />Tasks</TabsTrigger>
           <TabsTrigger value="decisions"><Scale className="h-4 w-4 mr-2" />Decisions</TabsTrigger>
           <TabsTrigger value="packages"><Package className="h-4 w-4 mr-2" />Packages</TabsTrigger>
@@ -263,6 +406,192 @@ export function CareTransitionWorkspace({
               </div>
             ))}
             {data?.documents.length === 0 && <EmptyLine text="No case documents yet." />}
+          </div>
+        </TabsContent>
+
+        {/* BUNDLES TAB */}
+        <TabsContent value="bundles" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2"><FolderArchive className="h-4 w-4" />Create Document Bundle</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form
+                className="grid grid-cols-1 md:grid-cols-4 gap-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!bundleForm.title.trim()) { toast.error("Bundle title is required"); return; }
+                  createBundle.mutate({
+                    caseType,
+                    caseId: caseId!,
+                    title: bundleForm.title,
+                    description: bundleForm.description || undefined,
+                    bundleType: bundleForm.bundleType as any,
+                  });
+                }}
+              >
+                <div className="space-y-2">
+                  <Label>Title</Label>
+                  <Input
+                    value={bundleForm.title}
+                    onChange={(e) => setBundleForm(p => ({ ...p, title: e.target.value }))}
+                    placeholder="e.g., Initial referral documents"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Bundle Type</Label>
+                  <Select value={bundleForm.bundleType} onValueChange={(v) => setBundleForm(p => ({ ...p, bundleType: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {bundleTypeOptions.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Input
+                    value={bundleForm.description}
+                    onChange={(e) => setBundleForm(p => ({ ...p, description: e.target.value }))}
+                    placeholder="Optional description..."
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button type="submit" className="w-full" disabled={createBundle.isPending}>
+                    <FolderArchive className="h-4 w-4 mr-2" />Create Bundle
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Bundle List */}
+          <div className="space-y-3">
+            {(bundles.data ?? []).map((bundle: any) => {
+              const isExpanded = expandedBundles.has(bundle.id);
+              const statusInfo = bundleStatusConfig[bundle.status] || bundleStatusConfig.draft;
+              const isDraft = bundle.status === "draft";
+              const isReviewable = bundle.status === "submitted" || bundle.status === "under_review";
+
+              return (
+                <div key={bundle.id} className="rounded-lg border bg-card">
+                  {/* Bundle Header */}
+                  <div
+                    className="p-4 cursor-pointer flex items-center justify-between gap-3 hover:bg-accent/50 transition-colors rounded-t-lg"
+                    onClick={() => toggleBundleExpand(bundle.id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-sm">{bundle.title}</p>
+                          <Badge className={`text-[10px] border ${statusInfo.color}`}>{statusInfo.label}</Badge>
+                          <Badge variant="outline" className="text-[10px]">
+                            {bundleTypeOptions.find(t => t.value === bundle.bundleType)?.label || bundle.bundleType}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {bundle.fileCount} file(s) | {formatFileSize(Number(bundle.totalSizeBytes || 0))}
+                          {bundle.integrityHash && ` | hash: ${bundle.integrityHash.slice(0, 12)}...`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      {isDraft && bundle.fileCount > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => updateBundleStatus.mutate({ bundleId: bundle.id, status: "submitted" })}
+                          disabled={updateBundleStatus.isPending}
+                        >
+                          <Send className="h-3 w-3 mr-1" />Submit
+                        </Button>
+                      )}
+                      {isReviewable && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateBundleStatus.mutate({ bundleId: bundle.id, status: "accepted" })}
+                            disabled={updateBundleStatus.isPending}
+                          >
+                            <CheckCircle2 className="h-3 w-3 mr-1" />Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600"
+                            onClick={() => updateBundleStatus.mutate({ bundleId: bundle.id, status: "rejected" })}
+                            disabled={updateBundleStatus.isPending}
+                          >
+                            <XCircle className="h-3 w-3 mr-1" />Reject
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Expanded Content */}
+                  {isExpanded && (
+                    <div className="border-t px-4 pb-4 pt-3 space-y-3">
+                      {bundle.description && (
+                        <p className="text-xs text-muted-foreground">{bundle.description}</p>
+                      )}
+
+                      {/* File Upload Area (only for draft bundles) */}
+                      {isDraft && (
+                        <div className="border-2 border-dashed rounded-lg p-4 text-center">
+                          <input
+                            ref={(el) => { fileInputRefs.current[bundle.id] = el; }}
+                            type="file"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files.length > 0) {
+                                handleFileUpload(bundle.id, e.target.files);
+                                e.target.value = "";
+                              }
+                            }}
+                          />
+                          <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                          <p className="text-sm text-muted-foreground mb-2">
+                            Drop files here or click to upload (max 10 files, 50MB each)
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => fileInputRefs.current[bundle.id]?.click()}
+                          >
+                            Select Files
+                          </Button>
+                          {uploadProgress[bundle.id] !== undefined && (
+                            <div className="mt-3 space-y-1">
+                              <Progress value={uploadProgress[bundle.id]} className="h-2" />
+                              <p className="text-xs text-muted-foreground">{uploadProgress[bundle.id]}% uploaded</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* File List */}
+                      <BundleFileList
+                        bundleId={bundle.id}
+                        isDraft={isDraft}
+                        onRemoveFile={(fileId) => removeBundleFile.mutate({ fileId, bundleId: bundle.id })}
+                      />
+
+                      {/* Bundle Metadata */}
+                      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground pt-2 border-t">
+                        <span>Created: {new Date(bundle.createdAt).toLocaleString("th-TH")}</span>
+                        {bundle.submittedBy && <span>Submitted by: #{bundle.submittedBy}</span>}
+                        {bundle.reviewedBy && <span>Reviewed by: #{bundle.reviewedBy}</span>}
+                        {bundle.reviewedAt && <span>Reviewed: {new Date(bundle.reviewedAt).toLocaleString("th-TH")}</span>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {bundles.data?.length === 0 && <EmptyLine text="No document bundles yet. Create one above to group related files." />}
           </div>
         </TabsContent>
 
@@ -498,6 +827,64 @@ export function CareTransitionWorkspace({
           </div>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/** Sub-component: Loads and displays files within a bundle */
+function BundleFileList({ bundleId, isDraft, onRemoveFile }: { bundleId: number; isDraft: boolean; onRemoveFile: (fileId: number) => void }) {
+  const bundleDetail = trpc.careTransition.getBundleWithFiles.useQuery({ bundleId });
+  const files = (bundleDetail.data as any)?.files ?? [];
+
+  if (bundleDetail.isLoading) {
+    return <p className="text-xs text-muted-foreground animate-pulse">Loading files...</p>;
+  }
+
+  if (files.length === 0) {
+    return <p className="text-xs text-muted-foreground italic">No files in this bundle yet.</p>;
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground mb-1">Files ({files.length})</p>
+      {files.map((file: any) => (
+        <div key={file.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className="min-w-0">
+              <p className="font-medium text-xs truncate">{file.fileName || file.title}</p>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <span>{file.mimeType || "unknown"}</span>
+                {file.fileSize && <span>{formatFileSize(Number(file.fileSize))}</span>}
+                {file.hash && (
+                  <span className="flex items-center gap-0.5">
+                    <Hash className="h-2.5 w-2.5" />{file.hash.slice(0, 8)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {file.fileUrl && (
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" asChild>
+                <a href={file.fileUrl} target="_blank" rel="noopener noreferrer">
+                  <Eye className="h-3.5 w-3.5" />
+                </a>
+              </Button>
+            )}
+            {isDraft && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                onClick={() => onRemoveFile(file.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

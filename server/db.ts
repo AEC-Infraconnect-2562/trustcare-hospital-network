@@ -28,6 +28,7 @@ import {
   carePackages, InsertCarePackage,
   carePackageItems, InsertCarePackageItem,
   caseDecisions, InsertCaseDecision,
+  documentBundles, InsertDocumentBundle,
   vcSchemaRegistry, InsertVcSchemaRegistry,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -1661,4 +1662,122 @@ export async function getClaimAnalytics() {
       .sort((a, b) => a.month.localeCompare(b.month))
       .slice(-12),
   };
+}
+
+// ============================================================
+// DOCUMENT BUNDLES
+// ============================================================
+export async function createDocumentBundle(data: {
+  caseType: string;
+  caseId: number;
+  title: string;
+  description?: string;
+  bundleType?: string;
+  submittedBy?: number;
+}) {
+  const db = await getDb();
+  if (!db) return { id: 0 };
+  const [result] = await db.insert(documentBundles).values({
+    caseType: data.caseType as any,
+    caseId: data.caseId,
+    title: data.title,
+    description: data.description || null,
+    bundleType: (data.bundleType || "mixed") as any,
+    status: "draft",
+    submittedBy: data.submittedBy || null,
+    fileCount: 0,
+    totalSizeBytes: 0,
+  });
+  return { id: result.insertId };
+}
+
+export async function getBundlesByCaseId(caseType: string, caseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(documentBundles)
+    .where(and(
+      eq(documentBundles.caseType, caseType as any),
+      eq(documentBundles.caseId, caseId)
+    ))
+    .orderBy(desc(documentBundles.createdAt));
+}
+
+export async function getBundleWithFiles(bundleId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [bundle] = await db.select().from(documentBundles)
+    .where(eq(documentBundles.id, bundleId));
+  if (!bundle) return null;
+  const files = await db.select().from(caseDocuments)
+    .where(eq(caseDocuments.bundleId, bundleId))
+    .orderBy(caseDocuments.sortOrder);
+  return { ...bundle, files };
+}
+
+export async function addFileToBundle(bundleId: number, fileData: {
+  caseType: string;
+  caseId: number;
+  direction?: string;
+  documentType: string;
+  title: string;
+  fileName?: string;
+  fileUrl?: string;
+  fileKey?: string;
+  mimeType?: string;
+  fileSize?: number;
+  hash?: string;
+  sortOrder?: number;
+  receivedBy?: number;
+  metadata?: any;
+}) {
+  const db = await getDb();
+  if (!db) return { id: 0 };
+  const [result] = await db.insert(caseDocuments).values({
+    bundleId,
+    caseType: fileData.caseType as any,
+    caseId: fileData.caseId,
+    direction: (fileData.direction || "inbound") as any,
+    documentType: fileData.documentType as any,
+    title: fileData.title,
+    fileName: fileData.fileName || null,
+    fileUrl: fileData.fileUrl || null,
+    fileKey: fileData.fileKey || null,
+    mimeType: fileData.mimeType || "application/pdf",
+    fileSize: fileData.fileSize ? BigInt(fileData.fileSize) as any : null,
+    sortOrder: fileData.sortOrder || 0,
+    hash: fileData.hash || null,
+    receivedBy: fileData.receivedBy || null,
+    verificationStatus: "received",
+    metadata: fileData.metadata || null,
+  });
+  // Update bundle counts
+  await db.execute(sql`UPDATE document_bundles SET fileCount = fileCount + 1, totalSizeBytes = totalSizeBytes + ${fileData.fileSize || 0} WHERE id = ${bundleId}`);
+  return { id: result.insertId };
+}
+
+export async function updateBundleStatus(bundleId: number, status: string, userId?: number) {
+  const db = await getDb();
+  if (!db) return;
+  const updateData: any = { status };
+  if (status === "submitted") {
+    updateData.submittedBy = userId;
+  } else if (["accepted", "rejected"].includes(status)) {
+    updateData.reviewedBy = userId;
+    updateData.reviewedAt = new Date();
+  }
+  await db.update(documentBundles)
+    .set(updateData)
+    .where(eq(documentBundles.id, bundleId));
+}
+
+export async function removeBundleFile(fileId: number, bundleId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const [file] = await db.select().from(caseDocuments)
+    .where(and(eq(caseDocuments.id, fileId), eq(caseDocuments.bundleId, bundleId)));
+  if (!file) return false;
+  await db.delete(caseDocuments).where(eq(caseDocuments.id, fileId));
+  const fileSize = (file as any).fileSize || 0;
+  await db.execute(sql`UPDATE document_bundles SET fileCount = GREATEST(fileCount - 1, 0), totalSizeBytes = GREATEST(totalSizeBytes - ${fileSize}, 0) WHERE id = ${bundleId}`);
+  return true;
 }

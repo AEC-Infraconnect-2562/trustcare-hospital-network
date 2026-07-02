@@ -463,3 +463,31 @@
 - [x] New care-transition tests pass (4 tests in care-transition.test.ts)
 - [x] Smoke test: /referral, /cross-border, /international, /partner-portal - all render correctly
 - [x] Push to GitHub
+
+## v3.7 - File Bundle System for Care Transition Cases
+### Research & Design
+- [ ] Deep research healthcare document bundle standards (IHE XDS, FHIR DocumentReference, HL7 attachments)
+- [ ] Design File Bundle schema: 1 case → many bundles, 1 bundle → many files (PDF, Word, images, medical files, VC/VP, mixed)
+
+### Backend
+- [x] Create migration: document_bundles table (id, caseType, caseId, title, description, status, createdBy, createdAt)
+- [x] Create migration: bundle_files table (id, bundleId, fileName, fileKey, mimeType, fileSize, fileType enum, vcCredentialId?, metadata JSON)
+- [x] DB helpers: createBundle, addFileToBundle, getBundlesByCaseId, getBundleWithFiles
+- [x] tRPC procedures: bundle.create, bundle.addFile, bundle.list, bundle.get, bundle.updateStatus
+
+### Frontend
+- [x] Bundle upload UI in CareTransitionWorkspace Bundles tab (drag-drop, multi-file, progress)
+- [x] Bundle viewer: list bundles per case, expand to see files, preview/download
+- [x] File type indicators (PDF icon, Word icon, Image thumbnail, VC/VP badge)
+- [ ] Integration with creation wizards (attach bundle during case creation)
+
+### Trust Layer Integration
+- [ ] VC/VP files in bundle: link to existing credential IDs, verify on display
+- [ ] Bundle attestation: generate bundle hash for integrity verification
+- [ ] SHL package generation from bundle (select files → create encrypted FHIR bundle → SHL link)
+
+### Tests & Verification
+- [x] TypeScript compilation: 0 errors
+- [x] Vitest tests for bundle CRUD operations
+- [ ] Smoke test: create bundle, upload files, view bundle, generate SHL from bundle
+- [ ] Push to GitHub

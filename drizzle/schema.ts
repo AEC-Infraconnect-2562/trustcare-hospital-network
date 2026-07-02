@@ -1,4 +1,4 @@
-import { int, mediumtext, mysqlEnum, mysqlTable, text, timestamp, varchar, json, boolean } from "drizzle-orm/mysql-core";
+import { int, bigint, mediumtext, mysqlEnum, mysqlTable, text, timestamp, varchar, json, boolean } from "drizzle-orm/mysql-core";
 
 // ============================================================
 // USER & AUTH
@@ -910,10 +910,35 @@ export const careTransitionCaseEvents = mysqlTable("care_transition_case_events"
 export type CareTransitionCaseEvent = typeof careTransitionCaseEvents.$inferSelect;
 export type InsertCareTransitionCaseEvent = typeof careTransitionCaseEvents.$inferInsert;
 
+// ============================================================
+// DOCUMENT BUNDLES (IHE XDS SubmissionSet equivalent)
+// ============================================================
+export const documentBundles = mysqlTable("document_bundles", {
+  id: int("id").autoincrement().primaryKey(),
+  caseType: mysqlEnum("caseType", ["internal_referral", "cross_branch", "cross_border", "external_partner", "medical_tourist"]).notNull(),
+  caseId: int("caseId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  bundleType: mysqlEnum("bundleType", ["initial_submission", "follow_up", "lab_results", "imaging", "legal_documents", "insurance", "discharge", "mixed"]).default("mixed").notNull(),
+  status: mysqlEnum("status", ["draft", "submitted", "under_review", "accepted", "rejected", "archived"]).default("draft").notNull(),
+  submittedBy: int("submittedBy"),
+  reviewedBy: int("reviewedBy"),
+  reviewedAt: timestamp("reviewedAt"),
+  integrityHash: varchar("integrityHash", { length: 128 }),
+  fileCount: int("fileCount").default(0).notNull(),
+  totalSizeBytes: bigint("totalSizeBytes", { mode: "number" }).default(0).notNull(),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type DocumentBundle = typeof documentBundles.$inferSelect;
+export type InsertDocumentBundle = typeof documentBundles.$inferInsert;
+
 export const caseDocuments = mysqlTable("case_documents", {
   id: int("id").autoincrement().primaryKey(),
   caseType: mysqlEnum("caseType", ["internal_referral", "cross_branch", "cross_border", "external_partner", "medical_tourist"]).notNull(),
   caseId: int("caseId").notNull(),
+  bundleId: int("bundleId"),
   direction: mysqlEnum("direction", ["inbound", "outbound"]).default("inbound").notNull(),
   documentType: mysqlEnum("documentType", ["referral_letter", "patient_summary", "lab_report", "imaging_report", "passport", "insurance_card", "guarantee_letter", "quotation", "visa_support_letter", "consent", "claim_document", "invoice", "receipt", "discharge_summary", "prescription", "medical_certificate", "other"]).notNull(),
   title: varchar("title", { length: 255 }).notNull(),
@@ -923,6 +948,8 @@ export const caseDocuments = mysqlTable("case_documents", {
   fileUrl: text("fileUrl"),
   fileKey: varchar("fileKey", { length: 500 }),
   mimeType: varchar("mimeType", { length: 120 }).default("application/pdf"),
+  fileSize: bigint("fileSize", { mode: "number" }),
+  sortOrder: int("sortOrder").default(0).notNull(),
   hash: varchar("hash", { length: 128 }),
   fhirDocumentReferenceId: varchar("fhirDocumentReferenceId", { length: 255 }),
   fhirDocumentReference: json("fhirDocumentReference"),
