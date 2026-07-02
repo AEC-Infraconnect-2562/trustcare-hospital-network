@@ -108,6 +108,9 @@ export async function reseedTrustcareVcVpDatabase(input: {
     await upsertSourceTruthAdapters(hospital, hospitalId);
   }
 
+  // Ensure network-level issuer is in trust registry
+  await upsertNetworkLevelIssuer();
+
   for (const documentType of Object.keys(DOCUMENT_TYPE_LABELS)) {
     for (const hospital of seed.hospitals as JsonRecord[]) {
       const hospitalId = hospitalRows.get(String(hospital.code))!;
@@ -864,6 +867,29 @@ async function upsertTrustRegistryIssuer(hospital: JsonRecord, hospitalId: numbe
     verifiedAt: SEED_ISSUED_AT,
     isActive: true,
     metadata: { hospitalId, source: "trustcare-seed-reseed", didDocument: hospital.didDocument },
+  };
+  if (existing) await db.update(trustRegistry).set(values as any).where(eq(trustRegistry.id, existing.id));
+  else await db.insert(trustRegistry).values(values as any);
+}
+
+async function upsertNetworkLevelIssuer(): Promise<void> {
+  const db = (await getDb())!;
+  const networkDid = "did:web:trustcare.network";
+  const [existing] = await db.select().from(trustRegistry).where(eq(trustRegistry.did, networkDid)).limit(1);
+  const values = {
+    entityType: "issuer",
+    entityName: "เครือข่ายโรงพยาบาลทรัสต์แคร์",
+    entityNameEn: "TrustCare Hospital Network",
+    did: networkDid,
+    country: "TH",
+    jurisdiction: "Thailand",
+    trustLevel: "verified",
+    credentialTypes: Object.values(DOCUMENT_TYPE_LABELS).map((item) => item.vcType),
+    contactEmail: "trust@trustcare.example",
+    contactUrl: "https://trustcare.network",
+    verifiedAt: SEED_ISSUED_AT,
+    isActive: true,
+    metadata: { source: "trustcare-seed-reseed", level: "network" },
   };
   if (existing) await db.update(trustRegistry).set(values as any).where(eq(trustRegistry.id, existing.id));
   else await db.insert(trustRegistry).values(values as any);

@@ -64,6 +64,9 @@ describe("portability E2E contract", () => {
     expect(packet.presentation.jwt).toMatch(/^eyJ/);
 
     const verifiedPacket = await caller.portability.verify({ jwt: packet.presentation.jwt, kind: "presentation" });
+    if (!verifiedPacket.verified) {
+      console.log("[DEBUG] VP verification failed:", JSON.stringify({ errors: verifiedPacket.errors, warnings: verifiedPacket.warnings }, null, 2));
+    }
     expect(verifiedPacket.verified).toBe(true);
 
     const readiness = await caller.portability.productionReadiness();
@@ -100,7 +103,7 @@ describe("portability E2E contract", () => {
     expect(certificateRequest.status).toBe("submitted");
     expect(prescriptionRequest.status).toBe("submitted");
 
-    const issuer = { id: "TH-HCODE-E2E", name: "Trustcare E2E Hospital", did: "did:web:trustcare.network:hospital:e2e", country: "TH" };
+    const issuer = { id: "TH-HCODE-E2E", name: "Trustcare E2E Hospital", did: "did:web:trustcare.network:hospital:tcc", country: "TH" };
     const certificate = await issueMedicalCertificateVc({
       issuer,
       holderDid: "did:key:e2e-patient",
