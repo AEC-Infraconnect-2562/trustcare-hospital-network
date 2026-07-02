@@ -30,10 +30,10 @@ import { exportWalletCardPdf } from "@/lib/pdfExport";
 
 // Avatar URLs for wallet card thumbnails (AI-generated realistic photos)
 const AVATAR_URLS = {
-  male: "/manus-storage/patient_male_realistic_80909bf8.jpg",
-  female: "/manus-storage/patient_female_realistic_1fd9c678.jpg",
-  nurse: "/manus-storage/nurse_female_realistic_7385561e.jpg",
-  pharmacist: "/manus-storage/pharmacist_male_realistic_ffc30382.jpg",
+  male: "/manus-storage/patient_male_realistic_opt_e9b1630b.jpg",
+  female: "/manus-storage/patient_female_realistic_opt_d0edb245.jpg",
+  nurse: "/manus-storage/nurse_female_realistic_opt_d0e35459.jpg",
+  pharmacist: "/manus-storage/pharmacist_male_realistic_opt_2b3b0f56.jpg",
 };
 
 const PHOTO_TYPES = ["patient_identity", "identity", "medical_certificate"];

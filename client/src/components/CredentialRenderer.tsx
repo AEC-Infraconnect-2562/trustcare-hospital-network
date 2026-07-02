@@ -25,12 +25,12 @@ import {
 
 // Avatar URLs for demo (AI-generated realistic photos, 400x400 JPEG)
 const AVATAR_URLS = {
-  male: "/manus-storage/patient_male_realistic_80909bf8.jpg",
-  female: "/manus-storage/patient_female_realistic_1fd9c678.jpg",
-  doctor: "/manus-storage/doctor_male_realistic_e51286cb.jpg",
-  doctorFemale: "/manus-storage/doctor_female_realistic_ac88a81f.jpg",
-  nurse: "/manus-storage/nurse_female_realistic_7385561e.jpg",
-  pharmacist: "/manus-storage/pharmacist_male_realistic_ffc30382.jpg",
+  male: "/manus-storage/patient_male_realistic_opt_e9b1630b.jpg",
+  female: "/manus-storage/patient_female_realistic_opt_d0edb245.jpg",
+  doctor: "/manus-storage/doctor_male_realistic_opt_b09f1058.jpg",
+  doctorFemale: "/manus-storage/doctor_female_realistic_opt_56d94f1d.jpg",
+  nurse: "/manus-storage/nurse_female_realistic_opt_d0e35459.jpg",
+  pharmacist: "/manus-storage/pharmacist_male_realistic_opt_2b3b0f56.jpg",
 };
 
 // Hospital brand colors based on actual TrustCare network hospitals
