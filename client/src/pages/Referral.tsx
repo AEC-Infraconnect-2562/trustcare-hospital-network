@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { CareTransitionWorkspace } from "@/components/CareTransitionWorkspace";
+import { ReferralCreationWizard } from "@/components/ReferralCreationWizard";
 import { trpc } from "@/lib/trpc";
 import { ArrowRightLeft, Plus, ArrowRight, Clock, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -49,9 +50,9 @@ export default function Referral() {
             <DialogTrigger asChild>
               <Button><Plus className="h-4 w-4 mr-2" />สร้างใบส่งต่อ</Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader><DialogTitle>สร้างใบส่งต่อใหม่</DialogTitle></DialogHeader>
-              <CreateReferralForm onSuccess={() => { setCreateOpen(false); refetch(); }} />
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>สร้างใบส่งต่อใหม่ (Wizard)</DialogTitle></DialogHeader>
+              <ReferralCreationWizard onSuccess={() => { setCreateOpen(false); refetch(); }} onCancel={() => setCreateOpen(false)} />
             </DialogContent>
           </Dialog>
         </div>

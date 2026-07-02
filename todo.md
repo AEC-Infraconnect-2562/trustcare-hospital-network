@@ -413,7 +413,7 @@
 - [x] Seed documents: at least 3 per case (referral_letter, lab_report, patient_summary, passport, insurance_card, etc.)
 - [x] Seed tasks: initialize default tasks per case type
 - [x] Seed decisions: at least 1 clinical acceptance per case
-- [ ] Generate care package via real backend path (FHIR Bundle + SHL + VP)
+- [x] Generate care package via real backend path (FHIR Bundle + SHL + VP) — wired in CareTransitionWorkspace Packages tab
 - [x] CareTransitionWorkspace Timeline tab (event stream view from case_events)
 - [x] careTransition.workspace procedure returns unified case data with events/documents/tasks/decisions/packages
 - [x] partnerPortal.dashboard procedure returns persistent case list for partner staff
@@ -423,33 +423,33 @@
 - [x] Referral case list with status badges
 - [x] Case detail with CareTransitionWorkspace (Documents, Tasks, Decisions, Packages, Timeline tabs)
 - [x] CareTransitionWorkspace integration with decision workflow
-- [ ] Referral creation wizard (patient select, destination, reason, documents, consent, submit)
+- [x] Referral creation wizard (patient select, destination, reason, documents, consent, submit) — ReferralCreationWizard component integrated
 
 ### Frontend - Cross-Border Page Redesign (/cross-border)
 - [x] KPI cards (เคสทั้งหมด, เอกสาร, งานค้าง, แพ็กเกจ)
 - [x] Filter cards (Cross-branch, Cross-border, External Partner)
 - [x] Tabs (ทั้งหมด, ข้ามสาขา, ส่งออก, รับเข้า, พันธมิตร)
 - [x] CareTransitionWorkspace with package generation
-- [ ] Partner trust verification panel
-- [ ] Create wizard (direction, partner, patient, documents, translation, consent, package, send)
+- [x] Partner trust verification panel — PartnerTrustVerification component integrated in CrossBorder page
+- [x] Create wizard (direction, partner, patient, documents, translation, consent, package, send) — CrossBorderCreateWizard component integrated
 
 ### Frontend - International Page Redesign (/international)
 - [x] KPI cards (เคสทั้งหมด, เอกสาร, งานค้าง, แพ็กเกจ)
 - [x] Stage-based progress view (สอบถาม → สร้างโปรไฟล์ → อัปโหลดเอกสาร → ยืนยันตัวตน → ตรวจสอบข้อมูลทางการแพทย์ → จัดทำใบเสนอราคา → ตรวจสอบประกัน → ยืนยันนัดหมาย)
 - [x] Status tabs (ทั้งหมด, สอบถาม, นัดหมายแล้ว, กำลังรักษา, ปิดเคส)
 - [x] CareTransitionWorkspace integration
-- [ ] Document intake workspace
-- [ ] Clinical pre-review panel
-- [ ] Financial/quotation workflow
-- [ ] Discharge packet generation
+- [x] Document intake workspace — InternationalWorkflowPanels component (Document Intake panel)
+- [x] Clinical pre-review panel — InternationalWorkflowPanels component (Clinical Pre-review panel)
+- [x] Financial/quotation workflow — InternationalWorkflowPanels component (Financial panel)
+- [x] Discharge packet generation — InternationalWorkflowPanels component (Discharge panel)
 
 ### Frontend - Partner Portal (/partner-portal)
 - [x] Dashboard with KPI cards (Total cases, Pending review, Active tasks, Connectors, Packages)
 - [x] Persistent case list with detail view (from backend)
 - [x] Tabs (Cases, Connectors, New Case, Outbound)
-- [ ] Case creation wizard (type, patient, reason, source method, documents, attestation, submit)
-- [ ] Connector management (create, validate, activate)
-- [ ] Document workspace (upload, type assignment, hash, preview, submit for review)
+- [x] Case creation wizard (type, patient, reason, source method, documents, attestation, submit) — PartnerPortal New Case tab with full form
+- [x] Connector management (create, validate, activate) — PartnerPortal Connectors tab + Integration page
+- [x] Document workspace (upload, type assignment, hash, preview, submit for review) — CareTransitionWorkspace Documents + Bundles tabs
 
 ### Governance & Trust
 - [x] Verify Maker/Checker enforcement on VC issuance from case documents (canActAsCredentialMaker/Checker in rolePolicy.ts)

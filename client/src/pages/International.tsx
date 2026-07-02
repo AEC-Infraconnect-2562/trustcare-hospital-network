@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CareTransitionWorkspace } from "@/components/CareTransitionWorkspace";
+import { InternationalWorkflowPanels } from "@/components/InternationalWorkflowPanels";
 import { trpc } from "@/lib/trpc";
 import { useMemo, useState } from "react";
 import { Plane, Plus, User, FileText, Globe, Calendar, CheckCircle2, ClipboardList, Package } from "lucide-react";
@@ -205,6 +206,9 @@ export default function International() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* International Workflow Panels */}
+        <InternationalWorkflowPanels caseId={selectedCase?.id} caseStatus={selectedCase?.status} onStatusUpdate={() => refetch()} />
 
         <CareTransitionWorkspace
           caseType="medical_tourist"

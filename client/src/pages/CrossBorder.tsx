@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CareTransitionWorkspace } from "@/components/CareTransitionWorkspace";
+import { CrossBorderCreateWizard } from "@/components/CrossBorderCreateWizard";
+import { PartnerTrustVerification } from "@/components/PartnerTrustVerification";
 import { trpc } from "@/lib/trpc";
 import { useMemo, useState } from "react";
 import { Globe, Plus, ArrowRightLeft, Send, FileText, ClipboardList, Package } from "lucide-react";
@@ -73,55 +75,9 @@ export default function CrossBorder() {
             <DialogTrigger asChild>
               <Button><Plus className="h-4 w-4 mr-2" />สร้างการส่งต่อ</Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>สร้างการส่งต่อข้ามเครือข่าย</DialogTitle></DialogHeader>
-              <form onSubmit={(e) => {
-                e.preventDefault();
-                const fd = new FormData(e.currentTarget);
-                createReferral.mutate({
-                  referralId: Number(fd.get("referralId") || 0) || undefined,
-                  referralType: fd.get("referralType") as any,
-                  partnerOrgName: fd.get("partnerOrgName") as string,
-                  partnerCountry: fd.get("partnerCountry") as string,
-                  language: fd.get("language") as any,
-                  jurisdiction: fd.get("jurisdiction") as string,
-                  translationRequired: fd.get("translationRequired") === "true",
-                });
-              }} className="space-y-4">
-                <div>
-                  <Label>ประเภทการส่งต่อ</Label>
-                  <Select name="referralType" required>
-                    <SelectTrigger><SelectValue placeholder="เลือกประเภท" /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(typeLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div><Label>ชื่อองค์กรปลายทาง</Label><Input name="partnerOrgName" required /></div>
-                <div><Label>Linked internal referral ID</Label><Input name="referralId" type="number" placeholder="Optional, needed for patient-bound SHL package" /></div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><Label>ประเทศปลายทาง (ISO 3)</Label><Input name="partnerCountry" placeholder="THA, JPN, SGP..." /></div>
-                  <div>
-                    <Label>ภาษาที่ใช้</Label>
-                    <Select name="language">
-                      <SelectTrigger><SelectValue placeholder="เลือกภาษา" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="th">ไทย</SelectItem>
-                        <SelectItem value="en">English</SelectItem>
-                        <SelectItem value="zh">中文</SelectItem>
-                        <SelectItem value="ja">日本語</SelectItem>
-                        <SelectItem value="other">อื่นๆ</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div><Label>เขตอำนาจศาล / Jurisdiction</Label><Input name="jurisdiction" placeholder="เช่น Thailand, ASEAN..." /></div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" name="translationRequired" value="true" id="translationRequired" className="rounded" />
-                  <Label htmlFor="translationRequired">ต้องการแปลเอกสาร</Label>
-                </div>
-                <Button type="submit" className="w-full" disabled={createReferral.isPending}>สร้างการส่งต่อ</Button>
-              </form>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>สร้างการส่งต่อข้ามเครือข่าย (Wizard)</DialogTitle></DialogHeader>
+              <CrossBorderCreateWizard onSuccess={() => { setShowCreateDialog(false); refetch(); }} onCancel={() => setShowCreateDialog(false)} />
             </DialogContent>
           </Dialog>
         </div>
@@ -134,6 +90,10 @@ export default function CrossBorder() {
           <KPI title="แพ็กเกจ" value={overview.data?.stats.packages ?? 0} icon={Package} />
         </div>
 
+        {/* Partner Trust Verification */}
+        {selectedReferral && (
+          <PartnerTrustVerification partnerDid={selectedReferral.partnerOrgName ? `did:web:${selectedReferral.partnerOrgName.toLowerCase().replace(/\s+/g, "-")}` : undefined} />
+        )}
         {/* Info Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="border-l-4 border-l-blue-500">
