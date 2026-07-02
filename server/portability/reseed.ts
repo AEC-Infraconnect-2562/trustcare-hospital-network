@@ -23,6 +23,7 @@ import { buildMedicalCertificateFhir, buildPrescriptionMedicationRequests } from
 import { hospitalDidWeb, patientDidKey } from "./did";
 import { canonicalizeHisPayload } from "./fhir";
 import { DOCUMENT_TYPE_LABELS, documentStorageMetadata, standardLabelCatalog, THAI_GOVERNMENT_DOCUMENT_FONT_POLICY } from "./labels";
+import { resolvePatientOpenId, DEMO_PATIENT_MAPPING } from "./seedData";
 import { purposeForContext } from "./policy";
 import { buildManifestResponse, buildShlinkPayload, encryptShlFile, generateNumericPasscode, hashPasscode, manifestFileDigest, randomBase64UrlBytes } from "./shl";
 import { buildSimulatedHisPayload, scenarioForShlPurpose } from "./shlSimulator";
@@ -758,13 +759,37 @@ async function seedStaffForHospital(hospital: JsonRecord, hospitalId: number): P
 }
 
 async function upsertPatient(patient: JsonRecord, hospitalId: number): Promise<number> {
+  // Use Single Source of Truth: resolvePatientOpenId checks if this seed patient
+  // maps to a demo patient (loginMethod='demo'). If so, reuse that user record.
+  const openId = resolvePatientOpenId(String(patient.hospitalCode), String(patient.seedId));
+  const demoMapping = DEMO_PATIENT_MAPPING.find(
+    m => m.hospitalCode === String(patient.hospitalCode) && m.seedId === String(patient.seedId)
+  );
+
+  const db = (await getDb())!;
+  // If this is a mapped demo patient, check if the demo user already exists
+  if (demoMapping) {
+    const [existing] = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+    if (existing) {
+      // Update the existing demo user with seed-relevant fields (hospitalId, etc.)
+      await db.update(users).set({
+        hospitalId,
+        preferredLanguage: String(patient.nationality) === "THA" ? "th" : "en",
+        isActive: true,
+      } as any).where(eq(users.id, existing.id));
+      return existing.id;
+    }
+  }
+
+  // Fallback: create/upsert a seed user (for non-mapped patients or if demo user doesn't exist yet)
   return upsertSeedUser({
-    openId: `seed-patient-${String(patient.hospitalCode).toLowerCase()}-${String(patient.seedId).toLowerCase()}`,
-    name: String(patient.nameTh || patient.nameEn),
-    email: `${String(patient.seedId).toLowerCase()}.${String(patient.hospitalCode).toLowerCase()}@patients.trustcare.example`,
+    openId,
+    name: demoMapping?.name || String(patient.nameTh || patient.nameEn),
+    email: demoMapping?.email || `${String(patient.seedId).toLowerCase()}.${String(patient.hospitalCode).toLowerCase()}@patients.trustcare.example`,
     systemRole: "patient",
     hospitalId,
-    phone: `08${String(10000000 + Number(sha256(patient.hn).slice(0, 6)) % 89999999).slice(0, 8)}`,
+    phone: demoMapping?.phone || `08${String(10000000 + Number(sha256(patient.hn).slice(0, 6)) % 89999999).slice(0, 8)}`,
+    thaiId: demoMapping?.thaiId,
     preferredLanguage: String(patient.nationality) === "THA" ? "th" : "en",
     credentialEntitlements: { makerTypes: [], checkerTypes: [] },
   });
@@ -906,8 +931,8 @@ async function upsertSourceTruthAdapters(hospital: JsonRecord, hospitalId: numbe
     const values = {
       hospitalId,
       name,
-      systemType: connector.kind === "legacy_db_view" ? "legacy_db" : "his",
-      connectorPattern: connector.kind === "legacy_db_view" ? "db_view" : "api_rest",
+      systemType: connector.kind === "unified_integration" ? "his" : connector.kind === "legacy_db_view" ? "legacy_db" : "his",
+      connectorPattern: connector.kind === "unified_integration" ? "api_rest" : connector.kind === "legacy_db_view" ? "db_view" : "api_rest",
       connectionConfig: {
         sourceOfTruth: true,
         connector,

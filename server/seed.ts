@@ -18,9 +18,10 @@ export const DEMO_USERS = [
   { openId: "demo-nurse-001", name: "นางสาวพิมพ์ใจ ดูแลดี", email: "pimjai@trustcare-central.th", role: "user" as const, systemRole: "nurse" as const, hospitalCode: "TCC", thaiId: "1100100000005", phone: "081-000-0005" },
   { openId: "demo-nurse-002", name: "นายอนุชา ช่วยเหลือ", email: "anucha@trustcare-chiangmai.th", role: "user" as const, systemRole: "nurse" as const, hospitalCode: "TCM", thaiId: "1100100000006", phone: "081-000-0006" },
   { openId: "demo-engineer-001", name: "นายปิยะ เชื่อมต่อดี", email: "piya@trustcare.th", role: "user" as const, systemRole: "integration_engineer" as const, hospitalCode: null, thaiId: "1100100000007", phone: "081-000-0007" },
-  { openId: "demo-patient-001", name: "นายสมศักดิ์ สุขภาพดี", email: "somsak@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: null, thaiId: "1100500123456", phone: "089-123-4567" },
-  { openId: "demo-patient-002", name: "นางสาวนภา แข็งแรง", email: "napa@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: null, thaiId: "1100500234567", phone: "089-234-5678" },
-  { openId: "demo-patient-003", name: "นายวิชัย ใส่ใจสุขภาพ", email: "wichai@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: null, thaiId: "1100500345678", phone: "089-345-6789" },
+  // Demo patients — MUST match DEMO_PATIENT_MAPPING in portability/seedData.ts (Single Source of Truth)
+  { openId: "demo-patient-001", name: "นายสมชาย ใจดี", email: "somsak@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: "TCC", thaiId: "1100500123456", phone: "089-123-4567" },
+  { openId: "demo-patient-002", name: "นางสาวมาลี วัฒนา", email: "napa@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: "TCC", thaiId: "1100500234567", phone: "089-234-5678" },
+  { openId: "demo-patient-003", name: "Mr. John Williams", email: "wichai@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: "TCP", thaiId: "1100500345678", phone: "089-345-6789" },
 ];
 
 function demoCredentialEntitlements(openId: string, systemRole: string) {

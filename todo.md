@@ -346,3 +346,15 @@
 - [x] Update docs/ARCHITECTURE.md with current DB schema (42 tables), system structure, hospital codes
 - [x] Update docs/CONTRIBUTING.md with current development guidelines (27 routers, 30 pages)
 - [x] Push all changes to GitHub
+
+## v4.4 - Bug Fixes & VP Display Redesign
+- [x] Fix Logout bug: user clicks logout but gets redirected back to Dashboard
+- [x] Fix person photo display: Patient photo and Doctor photo show broken images
+- [x] Redesign VP/credential display to show as friendly real documents (not raw fields)
+- [x] Improve seed data quality: Single Source of Truth for demo/seed patients, complete clinical data
+- [ ] Add 'สำเนา' watermark on credential document previews
+- [ ] Push all changes to GitHub
+
+## v4.5 - HIS Adapter Fix & UI Overflow
+- [x] Fix HIS adapter seed: reduce from 6 adapters to 3 (one per hospital, not 2 per hospital)
+- [x] Fix UI overflow on mobile: adapter cards "ทดสอบ" button cut off on small screens

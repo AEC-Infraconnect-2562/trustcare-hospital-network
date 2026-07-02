@@ -289,7 +289,14 @@ export default function Wallet() {
                               <div className="flex items-center gap-3 min-w-0">
                                 {showPhoto ? (
                                   <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-white/30 shadow-sm shrink-0">
-                                    <img src={AVATAR_URLS.male} alt="" className="h-full w-full object-cover" />
+                                    <img src={(() => {
+                                      const subject = card.credentialData?.credentialSubject || card.credentialData;
+                                      const patient = subject?.patient || {};
+                                      if (patient.gender === "female" || patient.sex === "F") return AVATAR_URLS.female;
+                                      const name = patient.nameTh || patient.fullNameTh || patient.nameEn || card.displayName || "";
+                                      if (name.startsWith("นาง") || name.startsWith("Ms.") || name.startsWith("Mrs.")) return AVATAR_URLS.female;
+                                      return AVATAR_URLS.male;
+                                    })()} alt="" className="h-full w-full object-cover" />
                                   </div>
                                 ) : (
                                   <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm shrink-0"><Icon className="h-5 w-5" /></div>
@@ -403,13 +410,13 @@ export default function Wallet() {
                   <Button variant="outline" className="gap-2" onClick={handleShareClick}><Share2 className="h-4 w-4" />แชร์ (Selective)</Button>
                   <Button variant="outline" className="gap-2" onClick={() => {
                     exportWalletCardPdf({
-                      title: selectedCard.title,
-                      type: selectedCard.cardType,
-                      issuedAt: selectedCard.issuedAt,
+                      title: selectedCard.displayName || selectedCard.title,
+                      type: selectedCard.credentialType || selectedCard.cardType,
+                      issuedAt: selectedCard.issuedAt || selectedCard.createdAt,
                       expiresAt: selectedCard.expiresAt,
-                      issuerName: selectedCard.issuerName || "Trustcare Hospital",
+                      issuerName: selectedCard.issuerHospitalName || "Trustcare Hospital",
                       credentialId: selectedCard.credentialId,
-                      credentialData: selectedCard.metadata as Record<string, any> | null,
+                      credentialData: (selectedCard.credentialData || selectedCard.metadata) as Record<string, any> | null,
                     });
                     toast.success("ดาวน์โหลด PDF สำเร็จ");
                   }}><Download className="h-4 w-4" />PDF</Button>

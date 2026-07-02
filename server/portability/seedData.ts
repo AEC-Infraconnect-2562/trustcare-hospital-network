@@ -3,6 +3,35 @@ import { DOCUMENT_TYPE_LABELS, documentStorageMetadata, TRUSTCARE_DOCUMENT_BRAND
 import type { JsonRecord, PortabilityContext } from "./types";
 import { sha256 } from "./utils";
 
+// ─── SINGLE SOURCE OF TRUTH: Demo Patient ↔ Seed Patient Mapping ──────────────
+// This mapping ensures that demo patients (loginMethod='demo', used for login)
+// are the SAME user records that receive wallet_cards from the reseed process.
+// When reseed encounters a patient matching this mapping, it uses the demo openId
+// instead of creating a separate seed user.
+export const DEMO_PATIENT_MAPPING: Array<{
+  demoOpenId: string;
+  hospitalCode: string;
+  seedId: string;
+  name: string;
+  nameEn: string;
+  email: string;
+  thaiId: string;
+  phone: string;
+  gender: string;
+  birthDate: string;
+}> = [
+  { demoOpenId: "demo-patient-001", hospitalCode: "TCC", seedId: "P001", name: "นายสมชาย ใจดี", nameEn: "Mr. Somchai Jaidee", email: "somsak@gmail.com", thaiId: "1100500123456", phone: "089-123-4567", gender: "male", birthDate: "1978-03-15" },
+  { demoOpenId: "demo-patient-002", hospitalCode: "TCC", seedId: "P002", name: "นางสาวมาลี วัฒนา", nameEn: "Ms. Malee Wattana", email: "napa@gmail.com", thaiId: "1100500234567", phone: "089-234-5678", gender: "female", birthDate: "1986-09-24" },
+  { demoOpenId: "demo-patient-003", hospitalCode: "TCP", seedId: "P003", name: "Mr. John Williams", nameEn: "Mr. John Williams", email: "wichai@gmail.com", thaiId: "1100500345678", phone: "089-345-6789", gender: "male", birthDate: "1969-12-02" },
+];
+
+// Helper: resolve the openId for a seed patient (returns demo openId if mapped, otherwise generates seed openId)
+export function resolvePatientOpenId(hospitalCode: string, seedId: string): string {
+  const mapped = DEMO_PATIENT_MAPPING.find(m => m.hospitalCode === hospitalCode && m.seedId === seedId);
+  if (mapped) return mapped.demoOpenId;
+  return `seed-patient-${hospitalCode.toLowerCase()}-${seedId.toLowerCase()}`;
+}
+
 export const TRUSTCARE_DEMO_HOSPITALS = [
   {
     code: "TCC",
@@ -105,28 +134,17 @@ export function generateTrustcareDemoSeed(input: { patientsPerHospital?: number 
 }
 
 export function sourceTruthConnectors(): JsonRecord[] {
-  return TRUSTCARE_DEMO_HOSPITALS.flatMap((hospital) => [
-    {
-      id: `${hospital.code.toLowerCase()}-his-rest`,
-      hospitalCode: hospital.code,
-      kind: "his_rest",
-      name: `${hospital.nameEn} HIS REST`,
-      sourceOfTruth: true,
-      canonicalMappingVersion: `${hospital.code}-HIS-FHIR-R4-v1.0.0`,
-      supportedInputs: ["patient", "encounter", "diagnosis", "allergy", "medication", "lab", "document"],
-      reviewRequiredBeforeVc: true,
-    },
-    {
-      id: `${hospital.code.toLowerCase()}-legacy-db`,
-      hospitalCode: hospital.code,
-      kind: "legacy_db_view",
-      name: `${hospital.nameEn} Legacy DB View`,
-      sourceOfTruth: true,
-      canonicalMappingVersion: `${hospital.code}-LEGACY-FHIR-R4-v1.0.0`,
-      supportedInputs: ["patient_master", "opd_visit", "dx", "rx", "lis_result"],
-      reviewRequiredBeforeVc: true,
-    },
-  ]);
+  return TRUSTCARE_DEMO_HOSPITALS.map((hospital) => ({
+    id: `${hospital.code.toLowerCase()}-integration`,
+    hospitalCode: hospital.code,
+    kind: "unified_integration",
+    name: `${hospital.nameEn} Integration Layer`,
+    sourceOfTruth: true,
+    canonicalMappingVersion: `${hospital.code}-FHIR-R4-v1.0.0`,
+    supportedInputs: ["patient", "encounter", "diagnosis", "allergy", "medication", "lab", "document", "patient_master", "opd_visit", "dx", "rx", "lis_result"],
+    supportedProtocols: ["rest_api", "db_view", "hl7v2"],
+    reviewRequiredBeforeVc: true,
+  }));
 }
 
 function buildPatient(index: number, hospital: (typeof TRUSTCARE_DEMO_HOSPITALS)[number], hospitalIndex: number): JsonRecord {

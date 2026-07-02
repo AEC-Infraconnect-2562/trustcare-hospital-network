@@ -16,13 +16,18 @@ import {
   Plane,
   CreditCard,
   Activity,
+  AlertTriangle,
+  CheckCircle2,
+  ArrowRightLeft,
+  FileCheck,
+  Clock,
 } from "lucide-react";
 
-// Avatar URLs for demo (uploaded to manus-storage)
+// Avatar URLs for demo (uploaded to manus-storage, optimized 400x400 JPEG ~17KB)
 const AVATAR_URLS = {
-  male: "/manus-storage/patient-avatar-male_c0b881f4.png",
-  female: "/manus-storage/patient-avatar-female_838fe3a6.png",
-  doctor: "/manus-storage/doctor-avatar-male_7aa3faf7.png",
+  male: "/manus-storage/patient-avatar-male-optimized_1fd5181b.jpg",
+  female: "/manus-storage/patient-avatar-female-optimized_88a544db.jpg",
+  doctor: "/manus-storage/doctor-avatar-male-optimized_b4e08290.jpg",
 };
 
 // Hospital brand colors based on actual TrustCare network hospitals
@@ -110,7 +115,6 @@ function extractPatientGender(credentialData: any): "male" | "female" {
   const subject = credentialData?.credentialSubject || credentialData;
   const patient = subject?.patient || {};
   if (patient.gender === "female" || patient.sex === "F") return "female";
-  // Check name prefix
   const name = patient.nameTh || patient.fullNameTh || patient.nameEn || "";
   if (name.startsWith("นาง") || name.startsWith("Ms.") || name.startsWith("Mrs.")) return "female";
   return "male";
@@ -158,6 +162,158 @@ function formatThaiDate(dateStr: string) {
   } catch { return dateStr; }
 }
 
+// ─── Document Header (shared across all templates) ───────────────────────────
+function DocumentHeader({ icon: Icon, title, brand, renderData, status }: {
+  icon: typeof FileText;
+  title: string;
+  brand: { gradient: string; logo: string };
+  renderData: ReturnType<typeof extractRenderData>;
+  status: string;
+}) {
+  return (
+    <div className={`bg-gradient-to-r ${brand.gradient} p-6 text-white relative overflow-hidden`}>
+      <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-12 translate-x-12" />
+      <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-6 -translate-x-6" />
+      <div className="relative flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
+            <Icon className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-xs opacity-70 tracking-wider uppercase">{title}</p>
+            <p className="font-bold text-lg">{renderData.hospital.nameTh || brand.logo}</p>
+            {renderData.hospital.nameEn && (
+              <p className="text-xs opacity-70">{renderData.hospital.nameEn}</p>
+            )}
+          </div>
+        </div>
+        <StatusBadge status={status} />
+      </div>
+    </div>
+  );
+}
+
+// ─── Patient Info Section ────────────────────────────────────────────────────
+function PatientInfoSection({ renderData, showPhoto, gender }: {
+  renderData: ReturnType<typeof extractRenderData>;
+  showPhoto?: boolean;
+  gender?: "male" | "female";
+}) {
+  const avatarUrl = gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male;
+  return (
+    <div className="flex gap-4 items-start">
+      {showPhoto && (
+        <div className="h-20 w-16 rounded-xl overflow-hidden border-2 border-gray-200 shadow-md shrink-0">
+          <img src={avatarUrl} alt="" className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/notionists/svg?seed=${renderData.patient.fullNameTh || 'patient'}`; }} />
+        </div>
+      )}
+      <div className="space-y-1 flex-1">
+        <p className="font-bold text-lg">{renderData.patient.fullNameTh || "—"}</p>
+        {renderData.patient.fullNameEn && (
+          <p className="text-sm text-muted-foreground">{renderData.patient.fullNameEn}</p>
+        )}
+        <div className="flex gap-4 text-xs text-muted-foreground">
+          {renderData.patient.hn && <span>HN: <span className="font-mono font-medium text-foreground">{renderData.patient.hn}</span></span>}
+          {renderData.patient.carepassId && <span>CarePass: <span className="font-mono text-foreground">{renderData.patient.carepassId}</span></span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Document Footer ─────────────────────────────────────────────────────────
+function DocumentFooter({ issuedAt, expiresAt, documentNo }: {
+  issuedAt: string;
+  expiresAt?: string | null;
+  documentNo?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex items-center gap-1">
+          <Calendar className="h-3 w-3" />
+          <span>ออกเมื่อ: {formatThaiDate(issuedAt)}</span>
+        </div>
+        {expiresAt && <span>หมดอายุ: {formatThaiDate(expiresAt)}</span>}
+      </div>
+      {documentNo && (
+        <p className="text-[10px] text-muted-foreground font-mono">เลขที่เอกสาร: {documentNo}</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Practitioner Section ────────────────────────────────────────────────────
+function PractitionerSection({ practitioner, role }: { practitioner: any; role?: string }) {
+  if (!practitioner?.name) return null;
+  return (
+    <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+      <img src={AVATAR_URLS.doctor} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" onError={(e) => { (e.target as HTMLImageElement).src = 'https://api.dicebear.com/7.x/notionists/svg?seed=doctor'; }} />
+      <div>
+        <p className="font-medium">{practitioner.name}</p>
+        <p className="text-xs text-muted-foreground">
+          {practitioner.licenseNo ? `ว.${practitioner.licenseNo}` : (role || "แพทย์ผู้ออกเอกสาร")}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Clinical Summary Section ────────────────────────────────────────────────
+function ClinicalSummarySection({ conditions, allergies, medications }: {
+  conditions: any[];
+  allergies: string[];
+  medications: any[];
+}) {
+  if (!conditions?.length && !allergies?.length && !medications?.length) return null;
+  return (
+    <div className="space-y-3">
+      {conditions?.length > 0 && (
+        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-blue-800 mb-2 flex items-center gap-1.5">
+            <Heart className="h-3.5 w-3.5" /> โรคประจำตัว / การวินิจฉัย
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {conditions.map((c: any, i: number) => (
+              <span key={i} className="text-xs bg-blue-100 text-blue-800 rounded-lg px-2.5 py-1 font-medium">
+                {typeof c === "string" ? c : c.display || c.code}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {allergies?.length > 0 && (
+        <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-red-800 mb-2 flex items-center gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5" /> การแพ้ยา / สารที่แพ้
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {allergies.map((a: string, i: number) => (
+              <span key={i} className="text-xs bg-red-100 text-red-800 rounded-lg px-2.5 py-1 font-medium">
+                {a}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {medications?.length > 0 && (
+        <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-green-800 mb-2 flex items-center gap-1.5">
+            <Pill className="h-3.5 w-3.5" /> ยาที่ใช้ประจำ
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {medications.map((m: any, i: number) => (
+              <span key={i} className="text-xs bg-green-100 text-green-800 rounded-lg px-2.5 py-1 font-medium">
+                {typeof m === "string" ? m : m.name || m.code}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Patient Identity Card Template ───────────────────────────────────────────
 function PatientIdentityCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
@@ -168,43 +324,14 @@ function PatientIdentityCard({ props }: { props: CredentialRendererProps }) {
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
-      {/* Hospital Header - like a real patient ID card */}
-      <div className={`bg-gradient-to-r ${brand.gradient} p-6 text-white relative overflow-hidden`}>
-        {/* Decorative pattern */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-8 translate-x-8" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-6 -translate-x-6" />
-        
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
-              <Building2 className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-xs opacity-70 tracking-wider uppercase">บัตรประจำตัวผู้ป่วย</p>
-              <p className="font-bold text-lg">{renderData.hospital.nameTh || props.hospitalName || brand.logo}</p>
-              {renderData.hospital.nameEn && (
-                <p className="text-xs opacity-70">{renderData.hospital.nameEn}</p>
-              )}
-            </div>
-          </div>
-          <StatusBadge status={props.status} />
-        </div>
-      </div>
-
+      <DocumentHeader icon={Building2} title="บัตรประจำตัวผู้ป่วย" brand={brand} renderData={renderData} status={props.status} />
       <CardContent className="p-6">
         <div className="flex gap-5">
-          {/* Photo - realistic ID card style */}
           <div className="shrink-0">
             <div className="h-32 w-24 rounded-xl overflow-hidden border-2 border-gray-200 shadow-lg ring-2 ring-offset-2 ring-gray-100">
-              <img
-                src={avatarUrl}
-                alt="Patient photo"
-                className="h-full w-full object-cover"
-              />
+              <img src={avatarUrl} alt="" className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/notionists/svg?seed=${props.patientName || 'patient'}`; }} />
             </div>
           </div>
-
-          {/* Patient info */}
           <div className="flex-1 space-y-3">
             <div>
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">ชื่อ-นามสกุล</p>
@@ -226,64 +353,15 @@ function PatientIdentityCard({ props }: { props: CredentialRendererProps }) {
           </div>
         </div>
 
-        {/* Clinical Summary (if available) */}
         {(clinical.conditions.length > 0 || clinical.allergies.length > 0) && (
           <>
             <Separator className="my-4" />
-            <div className="grid grid-cols-2 gap-4">
-              {clinical.conditions.length > 0 && (
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1">
-                    <Activity className="h-3 w-3" /> โรคประจำตัว
-                  </p>
-                  <div className="space-y-1">
-                    {clinical.conditions.map((c: any, i: number) => (
-                      <p key={i} className="text-xs bg-blue-50 text-blue-700 rounded px-2 py-0.5 inline-block mr-1">
-                        {typeof c === "string" ? c : c.display || c.code}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {clinical.allergies.length > 0 && (
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1">
-                    <Shield className="h-3 w-3" /> การแพ้ยา
-                  </p>
-                  <div className="space-y-1">
-                    {clinical.allergies.map((a: string, i: number) => (
-                      <p key={i} className="text-xs bg-red-50 text-red-700 rounded px-2 py-0.5 inline-block mr-1">
-                        {a}
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={[]} />
           </>
         )}
 
         <Separator className="my-4" />
-
-        {/* Footer with document info */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            <span>ออกเมื่อ: {formatThaiDate(props.issuedAt)}</span>
-          </div>
-          {props.expiresAt && (
-            <span>หมดอายุ: {formatThaiDate(props.expiresAt)}</span>
-          )}
-        </div>
-        {renderData.document.no && (
-          <div className="mt-2 flex items-center justify-between">
-            <p className="text-[10px] text-muted-foreground font-mono">เลขที่: {renderData.document.no}</p>
-            {renderData.document.hashShort && (
-              <p className="text-[10px] text-muted-foreground font-mono">Hash: {renderData.document.hashShort}</p>
-            )}
-          </div>
-        )}
-        <p className="text-[9px] text-muted-foreground mt-1 font-mono truncate opacity-60">DID: {renderData.issuer.did}</p>
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
       </CardContent>
     </Card>
   );
@@ -294,49 +372,15 @@ function MedicalCertificateCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
   const gender = extractPatientGender(props.credentialData);
-  const avatarUrl = gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male;
   const clinical = extractClinicalInfo(props.credentialData);
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
-      {/* Header */}
-      <div className={`bg-gradient-to-r ${brand.gradient} p-6 text-white relative overflow-hidden`}>
-        <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-12 translate-x-12" />
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
-              <Stethoscope className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-xs opacity-70 tracking-wider uppercase">ใบรับรองแพทย์</p>
-              <p className="font-bold text-lg">{renderData.hospital.nameTh || props.hospitalName || brand.logo}</p>
-              {renderData.hospital.nameEn && (
-                <p className="text-xs opacity-70">{renderData.hospital.nameEn}</p>
-              )}
-            </div>
-          </div>
-          <StatusBadge status={props.status} />
-        </div>
-      </div>
-
+      <DocumentHeader icon={Stethoscope} title="ใบรับรองแพทย์" brand={brand} renderData={renderData} status={props.status} />
       <CardContent className="p-6 space-y-4">
-        {/* Patient section with photo */}
-        <div className="flex gap-4 items-start">
-          <div className="h-20 w-16 rounded-xl overflow-hidden border-2 border-gray-200 shadow-md shrink-0">
-            <img src={avatarUrl} alt="Patient" className="h-full w-full object-cover" />
-          </div>
-          <div className="space-y-1">
-            <p className="font-bold text-lg">{renderData.patient.fullNameTh || "—"}</p>
-            {renderData.patient.fullNameEn && (
-              <p className="text-sm text-muted-foreground">{renderData.patient.fullNameEn}</p>
-            )}
-            <p className="text-xs text-muted-foreground">HN: {renderData.patient.hn}</p>
-          </div>
-        </div>
-
+        <PatientInfoSection renderData={renderData} showPhoto gender={gender} />
         <Separator />
 
-        {/* Diagnosis */}
         {clinical.diagnosisText && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
             <p className="text-xs font-semibold text-amber-800 mb-1 flex items-center gap-1">
@@ -346,7 +390,6 @@ function MedicalCertificateCard({ props }: { props: CredentialRendererProps }) {
           </div>
         )}
 
-        {/* Fitness for Work */}
         {clinical.fitnessForWork && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
             <p className="text-xs font-semibold text-blue-800 mb-1">ความสามารถในการทำงาน</p>
@@ -357,7 +400,6 @@ function MedicalCertificateCard({ props }: { props: CredentialRendererProps }) {
           </div>
         )}
 
-        {/* Recommendations */}
         {clinical.recommendations?.length > 0 && (
           <div>
             <p className="text-xs font-semibold text-muted-foreground mb-2">คำแนะนำแพทย์</p>
@@ -372,32 +414,9 @@ function MedicalCertificateCard({ props }: { props: CredentialRendererProps }) {
           </div>
         )}
 
-        {/* Practitioner */}
-        {clinical.practitioner?.name && (
-          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
-            <img src={AVATAR_URLS.doctor} alt="Doctor" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" />
-            <div>
-              <p className="font-medium">{clinical.practitioner.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {clinical.practitioner.license ? `ว.${clinical.practitioner.license}` : "แพทย์ผู้ออกใบรับรอง"}
-              </p>
-            </div>
-          </div>
-        )}
-
+        <PractitionerSection practitioner={clinical.practitioner} role="แพทย์ผู้ออกใบรับรอง" />
         <Separator />
-
-        {/* Dates & Document No */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            <span>ออกเมื่อ: {formatThaiDate(props.issuedAt)}</span>
-          </div>
-          {props.expiresAt && <span>หมดอายุ: {formatThaiDate(props.expiresAt)}</span>}
-        </div>
-        {renderData.document.no && (
-          <p className="text-[10px] text-muted-foreground font-mono">เลขที่: {renderData.document.no}</p>
-        )}
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
       </CardContent>
     </Card>
   );
@@ -411,39 +430,11 @@ function PrescriptionCard({ props }: { props: CredentialRendererProps }) {
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
-      {/* Header */}
-      <div className={`bg-gradient-to-r ${brand.gradient} p-6 text-white relative overflow-hidden`}>
-        <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-12 translate-x-12" />
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
-              <Pill className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-xs opacity-70 tracking-wider uppercase">ใบสั่งยา / Prescription</p>
-              <p className="font-bold text-lg">{renderData.hospital.nameTh || props.hospitalName || brand.logo}</p>
-              {renderData.hospital.nameEn && (
-                <p className="text-xs opacity-70">{renderData.hospital.nameEn}</p>
-              )}
-            </div>
-          </div>
-          <StatusBadge status={props.status} />
-        </div>
-      </div>
-
+      <DocumentHeader icon={Pill} title="ใบสั่งยา / PRESCRIPTION" brand={brand} renderData={renderData} status={props.status} />
       <CardContent className="p-6 space-y-4">
-        {/* Patient */}
-        <div className="flex items-center gap-3 bg-muted/30 rounded-xl p-3">
-          <User className="h-5 w-5 text-muted-foreground" />
-          <div>
-            <p className="font-bold">{renderData.patient.fullNameTh || "—"}</p>
-            <p className="text-xs text-muted-foreground">HN: {renderData.patient.hn}</p>
-          </div>
-        </div>
-
+        <PatientInfoSection renderData={renderData} />
         <Separator />
 
-        {/* Medications */}
         <div>
           <p className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
             <Pill className="h-3.5 w-3.5" /> รายการยาที่สั่ง
@@ -485,61 +476,517 @@ function PrescriptionCard({ props }: { props: CredentialRendererProps }) {
           )}
         </div>
 
-        {/* Prescriber */}
-        {clinical.prescriber?.name && (
-          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
-            <img src={AVATAR_URLS.doctor} alt="Doctor" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" />
-            <div>
-              <p className="font-medium">{clinical.prescriber.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {clinical.prescriber.license ? `ว.${clinical.prescriber.license}` : "แพทย์ผู้สั่งยา"}
-              </p>
-            </div>
-          </div>
-        )}
-
+        <PractitionerSection practitioner={clinical.prescriber} role="แพทย์ผู้สั่งยา" />
         <Separator />
-
-        {/* Dates */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            <span>ออกเมื่อ: {formatThaiDate(props.issuedAt)}</span>
-          </div>
-          {props.expiresAt && <span>หมดอายุ: {formatThaiDate(props.expiresAt)}</span>}
-        </div>
-        {renderData.document.no && (
-          <p className="text-[10px] text-muted-foreground font-mono">เลขที่: {renderData.document.no}</p>
-        )}
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
       </CardContent>
     </Card>
   );
 }
 
-// ─── Generic Document Template ────────────────────────────────────────────────
+// ─── Lab Result Template ─────────────────────────────────────────────────────
+function LabResultCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const clinical = extractClinicalInfo(props.credentialData);
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={FlaskConical} title="ผลตรวจทางห้องปฏิบัติการ" brand={brand} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        {/* Lab Results Display */}
+        <div className="bg-pink-50 border border-pink-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-pink-800 mb-3 flex items-center gap-1.5">
+            <FlaskConical className="h-3.5 w-3.5" /> ผลการตรวจ
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between bg-white rounded-lg p-3 border border-pink-100">
+              <div>
+                <p className="font-medium text-sm">HbA1c (น้ำตาลสะสม)</p>
+                <p className="text-xs text-muted-foreground">LOINC: 4548-4</p>
+              </div>
+              <div className="text-right">
+                <p className="font-bold text-lg text-pink-700">7.4%</p>
+                <p className="text-[10px] text-muted-foreground">ค่าปกติ: 4.0-5.6%</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Clinical context */}
+        <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
+
+        <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์ผู้สั่งตรวจ" />
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Immunization Template ───────────────────────────────────────────────────
+function ImmunizationCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={Syringe} title="บันทึกการฉีดวัคซีน" brand={brand} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        <div className="bg-lime-50 border border-lime-200 rounded-xl p-4">
+          <p className="text-xs font-semibold text-lime-800 mb-3 flex items-center gap-1.5">
+            <Syringe className="h-3.5 w-3.5" /> ข้อมูลวัคซีน
+          </p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">ชนิดวัคซีน</span>
+              <span className="text-sm">ตามบันทึกของสถานพยาบาล</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">สถานะ</span>
+              <Badge className="bg-lime-100 text-lime-800 border-lime-200">ฉีดเรียบร้อย</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">วันที่ฉีด</span>
+              <span className="text-sm">{formatThaiDate(props.issuedAt)}</span>
+            </div>
+          </div>
+        </div>
+
+        <PractitionerSection practitioner={{ name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์ผู้ฉีดวัคซีน" />
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Patient Summary Template ────────────────────────────────────────────────
+function PatientSummaryCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const gender = extractPatientGender(props.credentialData);
+  const clinical = extractClinicalInfo(props.credentialData);
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={ClipboardList} title="สรุปข้อมูลผู้ป่วย" brand={brand} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} showPhoto gender={gender} />
+        <Separator />
+        <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
+        <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์เจ้าของไข้" />
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Allergy Alert Template ──────────────────────────────────────────────────
+function AllergyAlertCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const clinical = extractClinicalInfo(props.credentialData);
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={AlertTriangle} title="แจ้งเตือนการแพ้ยา" brand={{ ...brand, gradient: "from-red-700 to-red-500" }} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        <div className="bg-red-50 border-2 border-red-200 rounded-xl p-5">
+          <p className="text-sm font-bold text-red-800 mb-3 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" /> ข้อมูลการแพ้ยา — กรุณาแจ้งแพทย์ทุกครั้ง
+          </p>
+          {clinical.allergies?.length > 0 ? (
+            <div className="space-y-2">
+              {clinical.allergies.map((a: string, i: number) => (
+                <div key={i} className="flex items-center gap-2 bg-white rounded-lg p-3 border border-red-100">
+                  <Shield className="h-4 w-4 text-red-600 shrink-0" />
+                  <span className="font-medium text-red-900">{a}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-red-700">ไม่พบข้อมูลการแพ้ยาในระบบ</p>
+          )}
+        </div>
+
+        <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์ผู้บันทึก" />
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Medication Summary Template ─────────────────────────────────────────────
+function MedicationSummaryCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const clinical = extractClinicalInfo(props.credentialData);
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={Pill} title="สรุปรายการยา" brand={{ ...brand, gradient: "from-green-700 to-green-500" }} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-green-800 mb-3 flex items-center gap-1.5">
+            <Pill className="h-3.5 w-3.5" /> รายการยาที่ใช้ประจำ
+          </p>
+          {clinical.medicationsList?.length > 0 ? (
+            <div className="space-y-2">
+              {clinical.medicationsList.map((med: any, i: number) => (
+                <div key={i} className="flex items-center gap-3 bg-white rounded-lg p-3 border border-green-100">
+                  <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                  <span className="font-medium text-sm">{med.name || med.code}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">ไม่มีข้อมูลรายการยา</p>
+          )}
+        </div>
+
+        <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์ผู้สั่งยา" />
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Referral Template ───────────────────────────────────────────────────────
+function ReferralCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const clinical = extractClinicalInfo(props.credentialData);
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={ArrowRightLeft} title="ใบส่งต่อผู้ป่วย / REFERRAL" brand={{ ...brand, gradient: "from-blue-700 to-blue-500" }} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-blue-800 mb-2 flex items-center gap-1.5">
+            <ArrowRightLeft className="h-3.5 w-3.5" /> ข้อมูลการส่งต่อ
+          </p>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">จากสถานพยาบาล</span>
+              <span className="font-medium">{renderData.hospital.nameTh}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">เหตุผลการส่งต่อ</span>
+              <span className="font-medium">ต้องการการดูแลเฉพาะทาง</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">ระดับความเร่งด่วน</span>
+              <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200">ปานกลาง</Badge>
+            </div>
+          </div>
+        </div>
+
+        <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
+        <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์ผู้ส่งต่อ" />
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Discharge Summary Template ──────────────────────────────────────────────
+function DischargeSummaryCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const clinical = extractClinicalInfo(props.credentialData);
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={FileCheck} title="สรุปจำหน่ายผู้ป่วย" brand={{ ...brand, gradient: "from-slate-700 to-slate-500" }} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+            <FileCheck className="h-3.5 w-3.5" /> สรุปการรักษา
+          </p>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">สถานะจำหน่าย</span>
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">จำหน่ายกลับบ้าน</Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">วันที่จำหน่าย</span>
+              <span className="font-medium">{formatThaiDate(props.issuedAt)}</span>
+            </div>
+          </div>
+        </div>
+
+        <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
+        <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์เจ้าของไข้" />
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Insurance Eligibility Template ──────────────────────────────────────────
+function InsuranceEligibilityCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={CreditCard} title="สิทธิ์ประกันสุขภาพ" brand={{ ...brand, gradient: "from-amber-700 to-amber-500" }} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-amber-800 mb-3 flex items-center gap-1.5">
+            <CreditCard className="h-3.5 w-3.5" /> ข้อมูลสิทธิ์การรักษา
+          </p>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">สถานะสิทธิ์</span>
+              <Badge className="bg-emerald-100 text-emerald-800">ใช้งานได้</Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">ประเภทสิทธิ์</span>
+              <span className="font-medium">ประกันสุขภาพ</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">ระยะเวลาคุ้มครอง</span>
+              <span className="font-medium">{formatThaiDate(props.issuedAt)} - {props.expiresAt ? formatThaiDate(props.expiresAt) : "ไม่จำกัด"}</span>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Consent Receipt Template ────────────────────────────────────────────────
+function ConsentReceiptCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const subject = props.credentialData?.credentialSubject || props.credentialData;
+
+  const scopes = subject?.scopes || [];
+  const purpose = subject?.purpose || "การรักษาพยาบาล";
+  const status = subject?.status || "granted";
+
+  const scopeLabels: Record<string, string> = {
+    "Patient.read": "ข้อมูลผู้ป่วย",
+    "Condition.read": "โรคประจำตัว",
+    "AllergyIntolerance.read": "การแพ้ยา",
+    "Medication.read": "ยาที่ใช้",
+    "Observation.read": "ผลตรวจ",
+    "DocumentReference.read": "เอกสารทางการแพทย์",
+  };
+
+  const purposeLabels: Record<string, string> = {
+    referral: "การส่งต่อผู้ป่วย",
+    claim: "การเคลมประกัน",
+    insurance: "การตรวจสอบสิทธิ์ประกัน",
+    medical_tourism: "การท่องเที่ยวเชิงการแพทย์",
+    treatment: "การรักษาพยาบาล",
+  };
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={Shield} title="ใบยินยอมเปิดเผยข้อมูล (Consent)" brand={{ ...brand, gradient: "from-violet-700 to-violet-500" }} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        <div className="bg-violet-50 border border-violet-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-violet-800 mb-3 flex items-center gap-1.5">
+            <Shield className="h-3.5 w-3.5" /> รายละเอียดความยินยอม
+          </p>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">วัตถุประสงค์</span>
+              <span className="font-medium">{purposeLabels[purpose] || purpose}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">สถานะ</span>
+              <Badge className={status === "granted" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}>
+                {status === "granted" ? "อนุญาตแล้ว" : "ยกเลิก"}
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        {scopes.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground mb-2">ขอบเขตข้อมูลที่อนุญาต</p>
+            <div className="grid grid-cols-2 gap-2">
+              {scopes.map((scope: string, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-xs bg-muted/30 rounded-lg p-2">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-violet-600 shrink-0" />
+                  <span>{scopeLabels[scope] || scope}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Travel Document Verification Template ───────────────────────────────────
+function TravelDocumentCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={Plane} title="ตรวจสอบเอกสารเดินทาง" brand={{ ...brand, gradient: "from-sky-700 to-sky-500" }} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        <div className="bg-sky-50 border border-sky-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-sky-800 mb-2 flex items-center gap-1.5">
+            <Plane className="h-3.5 w-3.5" /> ข้อมูลเอกสารเดินทาง
+          </p>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">สถานะการตรวจสอบ</span>
+              <Badge className="bg-emerald-100 text-emerald-800">ผ่านการตรวจสอบ</Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">ประเภท</span>
+              <span className="font-medium">Medical Tourism</span>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Claim Package / Receipt Template ────────────────────────────────────────
+function ClaimCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const isReceipt = props.type === "claim_receipt";
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader
+        icon={FileText}
+        title={isReceipt ? "ใบตอบรับเคลม" : "แพ็คเกจเคลมประกัน"}
+        brand={{ ...brand, gradient: "from-orange-700 to-orange-500" }}
+        renderData={renderData}
+        status={props.status}
+      />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        <div className="bg-orange-50 border border-orange-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-orange-800 mb-2 flex items-center gap-1.5">
+            <FileText className="h-3.5 w-3.5" /> {isReceipt ? "ข้อมูลการตอบรับ" : "ข้อมูลเคลม"}
+          </p>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">สถานะ</span>
+              <Badge className="bg-emerald-100 text-emerald-800">{isReceipt ? "ตอบรับแล้ว" : "ส่งเรียบร้อย"}</Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">วันที่ดำเนินการ</span>
+              <span className="font-medium">{formatThaiDate(props.issuedAt)}</span>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── MPI Link Certificate Template ───────────────────────────────────────────
+function MpiLinkCard({ props }: { props: CredentialRendererProps }) {
+  const renderData = extractRenderData(props.credentialData);
+  const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      <DocumentHeader icon={User} title="ใบเชื่อมโยงตัวตน (MPI)" brand={{ ...brand, gradient: "from-cyan-700 to-cyan-500" }} renderData={renderData} status={props.status} />
+      <CardContent className="p-6 space-y-4">
+        <PatientInfoSection renderData={renderData} />
+        <Separator />
+
+        <div className="bg-cyan-50 border border-cyan-100 rounded-xl p-4">
+          <p className="text-xs font-semibold text-cyan-800 mb-2 flex items-center gap-1.5">
+            <User className="h-3.5 w-3.5" /> การเชื่อมโยงตัวตนข้ามสถานพยาบาล
+          </p>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">สถานะ</span>
+              <Badge className="bg-emerald-100 text-emerald-800">เชื่อมโยงสำเร็จ</Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">CarePass ID</span>
+              <span className="font-mono text-xs font-medium">{renderData.patient.carepassId || "—"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">HN ต้นทาง</span>
+              <span className="font-mono text-xs font-medium">{renderData.patient.hn || "—"}</span>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Generic Fallback Template (for types without specific template) ─────────
 function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const clinical = extractClinicalInfo(props.credentialData);
   
   const typeConfig: Record<string, { icon: typeof FileText; label: string; color: string }> = {
-    patient_summary: { icon: ClipboardList, label: "สรุปข้อมูลผู้ป่วย", color: "from-indigo-700 to-indigo-500" },
-    allergy_alert: { icon: Shield, label: "แจ้งเตือนการแพ้ยา", color: "from-red-700 to-red-500" },
-    medication_summary: { icon: Pill, label: "สรุปรายการยา", color: "from-green-700 to-green-500" },
-    consent_receipt: { icon: Shield, label: "ใบยินยอม (Consent)", color: "from-violet-700 to-violet-500" },
-    mpi_link_certificate: { icon: User, label: "ใบเชื่อมโยงตัวตน (MPI)", color: "from-cyan-700 to-cyan-500" },
-    travel_document_verification: { icon: Plane, label: "ตรวจสอบเอกสารเดินทาง", color: "from-sky-700 to-sky-500" },
-    insurance_eligibility: { icon: CreditCard, label: "สิทธิ์ประกันสุขภาพ", color: "from-amber-700 to-amber-500" },
-    claim_package: { icon: FileText, label: "แพ็คเกจเคลม", color: "from-orange-700 to-orange-500" },
-    claim_receipt: { icon: FileText, label: "ใบตอบรับเคลม", color: "from-orange-700 to-orange-500" },
-    sync_receipt: { icon: Activity, label: "ใบตอบรับ Sync", color: "from-gray-700 to-gray-500" },
+    sync_receipt: { icon: Activity, label: "ใบตอบรับ Sync ข้อมูล", color: "from-gray-700 to-gray-500" },
     shl_manifest: { icon: FileText, label: "Smart Health Link", color: "from-emerald-700 to-emerald-500" },
-    immunization: { icon: Syringe, label: "บันทึกการฉีดวัคซีน", color: "from-lime-700 to-lime-500" },
-    lab_result: { icon: FlaskConical, label: "ผลตรวจทางห้องปฏิบัติการ", color: "from-pink-700 to-pink-500" },
     diagnostic_report: { icon: ClipboardList, label: "รายงานการวินิจฉัย", color: "from-rose-700 to-rose-500" },
-    discharge_summary: { icon: FileText, label: "สรุปจำหน่ายผู้ป่วย", color: "from-slate-700 to-slate-500" },
-    referral_vc: { icon: FileText, label: "ใบส่งต่อผู้ป่วย", color: "from-blue-700 to-blue-500" },
     pharmacy_dispense: { icon: Pill, label: "ใบจ่ายยา", color: "from-teal-700 to-teal-500" },
-    appointment: { icon: Calendar, label: "นัดหมาย", color: "from-purple-700 to-purple-500" },
+    appointment: { icon: Clock, label: "นัดหมาย", color: "from-purple-700 to-purple-500" },
     visa_support_letter: { icon: Plane, label: "หนังสือรับรองเพื่อวีซ่า", color: "from-blue-800 to-blue-600" },
     quotation: { icon: CreditCard, label: "ใบเสนอราคา", color: "from-yellow-700 to-yellow-500" },
     guarantee_letter: { icon: Shield, label: "หนังสือค้ำประกัน", color: "from-emerald-800 to-emerald-600" },
@@ -550,155 +997,59 @@ function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
-      {/* Header */}
-      <div className={`bg-gradient-to-r ${config.color} p-6 text-white relative overflow-hidden`}>
-        <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-12 translate-x-12" />
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
-              <Icon className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-xs opacity-70 tracking-wider uppercase">{config.label}</p>
-              <p className="font-bold text-lg">{renderData.hospital.nameTh || props.hospitalName || brand.logo}</p>
-              {renderData.hospital.nameEn && (
-                <p className="text-xs opacity-70">{renderData.hospital.nameEn}</p>
-              )}
-            </div>
-          </div>
-          <StatusBadge status={props.status} />
-        </div>
-      </div>
-
+      <DocumentHeader icon={Icon} title={config.label} brand={{ ...brand, gradient: config.color }} renderData={renderData} status={props.status} />
       <CardContent className="p-6 space-y-4">
-        {/* Patient */}
-        <div className="flex items-center gap-3 bg-muted/30 rounded-xl p-3">
-          <User className="h-5 w-5 text-muted-foreground" />
-          <div>
-            <p className="font-bold">{renderData.patient.fullNameTh || "—"}</p>
-            {renderData.patient.fullNameEn && renderData.patient.fullNameEn !== renderData.patient.fullNameTh && (
-              <p className="text-xs text-muted-foreground">{renderData.patient.fullNameEn}</p>
-            )}
-            {renderData.patient.hn && <p className="text-xs text-muted-foreground">HN: {renderData.patient.hn}</p>}
-          </div>
-        </div>
-
+        <PatientInfoSection renderData={renderData} />
         <Separator />
 
-        {/* Key fields from credential subject */}
-        <CredentialSubjectFields credentialData={props.credentialData} type={props.type} />
-
-        <Separator />
-
-        {/* Dates */}
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            <span>ออกเมื่อ: {formatThaiDate(props.issuedAt)}</span>
-          </div>
-          {props.expiresAt && <span>หมดอายุ: {formatThaiDate(props.expiresAt)}</span>}
-        </div>
-        {renderData.document.no && (
-          <p className="text-[10px] text-muted-foreground font-mono">เลขที่: {renderData.document.no}</p>
+        {/* Show clinical info if available */}
+        {(clinical.conditions?.length > 0 || clinical.allergies?.length > 0 || clinical.medicationsList?.length > 0) && (
+          <>
+            <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
+            <Separator />
+          </>
         )}
+
+        {/* Simple status card for generic types */}
+        <div className="bg-muted/30 border border-border rounded-xl p-4">
+          <div className="flex items-center gap-2 text-sm">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <span className="font-medium">เอกสารนี้ได้รับการรับรองโดย {renderData.hospital.nameTh || brand.logo}</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1.5">
+            ออกเมื่อ {formatThaiDate(props.issuedAt)} — ตรวจสอบความถูกต้องได้ผ่าน QR Code
+          </p>
+        </div>
+
+        <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
       </CardContent>
     </Card>
   );
-}
-
-// ─── Credential Subject Fields (formatted key-value) ──────────────────────────
-function CredentialSubjectFields({ credentialData, type }: { credentialData: any; type: string }) {
-  const subject = credentialData?.credentialSubject || credentialData;
-  if (!subject) return null;
-
-  // Skip technical/meta fields
-  const skipKeys = new Set([
-    "@context", "type", "id", "credentialStatus", "issuer", "validFrom", "validUntil",
-    "evidence", "makerChecker", "trustcareSeed", "trustcareSubjectId", "fhir",
-    "sourceOfTruth", "fontPolicy", "brand", "label", "documentHash", "documentNo",
-    "humanDocument", "patient", "organization",
-  ]);
-
-  const fieldLabels: Record<string, string> = {
-    practitioner: "แพทย์",
-    prescriber: "แพทย์ผู้สั่งยา",
-    diagnosisText: "การวินิจฉัย",
-    fitnessForWork: "ความสามารถทำงาน",
-    recommendations: "คำแนะนำ",
-    clinical: "ข้อมูลทางคลินิก",
-    documentType: "ประเภทเอกสาร",
-    certificateType: "ประเภทใบรับรอง",
-    prescriptionType: "ประเภทใบสั่งยา",
-    authoredOn: "วันที่สั่ง",
-    substitutionAllowed: "อนุญาตเปลี่ยนยา",
-    repeatsAllowed: "จำนวนครั้งที่สั่งซ้ำ",
-    dispenseWindowDays: "ระยะเวลาจ่ายยา (วัน)",
-    purpose: "วัตถุประสงค์",
-    scopes: "ขอบเขตข้อมูล",
-    status: "สถานะ",
-  };
-
-  const entries = Object.entries(subject).filter(([key]) => !skipKeys.has(key));
-  if (entries.length === 0) return null;
-
-  return (
-    <div className="space-y-2.5">
-      {entries.slice(0, 6).map(([key, value]) => (
-        <div key={key} className="flex items-start gap-3">
-          <span className="text-[11px] text-muted-foreground min-w-[90px] shrink-0 pt-0.5 font-medium">
-            {fieldLabels[key] || key}
-          </span>
-          <span className="text-sm flex-1 text-foreground">
-            {renderValue(value)}
-          </span>
-        </div>
-      ))}
-      {entries.length > 6 && (
-        <p className="text-xs text-muted-foreground italic">+{entries.length - 6} รายการเพิ่มเติม...</p>
-      )}
-    </div>
-  );
-}
-
-function renderValue(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "boolean") return value ? "ใช่" : "ไม่";
-  if (typeof value === "number") return String(value);
-  if (typeof value === "string") {
-    if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
-      try { return formatThaiDate(value); } catch { return value; }
-    }
-    return value;
-  }
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "—";
-    if (typeof value[0] === "string") return value.join(", ");
-    return `[${value.length} รายการ]`;
-  }
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    if (obj.name) return String(obj.name);
-    if (obj.display) return String(obj.display);
-    if (obj.text) return String(obj.text);
-    return JSON.stringify(value).slice(0, 80) + "...";
-  }
-  return String(value);
 }
 
 // ─── Main Renderer ────────────────────────────────────────────────────────────
 export function CredentialRenderer(props: CredentialRendererProps) {
   const { type } = props;
 
-  if (type === "patient_identity") {
-    return <PatientIdentityCard props={props} />;
+  switch (type) {
+    case "patient_identity": return <PatientIdentityCard props={props} />;
+    case "medical_certificate": return <MedicalCertificateCard props={props} />;
+    case "prescription": return <PrescriptionCard props={props} />;
+    case "lab_result": return <LabResultCard props={props} />;
+    case "immunization": return <ImmunizationCard props={props} />;
+    case "patient_summary": return <PatientSummaryCard props={props} />;
+    case "allergy_alert": return <AllergyAlertCard props={props} />;
+    case "medication_summary": return <MedicationSummaryCard props={props} />;
+    case "referral_vc": return <ReferralCard props={props} />;
+    case "discharge_summary": return <DischargeSummaryCard props={props} />;
+    case "insurance_eligibility": return <InsuranceEligibilityCard props={props} />;
+    case "consent_receipt": return <ConsentReceiptCard props={props} />;
+    case "travel_document_verification": return <TravelDocumentCard props={props} />;
+    case "claim_package":
+    case "claim_receipt": return <ClaimCard props={props} />;
+    case "mpi_link_certificate": return <MpiLinkCard props={props} />;
+    default: return <GenericDocumentCard props={props} />;
   }
-  if (type === "medical_certificate") {
-    return <MedicalCertificateCard props={props} />;
-  }
-  if (type === "prescription") {
-    return <PrescriptionCard props={props} />;
-  }
-  return <GenericDocumentCard props={props} />;
 }
 
 // ─── Compact Card (for Wallet list) ──────────────────────────────────────────
@@ -725,17 +1076,22 @@ export function CredentialCompactCard({ props }: { props: CredentialRendererProp
     discharge_summary: "สรุปจำหน่าย",
     insurance_eligibility: "สิทธิ์ประกัน",
     claim_package: "แพ็คเกจเคลม",
+    claim_receipt: "ใบตอบรับเคลม",
     travel_document_verification: "เอกสารเดินทาง",
     pharmacy_dispense: "ใบจ่ายยา",
     appointment: "นัดหมาย",
+    diagnostic_report: "รายงานวินิจฉัย",
+    visa_support_letter: "หนังสือรับรองวีซ่า",
+    quotation: "ใบเสนอราคา",
+    guarantee_letter: "หนังสือค้ำประกัน",
+    sync_receipt: "ใบตอบรับ Sync",
   };
 
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl border bg-card hover:shadow-lg transition-all duration-200 cursor-pointer group">
-      {/* Mini avatar or branded icon */}
       {needsPhoto ? (
         <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-gray-200 shadow-sm shrink-0 group-hover:border-primary/30 transition-colors">
-          <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+          <img src={avatarUrl} alt="" className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/notionists/svg?seed=${props.patientName || 'patient'}`; }} />
         </div>
       ) : (
         <div className={`h-11 w-11 rounded-xl bg-gradient-to-br ${brand.gradient} flex items-center justify-center shrink-0 shadow-sm`}>
@@ -743,7 +1099,6 @@ export function CredentialCompactCard({ props }: { props: CredentialRendererProp
         </div>
       )}
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <p className="font-medium text-sm truncate">{typeLabels[props.type] || props.type.replace(/_/g, " ")}</p>
         <p className="text-xs text-muted-foreground truncate">
@@ -751,7 +1106,6 @@ export function CredentialCompactCard({ props }: { props: CredentialRendererProp
         </p>
       </div>
 
-      {/* Status */}
       <StatusBadge status={props.status} />
     </div>
   );

@@ -162,13 +162,13 @@ export default function Integration() {
                 adapters.map(adapter => (
                   <Card key={adapter.id} className="hover:shadow-sm transition-shadow">
                     <CardContent className="pt-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <div className="p-2 rounded-lg bg-primary/10">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                             <Plug className="h-5 w-5 text-primary" />
                           </div>
-                          <div>
-                            <p className="font-medium">{adapter.name}</p>
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{adapter.name}</p>
                             <p className="text-sm text-muted-foreground">
                               {systemTypeLabels[adapter.systemType] || adapter.systemType}
                               {" • "}
@@ -180,7 +180,7 @@ export default function Integration() {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0 ml-11 sm:ml-0">
                           <Badge className={statusColors[adapter.status] || "bg-gray-100"}>
                             {adapter.status === "active" ? "ใช้งาน" : adapter.status === "error" ? "ผิดพลาด" : adapter.status === "testing" ? "ทดสอบ" : "ปิดใช้งาน"}
                           </Badge>

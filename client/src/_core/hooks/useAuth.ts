@@ -32,20 +32,22 @@ export function useAuth(options?: UseAuthOptions) {
         error instanceof TRPCClientError &&
         error.data?.code === "UNAUTHORIZED"
       ) {
-        return;
+        // Already logged out, proceed with cleanup
+      } else {
+        console.error("[Logout] Error:", error);
       }
-      throw error;
-    } finally {
-      // Clear the Preview auto-login token mirrored into sessionStorage, so
-      // header-based sessions (Safari ITP / WebView) are logged out too. The
-      // backend cookie is cleared by the logout mutation.
-      try {
-        sessionStorage.removeItem("manus-cookie");
-      } catch {}
-      utils.auth.me.setData(undefined, null);
-      await utils.auth.me.invalidate();
     }
-  }, [logoutMutation, utils]);
+    // Clear ALL session tokens so tRPC client stops sending Bearer auth.
+    // This includes: demo login token, Preview auto-login token.
+    try {
+      sessionStorage.removeItem("demo_session_token");
+      sessionStorage.removeItem("manus-cookie");
+      localStorage.removeItem("manus-runtime-user-info");
+    } catch {}
+    // Hard redirect to home page to fully reset React state and avoid
+    // stale cached queries causing redirect loops back to dashboard.
+    window.location.href = "/";
+  }, [logoutMutation]);
 
   const state = useMemo(() => {
     localStorage.setItem(
