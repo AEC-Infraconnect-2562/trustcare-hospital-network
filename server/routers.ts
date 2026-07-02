@@ -1,4 +1,5 @@
 import { COOKIE_NAME, isSingletonType } from "@shared/const";
+import { assessReadiness, readinessContextValues, type ReadinessContext } from "@shared/readiness";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -58,6 +59,7 @@ import {
   verifyPresentation,
   hashPasscode,
   scenarioForShlPurpose,
+  type ConsentPurpose,
 } from "./portability";
 import { sha256 } from "./portability/utils";
 import { resolveShlManifestAccessPacket, ShlAccessError } from "./shlAccess";
@@ -538,6 +540,165 @@ export const appRouter = router({
         grouped[cat].push(card);
       }
       return grouped;
+    }),
+    readiness: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues).default("opd_visit"),
+      patientId: z.number().optional(),
+    }).optional()).query(async ({ ctx, input }) => {
+      const patientId = resolveWalletPatientId(ctx, input?.patientId);
+      const cards = await enrichedWalletCards(patientId);
+      const readiness = assessReadiness(cards, input?.context ?? "opd_visit");
+      const requests = await db.listWalletDocumentRequests({ patientId, context: input?.context, limit: 20 });
+      const previousChecks = await db.listServiceReadinessChecks({ patientId, context: input?.context, limit: 5 });
+      return { patientId, readiness, requests, previousChecks };
+    }),
+    documentRequests: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues).optional(),
+      patientId: z.number().optional(),
+      status: z.string().optional(),
+    }).optional()).query(async ({ ctx, input }) => {
+      const patientId = resolveWalletPatientId(ctx, input?.patientId);
+      return db.listWalletDocumentRequests({
+        patientId,
+        context: input?.context,
+        status: input?.status,
+        limit: 50,
+      });
+    }),
+    requestDocument: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues),
+      patientId: z.number().optional(),
+      documentType: z.string().min(1),
+      documentCategory: z.string().optional(),
+      sourceType: z.enum(["his", "lis", "ris", "pacs", "hospital_app", "national_app", "partner_portal", "payer", "patient_upload", "personal_health_app", "other"]).default("his"),
+      sourceName: z.string().optional(),
+      targetHospitalId: z.number().optional(),
+      notes: z.string().optional(),
+      consentAttested: z.boolean().default(false),
+    })).mutation(async ({ ctx, input }) => {
+      const patientId = resolveWalletPatientId(ctx, input.patientId);
+      const requestId = `wdr_${nanoid(16)}`;
+      const id = await db.createWalletDocumentRequest({
+        requestId,
+        patientId,
+        context: input.context,
+        documentType: input.documentType,
+        documentCategory: input.documentCategory,
+        sourceType: input.sourceType,
+        sourceName: input.sourceName,
+        targetHospitalId: input.targetHospitalId,
+        status: input.consentAttested ? "requested" : "pending_consent",
+        requestedBy: ctx.user.id,
+        notes: input.notes,
+        metadata: {
+          requestedFromWallet: true,
+          consentAttested: input.consentAttested,
+          sourcePurpose: "feed_patient_wallet",
+        },
+      } as any);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "wallet.document_request.created",
+        resourceType: "wallet_document_request",
+        resourceId: String(id),
+        details: { requestId, context: input.context, documentType: input.documentType, sourceType: input.sourceType },
+      });
+      return { id, requestId, status: input.consentAttested ? "requested" : "pending_consent" };
+    }),
+    buildServicePacket: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues),
+      patientId: z.number().optional(),
+      hospitalId: z.number().optional(),
+      serviceName: z.string().optional(),
+      receiverName: z.string().optional(),
+      selectedCardIds: z.array(z.number()).optional(),
+      consentAttested: z.boolean().default(false),
+      validMinutes: z.number().min(15).max(10080).default(24 * 60),
+    })).mutation(async ({ ctx, input }) => {
+      const patientId = resolveWalletPatientId(ctx, input.patientId);
+      const cards = await enrichedWalletCards(patientId);
+      const readiness = assessReadiness(cards, input.context);
+      const allowedCardIds = new Set(input.selectedCardIds?.length ? input.selectedCardIds : readiness.selectedCardIds);
+      const selectedCards = cards.filter((card: any) => typeof card.id === "number" && allowedCardIds.has(card.id));
+      const credentialRowIds = selectedCards.map((card: any) => Number(card.credentialId)).filter(Boolean);
+      const credentialRows = (await db.listIssuedCredentials({ subjectId: patientId, status: "active" }))
+        .filter((row: any) => credentialRowIds.includes(row.id))
+        .filter((row: any) => row.sdJwtVc);
+      if (!credentialRows.length) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No signed VC is available for the selected wallet packet. Request or issue wallet documents first." });
+      }
+      if (!input.consentAttested) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Contextual consent is required before building a service packet." });
+      }
+      const purpose = servicePacketPurpose(input.context);
+      const presentation = await createPresentation({
+        holderDid: defaultHolderDid(patientId),
+        credentials: credentialRows.map(issuedCredentialRowToIssuedVc),
+        purpose,
+        audience: input.receiverName ?? input.serviceName ?? "TrustCare hospital intake",
+        validMinutes: input.validMinutes,
+      });
+      await db.createIssuedPresentation({
+        presentationId: presentation.id,
+        patientId,
+        holderDid: defaultHolderDid(patientId),
+        context: input.context,
+        purpose,
+        audience: input.receiverName ?? input.serviceName,
+        presentationJwt: presentation.jwt,
+        credentialIds: presentation.credentialIds,
+        credentialRowIds: credentialRows.map((row: any) => row.id),
+        verifier: input.receiverName ?? "hospital-intake",
+        status: "active",
+        expiresAt: new Date(presentation.expiresAt),
+        metadata: {
+          readinessScore: readiness.score,
+          criticalReady: readiness.criticalReady,
+          selectedCardIds: Array.from(allowedCardIds),
+          serviceName: input.serviceName,
+          consentAttested: input.consentAttested,
+        },
+      } as any);
+      const checkId = await db.createServiceReadinessCheck({
+        patientId,
+        context: input.context,
+        hospitalId: input.hospitalId,
+        serviceName: input.serviceName,
+        score: readiness.score,
+        criticalReady: readiness.criticalReady,
+        requiredMissing: readiness.missing.filter((item) => item.required),
+        recommendedMissing: readiness.missing.filter((item) => !item.required),
+        selectedCredentialIds: credentialRows.map((row: any) => row.credentialId),
+        packetPresentationId: presentation.id,
+        status: "shared",
+        createdBy: ctx.user.id,
+        metadata: {
+          receiverName: input.receiverName,
+          purpose,
+          consentAttested: input.consentAttested,
+          missingActions: readiness.recommendedActions,
+        },
+      } as any);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "wallet.service_packet.created",
+        resourceType: "service_readiness_check",
+        resourceId: String(checkId),
+        details: { context: input.context, score: readiness.score, presentationId: presentation.id, credentialCount: credentialRows.length },
+      });
+      const proto = ctx.req.headers["x-forwarded-proto"] || ctx.req.protocol || "https";
+      const host = ctx.req.headers["x-forwarded-host"] || ctx.req.headers.host || "";
+      return {
+        checkId,
+        patientId,
+        readiness,
+        presentationId: presentation.id,
+        expiresAt: presentation.expiresAt,
+        credentialCount: credentialRows.length,
+        qrData: `${proto}://${host}/verifier?vp=${presentation.id}`,
+      };
     }),
     superseded: protectedProcedure.query(async ({ ctx }) => {
       const allCreds = await db.listIssuedCredentials({ subjectId: ctx.user.id });
@@ -3728,6 +3889,47 @@ function defaultIssuerProfile() {
 
 function defaultHolderDid(userId: number) {
   return patientDidKey(`trustcare-patient-${userId}`);
+}
+
+function resolveWalletPatientId(ctx: any, requestedPatientId?: number) {
+  const systemRole = (ctx.user as any)?.systemRole ?? "patient";
+  if (systemRole === "patient") {
+    if (requestedPatientId && requestedPatientId !== ctx.user.id) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Patients can only prepare their own wallet data." });
+    }
+    return ctx.user.id;
+  }
+  return requestedPatientId ?? ctx.user.id;
+}
+
+async function enrichedWalletCards(patientId: number) {
+  const cards = await db.listWalletCards(patientId);
+  const allCreds = await db.listIssuedCredentials({ subjectId: patientId });
+  const credMap = new Map(allCreds.map((credential: any) => [credential.id, credential]));
+  return cards.map((card: any) => {
+    const cred = credMap.get(card.credentialId);
+    return {
+      ...card,
+      credentialStatus: cred?.status || "active",
+      expiresAt: cred?.expiresAt || null,
+      credentialData: cred?.credentialData || null,
+      credentialType: cred?.type || card.cardType,
+      issuedAt: cred?.issuedAt || card.createdAt,
+    };
+  });
+}
+
+function servicePacketPurpose(context: ReadinessContext): ConsentPurpose {
+  const map: Record<ReadinessContext, ConsentPurpose> = {
+    opd_visit: "treatment",
+    emergency: "emergency",
+    referral: "referral",
+    cross_border: "referral",
+    medical_tourist: "medical_tourism",
+    insurance_claim: "insurance",
+    pharmacy_dispense: "treatment",
+  };
+  return map[context];
 }
 
 type ShlPurpose = (typeof shlPurposeValues)[number];

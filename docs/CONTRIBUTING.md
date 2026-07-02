@@ -1,6 +1,6 @@
 # Contributing to TrustCare Hospital Network
 
-**Version:** 5.2
+**Version:** 5.4
 **Last updated:** 2026-07-02
 
 ---
@@ -20,7 +20,7 @@
 
 ```bash
 # Clone the repository
-gh repo clone AEC-Infraconnect-2562/tdc-reserve-prototype
+gh repo clone AEC-Infraconnect-2562/trustcare-hospital-network
 
 # Install dependencies
 pnpm install
@@ -42,7 +42,7 @@ pnpm check
 Before opening a Pull Request, ensure:
 
 - [ ] `pnpm check` (TypeScript) passes with zero errors
-- [ ] `pnpm test` passes all unit tests (currently 168 tests)
+- [ ] `pnpm test` passes all unit tests; `server/bundle-upload.test.ts` requires a dev server on `localhost:3000`
 - [ ] `pnpm build` succeeds (Vite bundle-size warnings are acceptable)
 - [ ] New migrations are generated if schema changed
 - [ ] `docs/ARCHITECTURE.md` is updated if:
@@ -56,6 +56,7 @@ Before opening a Pull Request, ensure:
   - Verification flow changes
   - Hospital data changes
 - [ ] `docs/SHL_CONTEXT_VERSIONING.md` is reviewed when changing Smart Health Links, SHL manifests, passcode/access policy, or VC/VP bindings around SHL transport
+- [ ] `docs/TRUSTCARE_SYSTEM_REALIGNMENT_HANDOFF.md` is reviewed when changing Service Readiness, Wallet document requests, contextual consent, or VP service packets
 
 ---
 
@@ -81,8 +82,8 @@ These tables must stay in sync when adding new credential types:
 
 ### Current Schema Stats
 
-- **50 tables** total
-- **13 migrations** (0000–0012)
+- **53 tables** total
+- **14 journaled migration batches** (0000-0013; legacy duplicate-number SQL files may also exist)
 - **24 credential types** in the enum
 
 ---
@@ -138,6 +139,8 @@ trustRegistry · shl · claim (incl. analytics) · international ·
 crossBorderReferral · portability (incl. DQI) · executiveDashboard ·
 tao · schemaRegistry
 ```
+
+The `wallet` router now also owns Service Readiness procedures: `readiness`, `documentRequests`, `requestDocument`, and `buildServicePacket`. Current releases also include `careTransition` and `partnerPortal` router domains for bundle and partner exchange workflows.
 
 ### Adding a New Router
 
@@ -286,7 +289,7 @@ The `buildTrustRegistryPolicy()` function in `server/portability/trust.ts`:
 
 ## Testing Requirements
 
-### Current Test Suite: 168 tests (15 unit + 1 E2E)
+### Current Test Suite: 196 server tests plus E2E
 
 | Change Type | Required Tests |
 |-------------|---------------|

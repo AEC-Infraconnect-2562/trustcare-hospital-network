@@ -1,8 +1,21 @@
 import { describe, it, expect } from "vitest";
 
-describe("Document Bundle Upload Route", () => {
+const TEST_BASE_URL = process.env.TRUSTCARE_TEST_BASE_URL ?? "http://localhost:3000";
+
+async function isServerAvailable() {
+  try {
+    await fetch(TEST_BASE_URL, { method: "HEAD" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const describeIfServer = (await isServerAvailable()) ? describe : describe.skip;
+
+describeIfServer("Document Bundle Upload Route", () => {
   it("should reject unauthenticated requests", async () => {
-    const res = await fetch("http://localhost:3000/api/bundles/1/upload", {
+    const res = await fetch(`${TEST_BASE_URL}/api/bundles/1/upload`, {
       method: "POST",
     });
     expect(res.status).toBe(401);
@@ -11,7 +24,7 @@ describe("Document Bundle Upload Route", () => {
   });
 
   it("should reject invalid bundleId", async () => {
-    const res = await fetch("http://localhost:3000/api/bundles/abc/upload", {
+    const res = await fetch(`${TEST_BASE_URL}/api/bundles/abc/upload`, {
       method: "POST",
       headers: { Authorization: "Bearer invalid-token" },
     });
@@ -20,7 +33,7 @@ describe("Document Bundle Upload Route", () => {
 
   it("should have the upload endpoint registered", async () => {
     // OPTIONS request to check route exists (CORS preflight)
-    const res = await fetch("http://localhost:3000/api/bundles/999/upload", {
+    const res = await fetch(`${TEST_BASE_URL}/api/bundles/999/upload`, {
       method: "POST",
       body: new FormData(),
     });
@@ -29,16 +42,16 @@ describe("Document Bundle Upload Route", () => {
   });
 });
 
-describe("Document Bundle tRPC Procedures", () => {
+describeIfServer("Document Bundle tRPC Procedures", () => {
   it("getBundles should require authentication", async () => {
-    const res = await fetch("http://localhost:3000/api/trpc/careTransition.getBundles?input=%7B%22caseType%22%3A%22internal_referral%22%2C%22caseId%22%3A1%7D", {
+    const res = await fetch(`${TEST_BASE_URL}/api/trpc/careTransition.getBundles?input=%7B%22caseType%22%3A%22internal_referral%22%2C%22caseId%22%3A1%7D`, {
       headers: { "Content-Type": "application/json" },
     });
     expect(res.status).toBe(401);
   });
 
   it("createBundle should require authentication", async () => {
-    const res = await fetch("http://localhost:3000/api/trpc/careTransition.createBundle", {
+    const res = await fetch(`${TEST_BASE_URL}/api/trpc/careTransition.createBundle`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -52,7 +65,7 @@ describe("Document Bundle tRPC Procedures", () => {
   });
 
   it("updateBundleStatus should require authentication", async () => {
-    const res = await fetch("http://localhost:3000/api/trpc/careTransition.updateBundleStatus", {
+    const res = await fetch(`${TEST_BASE_URL}/api/trpc/careTransition.updateBundleStatus`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

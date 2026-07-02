@@ -23,7 +23,8 @@ const routeAccessConfig: RouteAccess[] = [
   { path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"] },
   { path: "/executive", roles: ["system_admin", "hospital_admin"] },
   // Patient Services
-  { path: "/wallet", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"] },
+  { path: "/prepare-service", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"] },
+  { path: "/wallet", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"] },
   { path: "/consent", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"] },
   { path: "/shl", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
   // Clinical Services
@@ -32,10 +33,10 @@ const routeAccessConfig: RouteAccess[] = [
   { path: "/international", roles: ["system_admin", "hospital_admin", "doctor", "nurse"] },
   { path: "/partner-portal", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
   // Digital Credentials
-  { path: "/issuer", roles: ["system_admin", "hospital_admin", "doctor"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
-  { path: "/maker-queue", roles: ["system_admin", "hospital_admin", "doctor"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
-  { path: "/checker-queue", roles: ["system_admin"], additionalRolesGrant: ["issuer_checker"] },
-  { path: "/verifier", roles: ["system_admin", "hospital_admin", "doctor", "nurse"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
+  { path: "/issuer", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
+  { path: "/maker-queue", roles: ["system_admin", "hospital_admin", "maker", "doctor", "nurse"], additionalRolesGrant: ["issuer_maker"] },
+  { path: "/checker-queue", roles: ["system_admin", "hospital_admin", "checker", "doctor"], additionalRolesGrant: ["issuer_checker"] },
+  { path: "/verifier", roles: ["system_admin", "hospital_admin", "checker", "doctor", "nurse"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
   { path: "/trust-registry", roles: ["system_admin", "hospital_admin"] },
   // Claims & Finance
   { path: "/claim-center", roles: ["system_admin", "hospital_admin", "doctor", "nurse"] },
