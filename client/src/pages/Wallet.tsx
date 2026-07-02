@@ -27,18 +27,26 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Switch } from "@/components/ui/switch";
 import { Wifi, WifiOff, CloudDownload, Download } from "lucide-react";
 import { exportWalletCardPdf } from "@/lib/pdfExport";
-
-// Avatar URLs for wallet card thumbnails (AI-generated realistic photos)
-const AVATAR_URLS = {
-  male: "/manus-storage/patient_male_realistic_opt_e9b1630b.jpg",
-  female: "/manus-storage/patient_female_realistic_opt_d0edb245.jpg",
-  nurse: "/manus-storage/nurse_female_realistic_opt_d0e35459.jpg",
-  pharmacist: "/manus-storage/pharmacist_male_realistic_opt_2b3b0f56.jpg",
-  radiologist: "/manus-storage/radiologist_realistic_bd97425d.jpg",
-  medTech: "/manus-storage/med_tech_realistic_78575c20.jpg",
-};
+import { resolvePatientAvatarUrl } from "@/lib/avatar";
+import { SafeImage } from "@/components/SafeImage";
 
 const PHOTO_TYPES = ["patient_identity", "identity", "medical_certificate"];
+
+function resolveWalletPatientPhoto(card: any, auth: unknown) {
+  const subject = card.credentialData?.credentialSubject || card.credentialData || {};
+  const renderPatient = subject?.humanDocument?.renderData?.patient || {};
+  const patient = subject?.patient || {};
+  return resolvePatientAvatarUrl({
+    avatarUrl:
+      (auth as any)?.avatarUrl ||
+      renderPatient.photoUrl ||
+      renderPatient.avatarUrl ||
+      patient.photoUrl ||
+      patient.avatarUrl,
+    gender: patient.gender || patient.sex,
+    name: renderPatient.fullNameTh || renderPatient.fullNameEn || patient.nameTh || patient.fullNameTh || patient.nameEn || card.displayName,
+  });
+}
 
 const categoryIconMap: Record<string, any> = {
   User, FileText, Pill, Microscope, ArrowRightLeft, ReceiptText, Globe2, RefreshCcw, CalendarDays,
@@ -305,16 +313,7 @@ export default function Wallet() {
                               <div className="flex items-center gap-3 min-w-0">
                                 {showPhoto ? (
                                   <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-white/30 shadow-sm shrink-0">
-                                    <img src={(() => {
-                                      // Prefer user's actual avatar from auth (uploaded or DB-stored)
-                                      if ((auth as any)?.avatarUrl) return (auth as any).avatarUrl;
-                                      const subject = card.credentialData?.credentialSubject || card.credentialData;
-                                      const patient = subject?.patient || {};
-                                      if (patient.gender === "female" || patient.sex === "F") return AVATAR_URLS.female;
-                                      const name = patient.nameTh || patient.fullNameTh || patient.nameEn || card.displayName || "";
-                                      if (name.startsWith("นาง") || name.startsWith("Ms.") || name.startsWith("Mrs.")) return AVATAR_URLS.female;
-                                      return AVATAR_URLS.male;
-                                    })()} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                    <SafeImage src={resolveWalletPatientPhoto(card, auth)} alt="" className="h-full w-full object-cover" />
                                   </div>
                                 ) : (
                                   <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center backdrop-blur-sm shrink-0"><Icon className="h-5 w-5" /></div>
@@ -403,7 +402,7 @@ export default function Wallet() {
                     issuedAt={selectedCard.issuedAt || selectedCard.createdAt}
                     expiresAt={selectedCard.expiresAt}
                     hospitalName={selectedCard.issuerHospitalName}
-                    patientPhotoUrl={(auth as any)?.avatarUrl}
+                    patientPhotoUrl={resolveWalletPatientPhoto(selectedCard, auth)}
                   />
                 ) : (
                   <div className={`rounded-xl p-4 text-white bg-gradient-to-br ${(cardTypeConfig[selectedCard.cardType] || cardTypeConfig.identity).bgGradient}`}>

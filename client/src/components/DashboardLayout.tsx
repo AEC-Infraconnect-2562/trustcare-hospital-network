@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AvatarPhoto } from "@/components/AvatarPhoto";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -302,12 +302,14 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none">
-                  <Avatar className="h-9 w-9 border shrink-0">
-                    {(user as any)?.avatarUrl && <AvatarImage src={(user as any).avatarUrl} alt={user?.name || "User"} />}
-                    <AvatarFallback className="text-xs font-medium bg-primary/10 text-primary">
-                      {user?.name?.charAt(0).toUpperCase() || "U"}
-                    </AvatarFallback>
-                  </Avatar>
+                  <AvatarPhoto
+                    src={(user as any)?.avatarUrl}
+                    name={user?.name || "User"}
+                    role={activeRole}
+                    gender={(user as any)?.gender}
+                    className="h-9 w-9 border shrink-0"
+                    fallbackClassName="text-xs font-medium bg-primary/10 text-primary"
+                  />
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                     <p className="text-sm font-medium truncate leading-none">{user?.name || "-"}</p>
                     <p className="text-[11px] text-muted-foreground truncate mt-1">

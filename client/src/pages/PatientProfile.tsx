@@ -3,11 +3,12 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AvatarPhoto } from "@/components/AvatarPhoto";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Camera, Upload, User, Mail, Phone, IdCard, Building2, Check } from "lucide-react";
 import { toast } from "sonner";
+import { normalizeAvatarUrl } from "@/lib/avatar";
 
 export default function PatientProfile() {
   const { user } = useAuth();
@@ -60,7 +61,7 @@ export default function PatientProfile() {
     }
   };
 
-  const currentAvatarUrl = previewUrl || (user as any)?.avatarUrl;
+  const currentAvatarUrl = normalizeAvatarUrl(previewUrl || (user as any)?.avatarUrl);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -87,12 +88,15 @@ export default function PatientProfile() {
         <CardContent>
           <div className="flex items-center gap-6">
             <div className="relative group">
-              <Avatar className="h-28 w-28 border-4 border-muted">
-                {currentAvatarUrl && <AvatarImage src={currentAvatarUrl} alt="Patient photo" />}
-                <AvatarFallback className="text-2xl bg-primary/10 text-primary">
-                  {user?.name?.charAt(0)?.toUpperCase() || "U"}
-                </AvatarFallback>
-              </Avatar>
+              <AvatarPhoto
+                src={currentAvatarUrl}
+                name={user?.name || "User"}
+                role={(user as any)?.systemRole || "patient"}
+                gender={(user as any)?.gender}
+                className="h-28 w-28 border-4 border-muted"
+                fallbackClassName="text-2xl bg-primary/10 text-primary"
+                fallbackToDefault={false}
+              />
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"

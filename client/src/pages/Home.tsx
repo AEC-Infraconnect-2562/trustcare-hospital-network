@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AvatarPhoto } from "@/components/AvatarPhoto";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -219,12 +219,14 @@ export default function Home() {
                         >
                           <CardContent className="p-4">
                             <div className="flex items-center gap-3">
-                              <Avatar className="h-10 w-10 shrink-0 shadow-sm">
-                                {u.avatarUrl && <AvatarImage src={u.avatarUrl} alt={u.name} />}
-                                <AvatarFallback className={`${config.bgColor} ${config.color} text-sm font-medium`}>
-                                  {u.name?.charAt(0) || "?"}
-                                </AvatarFallback>
-                              </Avatar>
+                              <AvatarPhoto
+                                src={u.avatarUrl}
+                                name={u.name}
+                                role={u.systemRole}
+                                gender={u.gender}
+                                className="h-10 w-10 shrink-0 shadow-sm"
+                                fallbackClassName={`${config.bgColor} ${config.color} text-sm font-medium`}
+                              />
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium text-sm truncate">{u.name}</p>
                                 <p className="text-xs text-muted-foreground truncate">{u.email}</p>
