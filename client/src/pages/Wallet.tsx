@@ -441,7 +441,7 @@ export default function Wallet() {
                 <DialogDescription className="text-center">{selectedCard.displayName}</DialogDescription>
               </DialogHeader>
               <div className="flex flex-col items-center gap-4 py-4">
-                <div className="rounded-lg border p-3 bg-white shadow-sm"><img src={qrDataUrl} alt="VP QR" className="h-56 w-56" /></div>
+                <div className="rounded-lg border p-3 bg-white shadow-sm"><img src={qrDataUrl} alt="VP QR" className="h-56 w-56" loading="lazy" /></div>
                 <div className="text-center space-y-1 max-w-full">
                   <p className="text-sm font-medium">{selectedCard.displayName}</p>
                   <p className="text-xs text-muted-foreground font-mono break-all">{presentation?.presentationId}</p>

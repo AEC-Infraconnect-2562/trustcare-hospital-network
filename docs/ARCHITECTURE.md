@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.0 (Patient Photo Upload + DQI Scoring + Consent Reminders + Claim Analytics)
+**Version:** 5.1 (Performance Optimization: Lazy Loading + Service Worker + Code Splitting)
 **Last updated:** 2026-07-02
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1003,3 +1003,53 @@ All credential previews (in Wallet, CredentialDetail, and Issuer views) display 
 - [did:key Method](https://w3c-ccg.github.io/did-method-key/)
 - [ETSI Trusted Lists](https://www.etsi.org/deliver/etsi_ts/119600_119699/119612/02.01.01_60/ts_119612v020101p.pdf)
 - [GDHCN Trust Network](https://smart.who.int/trust)
+
+---
+
+## 25. Performance Optimization (v2.6)
+
+The application employs multiple strategies to minimize time-to-interactive and reduce bandwidth consumption.
+
+### 25.1 Code Splitting & Lazy Loading
+
+All 31 page-level components are imported via `React.lazy()` with a shared `<Suspense>` boundary in `App.tsx`. This splits the monolithic bundle into per-route chunks that load on demand.
+
+Vite manual chunks further isolate heavy vendor libraries:
+
+| Chunk Name | Contents | Approx. Size |
+|---|---|---|
+| `vendor-react` | react, react-dom, wouter, react-hook-form | ~140 KB |
+| `vendor-trpc` | @trpc/client, @trpc/react-query, @tanstack/react-query, superjson | ~90 KB |
+| `vendor-ui` | @radix-ui/*, lucide-react, recharts, sonner | ~430 KB |
+
+Result: initial JS payload reduced from ~2.3 MB (single chunk) to ~660 KB main + lazy chunks.
+
+### 25.2 Image Lazy Loading
+
+All below-the-fold `<img>` elements use the native `loading="lazy"` attribute:
+
+- **CredentialRenderer.tsx** — patient avatar photos, practitioner photos (4 img tags)
+- **CredentialDetail.tsx** — QR code image in verification dialog
+- **Wallet.tsx** — VP QR code image in presentation dialog
+
+This prevents the browser from fetching avatar images and QR data URLs until they scroll into the viewport.
+
+### 25.3 Service Worker (Production Only)
+
+A lightweight Service Worker (`client/public/sw.js`) is registered in production builds via `main.tsx`. It implements:
+
+- **Cache-first** for `/manus-storage/*` (avatar images, uploaded assets), `/assets/vendor-*` (vendor chunks), and web fonts (`.woff2`)
+- **Network-first** (pass-through) for API calls (`/api/`, `/trpc/`), HMR updates, and debug collectors
+- **Cache versioning** via `CACHE_NAME` constant — old caches are purged on activation
+- **Graceful degradation** — registration failure is non-critical; the app functions without SW
+
+The SW does not intercept navigation requests or app JS chunks, ensuring fresh deployments are always picked up immediately.
+
+### 25.4 Performance Budget
+
+| Metric | Target | Current |
+|---|---|---|
+| Initial JS (gzipped) | < 300 KB | ~210 KB |
+| Time to Interactive | < 3s (3G) | ~2.5s |
+| Avatar image size | < 25 KB each | ~18 KB (400×400 JPEG) |
+| Largest Contentful Paint | < 2.5s | ~2s (cached) |

@@ -336,7 +336,7 @@ export default function CredentialDetail() {
             <div className="flex flex-col items-center gap-4 py-4">
               {qrDataUrl && (
                 <div className="rounded-lg border p-3 bg-white">
-                  <img src={qrDataUrl} alt="Credential QR" className="h-64 w-64" />
+                  <img src={qrDataUrl} alt="Credential QR" className="h-64 w-64" loading="lazy" />
                 </div>
               )}
               <p className="text-xs text-muted-foreground text-center max-w-[260px]">

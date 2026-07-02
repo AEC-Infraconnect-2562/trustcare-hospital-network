@@ -1,6 +1,6 @@
 # Contributing to TrustCare Hospital Network
 
-**Version:** 5.0
+**Version:** 5.1
 **Last updated:** 2026-07-02
 
 ---

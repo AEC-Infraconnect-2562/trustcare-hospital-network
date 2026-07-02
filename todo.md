@@ -385,3 +385,7 @@
 - [x] Fix avatar images not loading on production (dicebear cartoon showing instead of realistic photos)
 - [x] Remove all dicebear/cartoon fallback references completely
 - [x] Optimize page hydration speed (currently ~15s before interactive) — reduce bundle size, add lazy loading
+
+## v2.6 - Performance Optimization
+- [x] Add loading="lazy" to below-the-fold images across all components (CredentialRenderer, CredentialDetail, Wallet)
+- [x] Implement Service Worker for static asset caching (cache-first for /manus-storage/ and vendor chunks, production-only registration)
