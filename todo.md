@@ -378,5 +378,10 @@
 - [x] Integrate radiologist and med tech avatars into credential rendering
 - [x] Update docs/ARCHITECTURE.md with all recent changes (avatars, DQI scoring, consent expiry, claim analytics, patient profile)
 - [x] Update docs/CONTRIBUTING.md with current development state
-- [ ] Push all changes to GitHub
+- [x] Push all changes to GitHub
 - [x] Fix stale audit_logs reference in VC_UNIQUENESS_RULES.md (corrected to audit_events)
+
+## v2.5 - Fix Avatar Images & Page Performance
+- [x] Fix avatar images not loading on production (dicebear cartoon showing instead of realistic photos)
+- [x] Remove all dicebear/cartoon fallback references completely
+- [x] Optimize page hydration speed (currently ~15s before interactive) — reduce bundle size, add lazy loading

@@ -1,77 +1,93 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
-import Dashboard from "./pages/Dashboard";
-import Hospitals from "./pages/Hospitals";
-import Wallet from "./pages/Wallet";
-import Issuer from "./pages/Issuer";
-import Verifier from "./pages/Verifier";
-import Consent from "./pages/Consent";
-import Referral from "./pages/Referral";
-import FhirMapping from "./pages/FhirMapping";
-import Terminology from "./pages/Terminology";
-import Audit from "./pages/Audit";
-import Users from "./pages/Users";
-import Settings from "./pages/Settings";
-import ClaimCenter from "./pages/ClaimCenter";
-import ClaimAnalytics from "./pages/ClaimAnalytics";
-import International from "./pages/International";
-import CrossBorder from "./pages/CrossBorder";
-import Integration from "./pages/Integration";
-import TrustRegistry from "./pages/TrustRegistry";
-import SmartHealthLinks from "./pages/SmartHealthLinks";
-import ShlViewer from "./pages/ShlViewer";
-import ExecutiveDashboard from "./pages/ExecutiveDashboard";
-import PatientIdentity from "./pages/PatientIdentity";
-import PortabilityWorkbench from "./pages/PortabilityWorkbench";
-import MakerQueue from "./pages/MakerQueue";
-import CheckerQueue from "./pages/CheckerQueue";
-import CredentialDetail from "./pages/CredentialDetail";
-import AdapterSdk from "./pages/AdapterSdk";
-import PartnerWizard from "./pages/PartnerWizard";
 import RoleGuard from "./components/RoleGuard";
-import PatientProfile from "./pages/PatientProfile";
+import { lazy, Suspense } from "react";
+
+// Lazy load all pages for code splitting - dramatically reduces initial bundle
+const Home = lazy(() => import("./pages/Home"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Hospitals = lazy(() => import("./pages/Hospitals"));
+const Wallet = lazy(() => import("./pages/Wallet"));
+const Issuer = lazy(() => import("./pages/Issuer"));
+const Verifier = lazy(() => import("./pages/Verifier"));
+const Consent = lazy(() => import("./pages/Consent"));
+const Referral = lazy(() => import("./pages/Referral"));
+const FhirMapping = lazy(() => import("./pages/FhirMapping"));
+const Terminology = lazy(() => import("./pages/Terminology"));
+const Audit = lazy(() => import("./pages/Audit"));
+const Users = lazy(() => import("./pages/Users"));
+const Settings = lazy(() => import("./pages/Settings"));
+const ClaimCenter = lazy(() => import("./pages/ClaimCenter"));
+const ClaimAnalytics = lazy(() => import("./pages/ClaimAnalytics"));
+const International = lazy(() => import("./pages/International"));
+const CrossBorder = lazy(() => import("./pages/CrossBorder"));
+const Integration = lazy(() => import("./pages/Integration"));
+const TrustRegistry = lazy(() => import("./pages/TrustRegistry"));
+const SmartHealthLinks = lazy(() => import("./pages/SmartHealthLinks"));
+const ShlViewer = lazy(() => import("./pages/ShlViewer"));
+const ExecutiveDashboard = lazy(() => import("./pages/ExecutiveDashboard"));
+const PatientIdentity = lazy(() => import("./pages/PatientIdentity"));
+const PortabilityWorkbench = lazy(() => import("./pages/PortabilityWorkbench"));
+const MakerQueue = lazy(() => import("./pages/MakerQueue"));
+const CheckerQueue = lazy(() => import("./pages/CheckerQueue"));
+const CredentialDetail = lazy(() => import("./pages/CredentialDetail"));
+const AdapterSdk = lazy(() => import("./pages/AdapterSdk"));
+const PartnerWizard = lazy(() => import("./pages/PartnerWizard"));
+const PatientProfile = lazy(() => import("./pages/PatientProfile"));
+const NotFound = lazy(() => import("@/pages/NotFound"));
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
+      </div>
+    </div>
+  );
+}
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/dashboard" component={Dashboard} />
-      <Route path="/hospitals" component={Hospitals} />
-      <Route path="/wallet" component={Wallet} />
-      <Route path="/issuer" component={Issuer} />
-      <Route path="/issuer/:id" component={CredentialDetail} />
-      <Route path="/maker-queue" component={MakerQueue} />
-      <Route path="/checker-queue" component={CheckerQueue} />
-      <Route path="/verifier" component={Verifier} />
-      <Route path="/consent" component={Consent} />
-      <Route path="/referral" component={Referral} />
-      <Route path="/cross-border" component={CrossBorder} />
-      <Route path="/international" component={International} />
-      <Route path="/claim-center" component={ClaimCenter} />
-      <Route path="/claim-analytics" component={ClaimAnalytics} />
-      <Route path="/integration" component={Integration} />
-      <Route path="/adapter-sdk" component={AdapterSdk} />
-      <Route path="/partner-wizard" component={PartnerWizard} />
-      <Route path="/fhir-mapping" component={FhirMapping} />
-      <Route path="/terminology" component={Terminology} />
-      <Route path="/trust-registry" component={TrustRegistry} />
-      <Route path="/shl-viewer" component={ShlViewer} />
-      <Route path="/shl" component={SmartHealthLinks} />
-      <Route path="/executive" component={ExecutiveDashboard} />
-      <Route path="/patient-identity" component={PatientIdentity} />
-      <Route path="/profile" component={PatientProfile} />
-      <Route path="/portability" component={PortabilityWorkbench} />
-      <Route path="/audit" component={Audit} />
-      <Route path="/users" component={Users} />
-      <Route path="/settings" component={Settings} />
-      <Route path="/404" component={NotFound} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/dashboard" component={Dashboard} />
+        <Route path="/hospitals" component={Hospitals} />
+        <Route path="/wallet" component={Wallet} />
+        <Route path="/issuer" component={Issuer} />
+        <Route path="/issuer/:id" component={CredentialDetail} />
+        <Route path="/maker-queue" component={MakerQueue} />
+        <Route path="/checker-queue" component={CheckerQueue} />
+        <Route path="/verifier" component={Verifier} />
+        <Route path="/consent" component={Consent} />
+        <Route path="/referral" component={Referral} />
+        <Route path="/cross-border" component={CrossBorder} />
+        <Route path="/international" component={International} />
+        <Route path="/claim-center" component={ClaimCenter} />
+        <Route path="/claim-analytics" component={ClaimAnalytics} />
+        <Route path="/integration" component={Integration} />
+        <Route path="/adapter-sdk" component={AdapterSdk} />
+        <Route path="/partner-wizard" component={PartnerWizard} />
+        <Route path="/fhir-mapping" component={FhirMapping} />
+        <Route path="/terminology" component={Terminology} />
+        <Route path="/trust-registry" component={TrustRegistry} />
+        <Route path="/shl-viewer" component={ShlViewer} />
+        <Route path="/shl" component={SmartHealthLinks} />
+        <Route path="/executive" component={ExecutiveDashboard} />
+        <Route path="/patient-identity" component={PatientIdentity} />
+        <Route path="/profile" component={PatientProfile} />
+        <Route path="/portability" component={PortabilityWorkbench} />
+        <Route path="/audit" component={Audit} />
+        <Route path="/users" component={Users} />
+        <Route path="/settings" component={Settings} />
+        <Route path="/404" component={NotFound} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
