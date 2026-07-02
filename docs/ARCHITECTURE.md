@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.2 (Care Transition + Partner Portal)
+**Version:** 5.3 (File Bundle System + Inline Preview)
 **Last updated:** 2026-07-02
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -23,6 +23,10 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 │  │  Wallet  │ │   SHL    │ │Trust Registry│ │  Cross-Border     │  │
 │  │  & Cards │ │  Viewer  │ │   & TAO      │ │  & International  │  │
 │  └──────────┘ └──────────┘ └──────────────┘ └───────────────────┘  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────────┐ ┌───────────────────┐  │
+│  │  Bundle  │ │  Wizard  │ │  Inline      │ │  Partner Trust    │  │
+│  │  Manager │ │  Flows   │ │  Preview     │ │  Verification     │  │
+│  └──────────┘ └──────────┘ └──────────────┘ └───────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
                               │ tRPC (superjson)
                               ▼
@@ -35,7 +39,8 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 │  │  terminology · audit · notification · dashboard · users ·    │   │
 │  │  patientIdentity · integration · trustRegistry · shl ·       │   │
 │  │  claim · international · crossBorderReferral ·               │   │
-│  │  portability · executiveDashboard · tao · schemaRegistry     │   │
+│  │  careTransition · partnerPortal · portability ·              │   │
+│  │  executiveDashboard · tao · schemaRegistry                   │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │              server/portability/ (VC/VP Engine)               │   │
@@ -49,7 +54,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        DATABASE (MySQL/TiDB)                         │
-│  50 tables · 13 migrations (0000–0012)                              │
+│  52 tables · 13 migrations (0000–0012) + document_bundles/files     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -74,7 +79,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 ```
 routers.ts (care transition release, 29 routers)
   ├── db.ts (query helpers)
-  │     └── drizzle/schema.ts (42 table definitions)
+  │     └── drizzle/schema.ts (52 table definitions)
   ├── shared/rolePolicy.ts (role authorization logic)
   ├── shared/menuConfig.ts (menu visibility per role)
   ├── scheduledHandlers/ (periodic task handlers)
@@ -659,12 +664,13 @@ trustcare-hospital-network/
 │   ├── scheduledHandlers/         ← Periodic task handlers
 │   │   └── consentExpiry.ts       ← Consent expiry reminder notifications
 │   ├── routers.ts                 ← tRPC procedures (29 routers)
+│   ├── uploadRoute.ts             ← Express multipart file upload for bundles
 │   ├── db.ts                      ← Database query helpers
 │   ├── seed.ts                    ← Demo user + hospital seeding
 │   └── storage.ts                 ← S3 storage helpers
 ├── client/
-│   ├── src/pages/                 ← 32 page components
-│   ├── src/components/            ← Reusable UI components (shadcn/ui)
+│   ├── src/pages/                 ← 33 page components
+│   ├── src/components/            ← 18 reusable UI components (shadcn/ui + custom)
 │   └── src/lib/trpc.ts            ← tRPC client binding
 ├── shared/
 │   ├── rolePolicy.ts             ← Role authorization logic
@@ -679,7 +685,7 @@ trustcare-hospital-network/
 
 ---
 
-## 14. Frontend Pages (32 Pages)
+## 14. Frontend Pages (33 Pages)
 
 | Page | Route | Purpose |
 |------|-------|--------|
@@ -714,11 +720,12 @@ trustcare-hospital-network/
 | PartnerWizard | `/partner-wizard` | Partner onboarding |
 | PartnerPortal | `/partner-portal` | Partner API layer, document exchange, care packages |
 | AdapterSdk | `/adapter-sdk` | Adapter SDK docs |
+| ComponentShowcase | `/components` | UI component showcase |
 | NotFound | `*` | 404 page |
 
 ---
 
-## 15. tRPC Routers (27 Routers)
+## 15. tRPC Routers (29 Routers)
 
 | Router | Purpose | Key Procedures |
 |--------|---------|---------------|
@@ -744,6 +751,8 @@ trustcare-hospital-network/
 | `claim` | Insurance claims | create, list, submit, analytics |
 | `international` | Medical tourism | createCase, listCases |
 | `crossBorderReferral` | Cross-border | create, list, accept |
+| `careTransition` | Care transition cases + bundles | overview, workspace, initializeCase, addDocument, verifyDocument, updateTask, recordDecision, generatePackage, createBundle, getBundles, getBundleWithFiles, addFileToBundle, updateBundleStatus, removeBundleFile, linkVcToFile, verifyBundleVc, generateBundleHash, generateShlFromBundle |
+| `partnerPortal` | Partner API layer | dashboard, listConnectors, createConnector, validateConnector, activateConnector, submitCase, sendDocument |
 | `portability` | VC/VP engine | createPacket, verify, reseedDb, auditSeedDb, canonicalize (with DQI) |
 | `executiveDashboard` | Executive analytics | getMetrics, getTrends |
 | `tao` | TAO framework | listIssuers, listVerifiers, listPolicies |
@@ -779,7 +788,7 @@ The role policy module centralizes all authorization logic for the multi-role sy
 
 | Category | Files | Command |
 |----------|-------|---------|
-| Unit tests | 15 files in `server/*.test.ts` | `pnpm test` |
+| Unit tests | 17 files in `server/*.test.ts` | `pnpm test` |
 | E2E tests | 1 file in `e2e/*.test.ts` | `pnpm test:e2e` |
 | TypeScript check | — | `pnpm check` |
 | Full CI | — | `pnpm ci` |
@@ -787,6 +796,8 @@ The role policy module centralizes all authorization logic for the multi-role sy
 ### 17.2 Unit Test Files
 
 - `auth.logout.test.ts` — Auth flow
+- `bundle-upload.test.ts` — Document bundle CRUD and upload
+- `care-transition.test.ts` — Care transition workflow
 - `claimAnalytics.test.ts` — Claim analytics aggregation
 - `demo-login.test.ts` — Demo login system
 - `maker-checker.test.ts` — Credential workflow
@@ -991,16 +1002,99 @@ All credential previews (in Wallet, CredentialDetail, and Issuer views) display 
 
 ---
 
+## 25. File Bundle System (v3.7)
+
+The File Bundle system enables structured document exchange per care transition case, supporting multiple bundles per case with mixed file types (PDF, Word, images, medical files, VC/VP credentials).
+
+### 25.1 Database Schema
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `document_bundles` | Bundle metadata | id, caseType, caseId, title, description, bundleType, status, integrityHash, createdBy, createdAt |
+| `bundle_files` | Individual files within a bundle | id, bundleId, fileName, fileKey, mimeType, fileSize, fileType, vcCredentialId, metadata, uploadedAt |
+
+**Bundle Types:** `clinical`, `administrative`, `imaging`, `lab_results`, `consent_forms`, `insurance`, `referral_package`, `discharge_summary`, `mixed`
+
+**File Types:** `pdf`, `word`, `image`, `dicom`, `lab_report`, `prescription`, `vc_credential`, `vp_presentation`, `fhir_bundle`, `other`
+
+**Status Workflow:** `draft` → `submitted` → `under_review` → `accepted` | `rejected` | `archived`
+
+### 25.2 Upload Architecture
+
+```
+BundleManager (React)                  Express Upload Route
+  │                                      │
+  ├─ Drag-drop / file picker              │
+  ├─ FormData (multipart/form-data)  ────▶ POST /api/bundles/:bundleId/upload
+  │                                      ├─ multer (10 files max, 50MB each)
+  │                                      ├─ authenticateRequest (session cookie)
+  │                                      ├─ storagePut → S3
+  │                                      ├─ addFileToBundle → DB
+  │                                      └─ 200 { files: [...] }
+  │
+  ├─ Progress bar (XHR onUploadProgress)
+  └─ Invalidate tRPC cache on success
+```
+
+### 25.3 Trust Layer Integration
+
+| Procedure | Purpose |
+|-----------|--------|
+| `careTransition.linkVcToFile` | Link a bundle file to an existing issued_credentials record |
+| `careTransition.verifyBundleVc` | Verify VC/VP files via trust registry (DID → issuer → trust level) |
+| `careTransition.generateBundleHash` | Compute SHA-256 integrity hash over all file hashes in a bundle |
+| `careTransition.generateShlFromBundle` | Create encrypted FHIR Bundle from selected files → SHL link |
+
+### 25.4 Inline Preview System
+
+The BundleManager component provides inline document preview without download:
+
+| File Type | Preview Method | Features |
+|-----------|---------------|----------|
+| PDF (`application/pdf`) | `<iframe>` embed | Full-page rendering, fallback download link |
+| Images (PNG, JPEG, GIF, WebP, SVG, BMP) | `<img>` with zoom controls | Zoom 25%–400%, rotation (90° increments), fit-to-screen |
+| VC/VP credentials | Badge display with verification status | Trust registry check, issuer DID resolution |
+| Unsupported types | Download link with file info | Graceful fallback with toast notification |
+
+### 25.5 Standards Alignment
+
+The File Bundle system aligns with established healthcare interoperability standards:
+
+- **IHE XDS.b** — Bundle = SubmissionSet, S3 = Document Repository, DB = Document Registry
+- **FHIR DocumentReference** — Metadata mapping (content.attachment ↔ bundle_files columns)
+- **IHE MHD** — Upload endpoint mirrors "Provide Document Bundle" transaction
+- **SMART Health Links** — Bundle → SHL generation for secure external sharing
+- **W3C VC Data Model** — VC/VP files linked to credential IDs for trust verification
+
+See [FILE_BUNDLE_STANDARDS.md](./FILE_BUNDLE_STANDARDS.md) for detailed standards research.
+
+### 25.6 Frontend Components
+
+| Component | Location | Purpose |
+|-----------|----------|--------|
+| `BundleManager` | `components/BundleManager.tsx` | Full bundle CRUD: create, upload, expand/collapse, preview, status management |
+| `ReferralCreationWizard` | `components/ReferralCreationWizard.tsx` | Multi-step referral creation (patient, destination, reason, documents, consent) |
+| `CrossBorderCreateWizard` | `components/CrossBorderCreateWizard.tsx` | Cross-border case creation (direction, partner, patient, documents, translation, consent) |
+| `PartnerTrustVerification` | `components/PartnerTrustVerification.tsx` | DID-based partner trust verification panel |
+| `InternationalWorkflowPanels` | `components/InternationalWorkflowPanels.tsx` | Medical tourism workflow (Document Intake, Clinical Pre-review, Financial, Discharge) |
+| `CareTransitionWorkspace` | `components/CareTransitionWorkspace.tsx` | Tabbed workspace (Documents, Bundles, Tasks, Decisions, Packages, Timeline) |
+
+---
+
 ## References
 
 - [W3C Verifiable Credentials Data Model v2.0](https://www.w3.org/TR/vc-data-model-2.0/)
 - [SMART Health Links Protocol](https://docs.smarthealthit.org/smart-health-links/spec/)
 - [TrustCare SHL Context Versioning](./SHL_CONTEXT_VERSIONING.md)
 - [Care Transition and Partner Portal](./CARE_TRANSITION_PARTNER_PORTAL.md)
+- [File Bundle Standards Research](./FILE_BUNDLE_STANDARDS.md)
 - [Manus Care Transition Handoff](./MANUS_CARE_TRANSITION_HANDOFF.md)
 - [TrustCare VC Uniqueness Rules](./VC_UNIQUENESS_RULES.md)
 - [SD-JWT-VC (IETF Draft)](https://datatracker.ietf.org/doc/draft-ietf-oauth-sd-jwt-vc/)
 - [HL7 FHIR R4 International Patient Summary](http://hl7.org/fhir/uv/ips/)
+- [IHE XDS.b Cross-Enterprise Document Sharing](https://profiles.ihe.net/ITI/TF/Volume1/ch-10.html)
+- [IHE MHD Mobile access to Health Documents](https://profiles.ihe.net/ITI/MHD/)
+- [FHIR DocumentReference Resource](https://build.fhir.org/documentreference.html)
 - [DID Core Specification](https://www.w3.org/TR/did-core/)
 - [did:web Method](https://w3c-ccg.github.io/did-method-web/)
 - [did:key Method](https://w3c-ccg.github.io/did-method-key/)
@@ -1009,7 +1103,7 @@ All credential previews (in Wallet, CredentialDetail, and Issuer views) display 
 
 ---
 
-## 25. Performance Optimization (v2.6)
+## 26. Performance Optimization (v2.6)
 
 The application employs multiple strategies to minimize time-to-interactive and reduce bandwidth consumption.
 
