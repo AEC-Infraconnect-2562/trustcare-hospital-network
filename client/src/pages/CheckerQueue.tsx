@@ -149,9 +149,10 @@ export default function CheckerQueue() {
                     <TableRow>
                       <TableHead>เลขคำขอ</TableHead>
                       <TableHead>ประเภท</TableHead>
-                      <TableHead>ผู้ป่วย ID</TableHead>
-                      <TableHead>Maker ID</TableHead>
+                      <TableHead>ผู้ป่วย</TableHead>
+                      <TableHead>Maker</TableHead>
                       <TableHead>ลำดับความสำคัญ</TableHead>
+                      <TableHead>เวลารอ</TableHead>
                       <TableHead>วันที่ส่ง</TableHead>
                       <TableHead>การดำเนินการ</TableHead>
                     </TableRow>
@@ -159,18 +160,29 @@ export default function CheckerQueue() {
                   <TableBody>
                     {pendingReviews.map((req: any) => {
                       const template = templates?.find((t: any) => t.id === req.templateId);
+                      // SLA tracking: calculate hours waiting
+                      const submittedTime = req.submittedAt ? new Date(req.submittedAt).getTime() : req.createdAt ? new Date(req.createdAt).getTime() : 0;
+                      const hoursWaiting = submittedTime ? Math.floor((Date.now() - submittedTime) / (1000 * 60 * 60)) : 0;
+                      const isOverSLA = hoursWaiting > 24;
+                      const waitingLabel = hoursWaiting >= 24 ? `${Math.floor(hoursWaiting / 24)} วัน ${hoursWaiting % 24} ชม.` : `${hoursWaiting} ชม.`;
                       return (
-                        <TableRow key={req.id}>
+                        <TableRow key={req.id} className={isOverSLA ? "bg-red-50 dark:bg-red-950/20" : ""}>
                           <TableCell className="font-mono text-sm">{req.requestNumber}</TableCell>
-                          <TableCell>{template?.name || (template?.type ? typeLabels[template.type] : null) || `Template #${req.templateId}`}</TableCell>
-                          <TableCell>{req.patientId}</TableCell>
-                          <TableCell>{req.makerId}</TableCell>
+                          <TableCell>{template?.name || (template?.type ? typeLabels[template.type] : null) || typeLabels[req.credentialType] || `Template #${req.templateId}`}</TableCell>
+                          <TableCell className="text-sm">{req.patientName || `#${req.patientId}`}</TableCell>
+                          <TableCell className="text-sm">{req.makerName || `#${req.makerId}`}</TableCell>
                           <TableCell>
                             {req.priority === "urgent" ? (
                               <Badge variant="destructive">เร่งด่วน</Badge>
                             ) : (
                               <span className="text-muted-foreground text-sm">ปกติ</span>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            <span className={`text-sm font-medium ${isOverSLA ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                              {submittedTime ? waitingLabel : "-"}
+                              {isOverSLA && " ⚠️"}
+                            </span>
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {req.submittedAt ? new Date(req.submittedAt).toLocaleDateString("th-TH", { day: "2-digit", month: "short", year: "numeric" }) : "-"}
@@ -252,7 +264,7 @@ export default function CheckerQueue() {
               {reviewDialog.request && (
                 <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-sm">
                   <p><strong>เลขคำขอ:</strong> {reviewDialog.request.requestNumber}</p>
-                  <p><strong>ผู้ป่วย ID:</strong> {reviewDialog.request.patientId}</p>
+                  <p><strong>ผู้ป่วย:</strong> {reviewDialog.request.patientName || `#${reviewDialog.request.patientId}`}</p>
                   {reviewDialog.request.makerNotes && (
                     <p><strong>หมายเหตุจาก Maker:</strong> {reviewDialog.request.makerNotes}</p>
                   )}
@@ -296,8 +308,8 @@ export default function CheckerQueue() {
                 <div className="grid grid-cols-2 gap-3">
                   <div><span className="text-muted-foreground">เลขคำขอ:</span><br /><strong className="font-mono">{detailDialog.request.requestNumber}</strong></div>
                   <div><span className="text-muted-foreground">สถานะ:</span><br /><Badge>{detailDialog.request.status}</Badge></div>
-                  <div><span className="text-muted-foreground">ผู้ป่วย ID:</span><br /><strong>{detailDialog.request.patientId}</strong></div>
-                  <div><span className="text-muted-foreground">Maker ID:</span><br /><strong>{detailDialog.request.makerId}</strong></div>
+                  <div><span className="text-muted-foreground">ผู้ป่วย:</span><br /><strong>{detailDialog.request.patientName || `#${detailDialog.request.patientId}`}</strong></div>
+                  <div><span className="text-muted-foreground">Maker:</span><br /><strong>{detailDialog.request.makerName || `#${detailDialog.request.makerId}`}</strong></div>
                   <div><span className="text-muted-foreground">ลำดับความสำคัญ:</span><br />
                     {detailDialog.request.priority === "urgent" ? <Badge variant="destructive">เร่งด่วน</Badge> : <span>ปกติ</span>}
                   </div>

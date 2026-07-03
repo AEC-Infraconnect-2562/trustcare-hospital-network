@@ -116,7 +116,7 @@ export default function PortabilityWorkbench() {
 
   const firstTarget = syncTargets.data?.[0];
   const firstReadyDraft = (reviewCsv.data?.drafts as any[] | undefined)?.find((draft) => draft.status === "ready");
-  const firstSubmittedRequest = issuanceRequests.data?.find((request) => request.status === "submitted");
+  const firstSubmittedRequest = issuanceRequests.data?.find((request: any) => request.status === "submitted");
   const sampleMedicationRequest = {
     resourceType: "MedicationRequest",
     id: "rx-demo-001",

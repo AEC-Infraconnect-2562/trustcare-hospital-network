@@ -670,3 +670,14 @@
 - [x] Add route in App.tsx for /claim-center/:id
 - [x] Run full test suite (307 tests passing)
 - [x] Save checkpoint and push to GitHub
+
+## v3.15.0 - UX Improvements and Bug Fixes
+
+- [x] Audit all pages for Date object rendering in JSX and fix (createdAt, updatedAt, etc.)
+- [x] Add SHL detail panel that shows on click without scrolling (useRef + scrollIntoView)
+- [x] Fix Issuer credential type display - removed patient_identity-first sort, now sorts by issuedAt desc
+- [x] Show patient/maker names in Checker Queue (JOIN users table instead of showing IDs)
+- [x] Show maker/checker names in Issuer requests tab (JOIN users table)
+- [x] Add SLA tracking - show waiting time column with red highlight if over 24 hours
+- [x] Run full test suite (307 tests passing)
+- [x] Save checkpoint and push to GitHub

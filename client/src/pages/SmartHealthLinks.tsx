@@ -39,7 +39,7 @@ import {
   ShieldCheck,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { toast } from "sonner";
 
@@ -128,6 +128,7 @@ export default function SmartHealthLinks() {
     },
   });
 
+  const detailRef = useRef<HTMLDivElement>(null);
   const selectedRecord = selected as any;
   const accessRows = useMemo(
     () => selectedRecord?.accessLogs ?? [],
@@ -409,7 +410,15 @@ export default function SmartHealthLinks() {
               <button
                 key={link.id}
                 type="button"
-                onClick={() => setSelectedId(link.id)}
+                onClick={() => {
+                  setSelectedId(link.id);
+                  // On mobile (no xl grid), scroll detail panel into view
+                  setTimeout(() => {
+                    if (window.innerWidth < 1280 && detailRef.current) {
+                      detailRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                  }, 100);
+                }}
                 className={`w-full rounded-md border bg-card p-4 text-left transition hover:border-primary ${selectedId === link.id ? "border-primary shadow-sm" : ""}`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -472,7 +481,7 @@ export default function SmartHealthLinks() {
             )}
           </div>
 
-          <div className="space-y-5">
+          <div ref={detailRef} className="space-y-5 scroll-mt-4">
             {!selected ? (
               <Card>
                 <CardContent className="flex min-h-[360px] items-center justify-center text-sm text-muted-foreground">

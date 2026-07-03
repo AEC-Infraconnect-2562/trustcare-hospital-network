@@ -244,17 +244,27 @@ export async function getIssuedCredentialByCredentialId(credentialId: string) {
 export async function listCredentialIssuanceRequests(filters?: { hospitalId?: number; subjectId?: number; status?: string; makerId?: number; checkerId?: number; limit?: number }) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = [];
-  if (filters?.hospitalId) conditions.push(eq(credentialIssuanceRequests.issuerHospitalId, filters.hospitalId));
-  if (filters?.subjectId) conditions.push(eq(credentialIssuanceRequests.subjectId, filters.subjectId));
-  if (filters?.status) conditions.push(eq(credentialIssuanceRequests.status, filters.status as any));
-  if (filters?.makerId) conditions.push(eq(credentialIssuanceRequests.makerId, filters.makerId));
-  if (filters?.checkerId) conditions.push(eq(credentialIssuanceRequests.checkerId, filters.checkerId));
+  const whereParts: any[] = [];
+  if (filters?.hospitalId) whereParts.push(sql`cir.issuerHospitalId = ${filters.hospitalId}`);
+  if (filters?.subjectId) whereParts.push(sql`cir.subjectId = ${filters.subjectId}`);
+  if (filters?.status) whereParts.push(sql`cir.status = ${filters.status}`);
+  if (filters?.makerId) whereParts.push(sql`cir.makerId = ${filters.makerId}`);
+  if (filters?.checkerId) whereParts.push(sql`cir.checkerId = ${filters.checkerId}`);
   const limit = filters?.limit ?? 100;
-  if (conditions.length > 0) {
-    return db.select().from(credentialIssuanceRequests).where(and(...conditions)).orderBy(desc(credentialIssuanceRequests.createdAt)).limit(limit);
-  }
-  return db.select().from(credentialIssuanceRequests).orderBy(desc(credentialIssuanceRequests.createdAt)).limit(limit);
+  const whereClause = whereParts.length > 0 ? sql`WHERE ${sql.join(whereParts, sql` AND `)}` : sql``;
+  // JOIN with users table to get maker name and checker name
+  const rows = await db.execute(sql`
+    SELECT cir.*,
+      maker_u.name AS makerName,
+      checker_u.name AS checkerName
+    FROM credential_issuance_requests cir
+    LEFT JOIN users maker_u ON cir.makerId = maker_u.id
+    LEFT JOIN users checker_u ON cir.checkerId = checker_u.id
+    ${whereClause}
+    ORDER BY cir.createdAt DESC
+    LIMIT ${limit}
+  `);
+  return (rows as any)[0] || [];
 }
 
 export async function createCredentialIssuanceRequest(data: InsertCredentialIssuanceRequest) {
@@ -1589,12 +1599,24 @@ export async function getCheckerUserIds(hospitalId?: number | null): Promise<num
 export async function listCredentialRequests(filters?: { makerId?: number; hospitalId?: number; status?: string; checkerId?: number }) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = [];
-  if (filters?.makerId) conditions.push(eq(credentialRequests.makerId, filters.makerId));
-  if (filters?.hospitalId) conditions.push(eq(credentialRequests.hospitalId, filters.hospitalId));
-  if (filters?.status) conditions.push(eq(credentialRequests.status, filters.status as any));
-  if (filters?.checkerId) conditions.push(eq(credentialRequests.checkerId, filters.checkerId));
-  return db.select().from(credentialRequests).where(conditions.length ? and(...conditions) : undefined).orderBy(sql`${credentialRequests.createdAt} DESC`);
+  const whereParts: any[] = [];
+  if (filters?.makerId) whereParts.push(sql`cr.makerId = ${filters.makerId}`);
+  if (filters?.hospitalId) whereParts.push(sql`cr.hospitalId = ${filters.hospitalId}`);
+  if (filters?.status) whereParts.push(sql`cr.status = ${filters.status}`);
+  if (filters?.checkerId) whereParts.push(sql`cr.checkerId = ${filters.checkerId}`);
+  const whereClause = whereParts.length > 0 ? sql`WHERE ${sql.join(whereParts, sql` AND `)}` : sql``;
+  // JOIN with users table to get maker name and patient name
+  const rows = await db.execute(sql`
+    SELECT cr.*,
+      maker_u.name AS makerName,
+      patient_u.name AS patientName
+    FROM credential_requests cr
+    LEFT JOIN users maker_u ON cr.makerId = maker_u.id
+    LEFT JOIN users patient_u ON cr.patientId = patient_u.id
+    ${whereClause}
+    ORDER BY cr.createdAt DESC
+  `);
+  return (rows as any)[0] || [];
 }
 
 export async function createCredentialRequest(data: InsertCredentialRequest) {

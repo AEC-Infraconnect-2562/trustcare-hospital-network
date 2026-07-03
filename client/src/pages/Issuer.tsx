@@ -185,17 +185,10 @@ export default function Issuer() {
                     <TableBody>
                       {[...credentials]
                         .sort((a: any, b: any) => {
-                          const identityTypes = [
-                            "patient_identity",
-                            "identity",
-                          ];
-                          const aIsIdentity = identityTypes.includes(a.type)
-                            ? 0
-                            : 1;
-                          const bIsIdentity = identityTypes.includes(b.type)
-                            ? 0
-                            : 1;
-                          return aIsIdentity - bIsIdentity;
+                          // Sort by issuedAt descending (newest first)
+                          const dateA = a.issuedAt ? new Date(a.issuedAt).getTime() : 0;
+                          const dateB = b.issuedAt ? new Date(b.issuedAt).getTime() : 0;
+                          return dateB - dateA;
                         })
                         .map((cred: any) => {
                           const status =
@@ -294,10 +287,10 @@ export default function Issuer() {
                               {request.requestId?.slice(0, 32)}...
                             </TableCell>
                             <TableCell className="text-sm">
-                              {request.makerRole || request.makerId || "-"}
+                              {request.makerName || request.makerRole || `#${request.makerId}` || "-"}
                             </TableCell>
                             <TableCell className="text-sm">
-                              {request.checkerRole || request.checkerId || "-"}
+                              {request.checkerName || request.checkerRole || (request.checkerId ? `#${request.checkerId}` : "-")}
                             </TableCell>
                             <TableCell>
                               <Badge
