@@ -768,3 +768,16 @@
 - [x] Add navigation/action handlers for remediation buttons
 - [x] Update Architecture Documents (version history v3.20.1–v3.23.0, statistics, section 40)
 - [x] Run tests (324 pass, 0 TS errors), save checkpoint, push to GitHub
+
+## v3.24.0 - Mobile Credential Person Image Fix (PR #14 Merge)
+- [x] Merge PR #14 [codex] Fix mobile credential person images
+- [x] Validate shared/personImages.ts resolver (normalizePersonImageUrl, patientPhotoSources, practitionerPhotoSources)
+- [x] Validate PersonPhoto component retry source chain with fallback icon
+- [x] Verify wallet API patientAvatarUrl binding from users.avatarUrl
+- [x] Verify service worker network-first for /manus-storage/* on mobile
+- [x] Verify CredentialRenderer uses PersonPhoto in PatientInfoSection and PractitionerSection
+- [x] Verify Wallet.tsx uses PersonPhoto for PHOTO_TYPES cards
+- [x] Verify PatientProfile.tsx uses PersonPhoto for avatar and identity cards
+- [x] Run tests (328 pass, 0 TS errors)
+- [x] Update Architecture Documents
+- [x] Save checkpoint, push to GitHub

@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v3.24.0 | 2026-07-03 | Merged PR #14: Mobile credential person images fix — shared resolver, PersonPhoto component, wallet API avatarUrl binding, SW network-first |
 | v3.23.0 | 2026-07-03 | Trust Layer Auto-Remediation UI with 10 remediation actions mapped to system pages |
 | v3.22.0 | 2026-07-03 | Trust Layer Checklist UI in prepareWorkbench, Single-Document VP Flow verified, SHL Passcode Lock-out UI with auto-disable |
 | v3.21.0 | 2026-07-03 | Merged PR #13 SHL VC/VP Trust Layer (shared/trustLayer.ts, 7 exports, transport classifier, checklist builder) |
@@ -1816,9 +1817,9 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 | Migration batches | 18 |
 | tRPC routers | 31 (added contractAdmin) |
 | Frontend pages | 37 |
-| Reusable components | 24 (added TrustLayerRemediationPanel, UploadDocButton, CheckinQRPanel) |
-| Test files | 26 |
-| Test cases | 324 (all passing) |
+| Reusable components | 25 (added PersonPhoto, TrustLayerRemediationPanel, UploadDocButton, CheckinQRPanel) |
+| Test files | 27 |
+| Test cases | 328 (all passing) |
 | TypeScript errors | 0 |
 | Demo users | 16 (all with unique avatars) |
 | Claim scenarios | 6 (fully seeded with FHIR data) |
