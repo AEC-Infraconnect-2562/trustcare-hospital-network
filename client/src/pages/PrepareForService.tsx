@@ -429,6 +429,36 @@ function PatientView({
                   policy={packetPolicy?.shl}
                 />
               </div>
+              {/* Trust Layer Checklist */}
+              {workbench?.singleDocumentVcVp?.checklist && (
+                <div className="mt-4 rounded-lg border bg-muted/30 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-primary" />
+                      <p className="text-sm font-semibold">Trust Layer Verification Checklist</p>
+                    </div>
+                    <Badge variant="outline">
+                      {workbench.singleDocumentVcVp.checklist.filter((c: any) => c.status === "present").length}/
+                      {workbench.singleDocumentVcVp.checklist.length}
+                    </Badge>
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {workbench.singleDocumentVcVp.checklist.map((check: any) => (
+                      <div key={check.key} className="rounded-md border bg-background p-2.5 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">{check.label}</span>
+                          <Badge
+                            variant={check.status === "present" ? "secondary" : check.status === "missing" ? "destructive" : "outline"}
+                          >
+                            {check.status === "present" ? "\u2713 \u0e1c\u0e48\u0e32\u0e19" : check.status === "missing" ? "\u2717 \u0e02\u0e32\u0e14" : "\u0e41\u0e19\u0e30\u0e19\u0e33"}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-muted-foreground">{check.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 

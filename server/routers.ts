@@ -2558,6 +2558,28 @@ export const appRouter = router({
       });
       return { success: true, passcode };
     }),
+    resetPasscodeAttempts: protectedProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ ctx, input }) => {
+      const shl = await db.getShlById(input.id);
+      if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
+      await assertCanManageShl(ctx, shl);
+      const wasDisabled = shl.status === "disabled" && shl.disabledReason === "Passcode failure limit reached";
+      await db.updateSmartHealthLink(input.id, {
+        passcodeFailedAttempts: 0,
+        ...(wasDisabled ? { status: "active", disabledReason: null } : {}),
+      } as any);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        hospitalId: shl.hospitalId,
+        action: "shl.passcode.attempts_reset",
+        resourceType: "smart_health_link",
+        resourceId: String(input.id),
+        details: { wasDisabled, previousAttempts: shl.passcodeFailedAttempts },
+      });
+      return { success: true, reactivated: wasDisabled };
+    }),
     manifest: publicProcedure.input(z.object({
       manifestToken: z.string().min(16),
       recipient: z.string().min(1),

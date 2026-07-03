@@ -754,3 +754,10 @@
 - [x] Validate SHL passcode behavior: 5 packages with passcode, maxAttempts=5, failedAttempts=0
 - [x] Trust layer code verified: shared/trustLayer.ts with 7 exports, server/trustLayer.test.ts present
 - [x] Save checkpoint and push to GitHub
+
+## v3.22.0 - Trust Layer UI + VP Flow + Passcode Lock-out
+- [x] Test Single-Document VP Flow (wallet.present creates VP with directSingleDocument=true) - 3 VPs created, all verified
+- [x] Add Trust Layer Checklist UI in prepareWorkbench page (expandable grid with pass/fail/recommended badges)
+- [x] Add SHL Passcode Lock-out UI (amber warning at 60%, red lockout at 100%, progress bar, Unlock & Reset button)
+- [x] Add resetPasscodeAttempts tRPC procedure (resets attempts, reactivates disabled SHLs, audit trail)
+- [x] Run tests (324 pass, 0 TS errors), save checkpoint, push to GitHub

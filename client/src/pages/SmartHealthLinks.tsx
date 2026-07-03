@@ -38,6 +38,8 @@ import {
   RefreshCw,
   ShieldCheck,
   XCircle,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
@@ -125,6 +127,12 @@ export default function SmartHealthLinks() {
         passcodeRequired: true,
       });
       toast.success("Passcode rotated");
+    },
+  });
+  const resetAttempts = trpc.shl.resetPasscodeAttempts.useMutation({
+    onSuccess: (data: any) => {
+      links.refetch();
+      toast.success(data.reactivated ? "SHL unlocked and passcode attempts reset" : "Passcode attempts reset");
     },
   });
 
@@ -439,6 +447,19 @@ export default function SmartHealthLinks() {
                         {link.maxAccessCount ?? "unlimited"}
                       </span>
                     </div>
+                    {/* Passcode lockout warning */}
+                    {link.passcodeRequired && Number(link.passcodeFailedAttempts ?? 0) > 0 && (
+                      <div className={`mt-2 flex items-center gap-1.5 text-xs font-medium ${
+                        Number(link.passcodeFailedAttempts) >= Number(link.passcodeMaxAttempts ?? 5)
+                          ? "text-red-600" : Number(link.passcodeFailedAttempts) >= Math.ceil(Number(link.passcodeMaxAttempts ?? 5) * 0.6)
+                          ? "text-amber-600" : "text-muted-foreground"
+                      }`}>
+                        <AlertTriangle className="h-3.5 w-3.5" />
+                        {Number(link.passcodeFailedAttempts) >= Number(link.passcodeMaxAttempts ?? 5)
+                          ? "Locked - passcode limit reached"
+                          : `${link.passcodeFailedAttempts}/${link.passcodeMaxAttempts ?? 5} failed attempts`}
+                      </div>
+                    )}
                   </div>
                   <Badge
                     className={statusTone[link.status] ?? statusTone.expired}
@@ -594,6 +615,66 @@ export default function SmartHealthLinks() {
                         />
                       </div>
                     </div>
+                    {/* Passcode Lock-out Warning Panel */}
+                    {selected.passcodeRequired && (() => {
+                      const failed = Number(selected.passcodeFailedAttempts ?? 0);
+                      const max = Number(selected.passcodeMaxAttempts ?? 5);
+                      const remaining = Math.max(max - failed, 0);
+                      const isLocked = failed >= max;
+                      const isWarning = failed >= Math.ceil(max * 0.6) && !isLocked;
+                      if (failed === 0) return null;
+                      return (
+                        <div className={`mt-4 rounded-lg border p-4 ${
+                          isLocked ? "border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/30"
+                          : isWarning ? "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30"
+                          : "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/30"
+                        }`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${
+                                isLocked ? "text-red-600" : isWarning ? "text-amber-600" : "text-muted-foreground"
+                              }`} />
+                              <div>
+                                <p className={`text-sm font-semibold ${
+                                  isLocked ? "text-red-700 dark:text-red-400" : isWarning ? "text-amber-700 dark:text-amber-400" : ""
+                                }`}>
+                                  {isLocked ? "SHL Locked - Passcode Failure Limit Reached" : "Passcode Attempts Warning"}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {isLocked
+                                    ? `This SHL has been automatically disabled after ${failed} failed passcode attempts. Reset attempts to reactivate.`
+                                    : `${failed} of ${max} passcode attempts used. ${remaining} remaining before auto-lockout.`}
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={isLocked ? "border-red-300 text-red-700 hover:bg-red-100" : ""}
+                              onClick={() => resetAttempts.mutate({ id: selected.id })}
+                              disabled={resetAttempts.isPending}
+                            >
+                              <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                              {isLocked ? "Unlock & Reset" : "Reset Attempts"}
+                            </Button>
+                          </div>
+                          <div className="mt-3">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span>Failed: {failed}/{max}</span>
+                              <span>Remaining: {remaining}</span>
+                            </div>
+                            <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  isLocked ? "bg-red-500" : isWarning ? "bg-amber-500" : "bg-zinc-400"
+                                }`}
+                                style={{ width: `${Math.min((failed / max) * 100, 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <ShlTrustChecklist shl={selectedRecord} fileCount={fileRows.length} />
                     <Separator className="my-4" />
                     <div className="grid gap-2 text-xs">
