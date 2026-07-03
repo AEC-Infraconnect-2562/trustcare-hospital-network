@@ -82,8 +82,8 @@ These tables must stay in sync when adding new credential types:
 
 ### Current Schema Stats
 
-- **53 tables** total
-- **14 journaled migration batches** (0000-0013; legacy duplicate-number SQL files may also exist)
+- **61 tables** total (59 in schema.ts + 2 DB-only)
+- **15 journaled migration batches** (0000-0014; legacy duplicate-number SQL files may also exist)
 - **24 credential types** in the enum
 
 ---

@@ -79,7 +79,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 ```
 routers.ts (care transition release, 29 routers)
   ├── db.ts (query helpers)
-  │     └── drizzle/schema.ts (53 table definitions)
+  │     └── drizzle/schema.ts (59 table definitions + 2 DB-only tables)
   ├── shared/rolePolicy.ts (role authorization logic)
   ├── shared/menuConfig.ts (menu visibility per role)
   ├── scheduledHandlers/ (periodic task handlers)
@@ -659,7 +659,7 @@ trustcare-hospital-network/
 │   ├── SHL_CONTEXT_VERSIONING.md  ← SHL versioning spec
 │   └── VC_UNIQUENESS_RULES.md     ← VC deduplication rules
 ├── drizzle/
-│   ├── schema.ts                  ← 42 table definitions + types
+│   ├── schema.ts                  ← 59 table definitions + types
 │   ├── relations.ts               ← Drizzle relation definitions
 │   └── meta/_journal.json         ← Migration ordering metadata
 ├── server/
@@ -673,8 +673,8 @@ trustcare-hospital-network/
 │   ├── seed.ts                    ← Demo user + hospital seeding
 │   └── storage.ts                 ← S3 storage helpers
 ├── client/
-│   ├── src/pages/                 ← 33 page components
-│   ├── src/components/            ← 18 reusable UI components (shadcn/ui + custom)
+│   ├── src/pages/                 ← 36 page components
+│   ├── src/components/            ← 22 reusable UI components (shadcn/ui + custom)
 │   └── src/lib/trpc.ts            ← tRPC client binding
 ├── shared/
 │   ├── rolePolicy.ts             ← Role authorization logic
@@ -711,8 +711,10 @@ trustcare-hospital-network/
 | TrustRegistry        | `/trust-registry`   | Trust registry management                                                            |
 | CrossBorder          | `/cross-border`     | Cross-border referrals                                                               |
 | International        | `/international`    | Medical tourism                                                                      |
-| ClaimCenter          | `/claim-center`     | Insurance claims                                                                     |
+| ClaimCenter          | `/claim-center`     | Insurance claims workbench (real DB)                                                 |
+| ClaimDetail          | `/claim-center/:id` | Claim detail with timeline, documents, FHIR, payer response, payment tabs            |
 | ClaimAnalytics       | `/claim-analytics`  | Claim analytics dashboard                                                            |
+| ServiceVerify        | `/service-verify`   | Service verification and check-in                                                    |
 | Integration          | `/integration`      | System integration                                                                   |
 | Terminology          | `/terminology`      | Terminology mappings                                                                 |
 | FhirMapping          | `/fhir-mapping`     | FHIR field mappings                                                                  |
@@ -753,7 +755,7 @@ trustcare-hospital-network/
 | `integration`         | Adapters                                   | listAdapters, createAdapter, healthCheck                                                                                                                                                                                                                                                    |
 | `trustRegistry`       | Trust registry                             | list, create, update, verify                                                                                                                                                                                                                                                                |
 | `shl`                 | Smart Health Links                         | create, list, revoke, getManifest                                                                                                                                                                                                                                                           |
-| `claim`               | Insurance claims                           | create, list, submit, analytics                                                                                                                                                                                                                                                             |
+| `claim`               | Insurance claims (real DB)                 | listPayers, createPayer, checkEligibility, listEligibility, workbench, listCases, getCase, getClaimDetail, createCase, createReadiness, updateStatus, validate, issueClaimPackageVc, submitToPayer, recordPayerResponse, recordPayment, publicApiExamples, analytics                         |
 | `international`       | Medical tourism                            | createCase, listCases                                                                                                                                                                                                                                                                       |
 | `crossBorderReferral` | Cross-border                               | create, list, accept                                                                                                                                                                                                                                                                        |
 | `careTransition`      | Care transition cases + bundles            | overview, workspace, initializeCase, addDocument, verifyDocument, updateTask, recordDecision, generatePackage, createBundle, getBundles, getBundleWithFiles, addFileToBundle, updateBundleStatus, removeBundleFile, linkVcToFile, verifyBundleVc, generateBundleHash, generateShlFromBundle |
@@ -1615,15 +1617,30 @@ Staff users (system_admin, hospital_admin, doctor, nurse) have access to their r
 | Test File | Tests | Status |
 |-----------|-------|--------|
 | server/auth.logout.test.ts | 1 | ✓ |
-| server/trustcare.test.ts | 3 | ✓ |
-| server/tao-consent.test.ts | 7 | ✓ |
+| server/trustcare.test.ts | 6 | ✓ |
+| server/tao-consent.test.ts | 10 | ✓ |
 | server/role-policy.test.ts | 4 | ✓ |
 | server/serviceReadiness.test.ts | 53 | ✓ |
-| server/readiness.test.ts | 12 | ✓ |
+| server/readiness.test.ts | 3 | ✓ |
 | server/webhookDocumentImport.test.ts | 22 | ✓ |
-| server/serviceVerification.test.ts | 29 | ✓ |
+| server/serviceVerification.test.ts | 31 | ✓ |
+| server/bundle-upload.test.ts | 6 | ✓ |
+| server/care-transition.test.ts | 4 | ✓ |
+| server/claimAnalytics.test.ts | 6 | ✓ |
+| server/claimCenter.test.ts | 5 | ✓ |
+| server/demo-login.test.ts | 15 | ✓ |
+| server/dicom-viewer.test.ts | 15 | ✓ |
+| server/maker-checker.test.ts | 24 | ✓ |
+| server/multi-role.test.ts | 17 | ✓ |
+| server/portability.test.ts | 7 | ✓ |
+| server/qrScanner.test.ts | 15 | ✓ |
+| server/role-guard.test.ts | 20 | ✓ |
+| server/role-menu.test.ts | 14 | ✓ |
+| server/role-switch.test.ts | 15 | ✓ |
+| server/schema-registry.test.ts | 12 | ✓ |
+| server/shl.test.ts | 5 | ✓ |
 | e2e/portability-flow.e2e.test.ts | 2 | ✓ |
-| **Total** | **302** | **All passing** |
+| **Total** | **307** | **All passing** |
 
 ### 32.3 TypeScript Compilation
 
@@ -1631,45 +1648,68 @@ Staff users (system_admin, hospital_admin, doctor, nurse) have access to their r
 - Strict mode enabled
 - All imports resolved correctly
 
-## 33. Claim Center Workbench and Payer Adapter Pilot (v3.12.0 - 2026-07-03)
+## 33. Claim Center — Real DB Implementation (v3.14.0 - 2026-07-03)
 
-Claim Center now has a workbench-oriented pilot layer for hospital claim readiness, evidence packaging, payer submission, adjudication, payment reconciliation, and patient wallet claim receipts.
+Claim Center is now fully backed by real database tables with 6 seeded realistic scenarios. The workbench reads from `claim_cases` + `claim_packages` + `claim_payments` with patient/hospital name JOINs.
 
-### 33.1 Added Runtime Surfaces
+### 33.1 Claim Center Database Tables
 
-| Surface | Purpose |
-|---------|---------|
-| `claim.workbench` | Combines DB claim rows with clearly marked simulated seed packets when the DB has no claim data |
-| `claim.createReadiness` | Creates pre-visit or registration claim readiness case from wallet, SHL, HIS import, legacy upload, or partner portal input |
-| `claim.issueClaimPackageVc` | Validates the package and returns a `ClaimPackageCredential` envelope around FHIR Claim and evidence hashes |
-| `claim.submitToPayer` | Creates payer adapter submission envelope for API, portal, batch, email, or RPA mode |
-| `claim.recordPayerResponse` | Records accepted, rejected, or more-info payer response and emits FHIR `ClaimResponse`-style payload |
-| `claim.recordPayment` | Reconciles payment and returns FHIR `PaymentReconciliation` plus `ClaimReceiptCredential` |
-| `/api/public/claim-center/v1/*` | Public mock API response samples for partner and payer integration testing |
+| Table | Purpose | Rows (seeded) |
+|-------|---------|---------------|
+| `claim_cases` | Master claim records with status, amounts, ICD-10 codes | 6 |
+| `claim_intake_sessions` | Intake workflow with canonical FHIR summaries | 6 |
+| `claim_documents` | Evidence documents per claim (receipts, referrals, prescriptions) | 18 |
+| `claim_packages` | FHIR ClaimPackageCredential payloads | 5 |
+| `claim_submission_events` | Payer submission records with adjudication results | 4 |
+| `claim_payments` | Payment reconciliation records | 1 |
+| `payer_rulesets` | Payer-specific validation rules and requirements | 6 |
+| `payer_adapters` | Payer connection adapters (NHSO, SSO, AIA, CSMBS, Travel, Self-Pay) | 6 |
 
-### 33.2 Canonical Models
+### 33.2 Six Seeded Claim Scenarios
 
-- FHIR `CoverageEligibilityRequest/Response` for eligibility.
-- FHIR `Claim` for canonical payer claim package.
-- FHIR `ClaimResponse` for payer adjudication.
-- FHIR `PaymentReconciliation` for remittance and payment posting.
-- `CoverageEligibilityCredential`, `ClaimPackageCredential`, and `ClaimReceiptCredential` as the VC trust layer.
-- Patient wallet output should be EOB-style and avoid payer-private notes.
+| # | Scenario | Payer | Status | Amount |
+|---|----------|-------|--------|--------|
+| 1 | NHSO OPD Chronic Disease | สปสช. (NHSO) | intake_complete | ฿2,500 |
+| 2 | SSO Rehabilitation | ประกันสังคม (SSO) | submitted | ฿45,000 |
+| 3 | AIA IPD Direct Billing | AIA ประกันชีวิต | adjudicated | ฿185,000 |
+| 4 | Travel Insurance Emergency | Allianz Travel Insurance | submitted | ฿32,000 |
+| 5 | CSMBS Dental (Correction Required) | กรมบัญชีกลาง (CSMBS) | correction_required | ฿4,600 |
+| 6 | Self-Pay Pharmacy Reimbursement | Self-Pay (Patient) | paid | ฿890 |
 
-### 33.3 Persistence Handoff
+### 33.3 Claim Detail Page (`/claim-center/:id`)
 
-This PR intentionally avoids DB migrations because Manus owns the workspace production database. Persistent tables, seed/reseed rules, and the Manus execution prompt are documented in:
+New dedicated detail page with 5 tabs:
 
-`docs/CLAIM_CENTER_RESEARCH_AND_MANUS_HANDOFF.md`
+| Tab | Content |
+|-----|---------|
+| Timeline | Chronological events: intake → documents added → packaged → submitted → adjudicated → paid |
+| Documents | All claim_documents with type badges and verification status |
+| FHIR Payload | ClaimPackageCredential JSON viewer with syntax highlighting |
+| Payer Response | Submission events, adjudication results, rejection reasons |
+| Payment | Payment reconciliation details, amounts, dates |
 
-Recommended new persistent tables:
+### 33.4 Canonical Models
 
-- `claim_intake_sessions`
-- `claim_documents`
-- `claim_packages`
-- `claim_submission_events`
-- `claim_payments`
-- `payer_rulesets`
+- FHIR `CoverageEligibilityRequest/Response` for eligibility
+- FHIR `Claim` for canonical payer claim package
+- FHIR `ClaimResponse` for payer adjudication
+- FHIR `PaymentReconciliation` for remittance and payment posting
+- `CoverageEligibilityCredential`, `ClaimPackageCredential`, and `ClaimReceiptCredential` as the VC trust layer
+- Patient wallet output is EOB-style and avoids payer-private notes
+
+### 33.5 Workbench Data Flow
+
+```
+claim.workbench (tRPC)
+  → listClaimCases() with LEFT JOIN users + hospitals
+  → mapDbClaimToWorkbenchCase() per row
+  → Enrich with claim_packages, claim_payments data
+  → Return ClaimWorkbenchPacket[] with patient names, hospital names, readiness scores
+```
+
+### 33.6 Checker Notification
+
+When a maker submits a credential request for review (`submitForReview` mutation), the system automatically notifies all users with checker role via the notifications table. Notification includes request ID, maker name, and priority flag.
 
 ---
 
@@ -1682,3 +1722,80 @@ Recommended new persistent tables:
 | `docs/ARCHITECTURE.md` | Added Sections 30–32 |
 
 ---
+
+
+## 34. Seed Data Quality (v3.13.0 - 2026-07-03)
+
+### 34.1 Avatar Photo Coverage
+
+All demo users now have unique AI-generated portrait photos (no generic placeholders):
+
+| Category | Count | Style |
+|----------|-------|-------|
+| Thai male patients | 5 | Professional headshot, varied ages |
+| Thai female patients | 3 | Professional headshot, varied ages |
+| International patients | 4 | Caucasian, East Asian, South Asian, Hispanic |
+| Staff (makers/checkers) | 4 | Professional medical staff attire |
+| **Total unique avatars** | **16** | **100% coverage** |
+
+### 34.2 Credential Request Seed Data
+
+10 credential_requests seeded with realistic clinical data:
+
+| Status | Count | Details |
+|--------|-------|---------|
+| draft | 2 | Incomplete requests with partial data |
+| pending_review | 3 | Awaiting checker approval |
+| approved | 2 | Approved by checker with comments |
+| rejected | 1 | Rejected with correction notes |
+| issued | 1 | Successfully issued as VC |
+| cancelled | 1 | Cancelled by maker |
+
+Each request includes: ICD-10 diagnosis codes, attending physician name, department, clinical notes, and priority flags.
+
+### 34.3 Payer Adapter Coverage
+
+| Payer Type | Adapter Name | Submission Mode |
+|------------|--------------|-----------------|
+| government_nhso | สปสช. (NHSO) | API (e-Claim) |
+| social_security | ประกันสังคม (SSO) | Portal |
+| private_insurance | AIA ประกันชีวิต | API (Direct Billing) |
+| government_csmbs | กรมบัญชีกลาง (CSMBS) | Batch |
+| travel_insurance | Allianz Travel Insurance | Email |
+| self_pay | Self-Pay (Patient) | Manual |
+
+---
+
+## 35. Version History Summary
+
+| Version | Date | Key Changes |
+|---------|------|-------------|
+| v3.14.0 | 2026-07-03 | Claim Center real DB binding, patient name JOINs, ClaimDetail page with 5 tabs |
+| v3.13.0 | 2026-07-03 | 6 Claim Center DB tables created, 6 realistic scenarios seeded, unique avatar photos for all users |
+| v3.12.0 | 2026-07-03 | Maker/Checker workflow improvements, checker notification, credential_requests seed data |
+| v3.11.2 | 2026-07-03 | Checker queue schema mismatch fix (makerId/checkerId column alignment) |
+| v3.11.1 | 2026-07-03 | SHL page Date rendering fix |
+| v3.11.0 | 2026-07-03 | Mobile UI fixes (avatar, duplicate templates, wallet/crossborder/international responsive) |
+| v3.10.0 | 2026-07-02 | Service readiness, role enforcement, unique portraits, system audit |
+| v3.9.0 | 2026-07-02 | Care transition workspace, file bundles, partner portal |
+| v3.8.0 | 2026-07-02 | Cross-border referrals, international cases, medical tourism |
+| v3.7.0 | 2026-07-02 | SHL system, credential presentations, consent expiry |
+
+---
+
+## 36. Current System Statistics
+
+| Metric | Value |
+|--------|-------|
+| Database tables | 61 (59 in schema.ts + 2 DB-only) |
+| Migration batches | 15 |
+| tRPC routers | 29 |
+| Frontend pages | 36 |
+| Reusable components | 22 |
+| Test files | 24 |
+| Test cases | 307 (all passing) |
+| TypeScript errors | 0 |
+| Demo users | 16 (all with unique avatars) |
+| Claim scenarios | 6 (fully seeded with FHIR data) |
+| Payer adapters | 6 (all payer types covered) |
+| Credential requests | 10 (all statuses represented) |

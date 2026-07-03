@@ -115,9 +115,9 @@ flowchart LR
   J --> K["Sync receipt back to HIS / finance"]
 ```
 
-## 6. DB Changes for Manus Workspace
+## 6. DB Changes — IMPLEMENTED (v3.13.0)
 
-The PR avoids adding migrations because Manus owns the production workspace database. To make the workbench persistent, add these tables after confirming current migration order.
+> **Status: COMPLETE** — All 6 tables below have been created in the production database and seeded with realistic data as of v3.13.0 (2026-07-03). The workbench now reads from real DB rows with patient/hospital name JOINs.
 
 ### `claim_intake_sessions`
 
@@ -250,30 +250,29 @@ Suggested columns:
 - `createdBy`
 - `createdAt`
 
-## 7. Seed / Reseed Requirements
+## 7. Seed Data — IMPLEMENTED (v3.13.0)
 
-Manus should seed at least these scenarios:
+> **Status: COMPLETE** — All 6 scenarios below are seeded in the production database.
 
-1. NHSO OPD chronic disease claim, ready to submit, with Coverage Eligibility VC and itemized invoice.
-2. SSO rehabilitation claim, more information requested, missing signed therapy note.
-3. Private insurance IPD direct billing claim, submitted with approved GOP/guarantee.
-4. Travel insurance emergency claim, accepted, cross-border/medical tourist context.
-5. CSMBS dental claim, correction required due missing procedure code.
-6. Self-pay pharmacy reimbursement packet, paid, ClaimReceiptCredential issued to wallet.
+| # | Scenario | Payer | Status | Amount | Patient |
+|---|----------|-------|--------|--------|--------|
+| 1 | NHSO OPD Chronic Disease | สปสช. | intake_complete | ฿2,500 | สมชาย วงศ์สวัสดิ์ |
+| 2 | SSO Rehabilitation | ประกันสังคม | submitted | ฿45,000 | มาลี สุขสม |
+| 3 | AIA IPD Direct Billing | AIA ประกันชีวิต | adjudicated | ฿185,000 | Haruka Tanaka |
+| 4 | Travel Insurance Emergency | Allianz Travel | submitted | ฿32,000 | กมลวรรณ ศรีสุข |
+| 5 | CSMBS Dental Correction | กรมบัญชีกลาง | correction_required | ฿4,600 | ธนกฤต พงษ์พิทักษ์ |
+| 6 | Self-Pay Pharmacy | Self-Pay | paid | ฿890 | สมชาย วงศ์สวัสดิ์ |
 
-Every seeded item must include:
+Each seeded scenario includes:
+- `simulationFlag = true` on all rows
+- Distinct patient/hospital/payer references
+- Realistic `ClaimPackageCredential` payload with FHIR Claim JSON
+- Evidence documents (18 total across 6 cases)
+- ICD-10 diagnosis codes and service item descriptions
+- Payer submission events with adjudication results (where applicable)
+- Payment reconciliation (case 6)
 
-- `simulationFlag = true`.
-- Distinct patient/hospital/payer references.
-- Realistic `ClaimPackageCredential` payload.
-- Realistic `ClaimReceiptCredential` payload when paid.
-- FHIR `Claim` JSON.
-- Evidence hashes and document references.
-
-Reseed rule:
-
-- If `claim_documents`, `claim_packages`, `claim_submission_events`, or `claim_payments` are reseeded, regenerate dependent ClaimPackageCredential and ClaimReceiptCredential hashes.
-- If claim evidence changes after package VC issuance, mark the old package VC `superseded` and issue a new package VC.
+**Reseed rule:** If claim evidence changes after package VC issuance, mark old package VC `superseded` and issue a new one.
 
 ## 8. Legal and Compliance Guardrails
 
