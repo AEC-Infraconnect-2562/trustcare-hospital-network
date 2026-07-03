@@ -628,7 +628,7 @@ export default function SmartHealthLinks() {
                       <Row
                         key={version.id}
                         title={`v${version.manifestVersion} ${version.status}`}
-                        subtitle={version.changeReason ?? version.createdAt}
+                        subtitle={version.changeReason ?? (version.createdAt ? new Date(version.createdAt).toLocaleString() : '')}
                         right={shortHash(version.manifestHash)}
                       />
                     ))}

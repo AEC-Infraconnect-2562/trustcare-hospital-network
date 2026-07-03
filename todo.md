@@ -617,3 +617,10 @@
 - [x] Medical Tourist page: title text cut off and header layout broken on mobile
 - [x] Run full test suite (302 tests passing)
 - [x] Save checkpoint and push to GitHub
+
+## v3.11.1 - SHL Page Date Rendering Fix
+
+- [x] Fix "Objects are not valid as a React child (found: [object Date])" error on /shl page
+- [x] Root cause: version.createdAt is a Date object passed directly to JSX via Row subtitle prop
+- [x] Fix: Convert Date to string with new Date(version.createdAt).toLocaleString()
+- [x] 302 tests passing, 0 TypeScript errors
