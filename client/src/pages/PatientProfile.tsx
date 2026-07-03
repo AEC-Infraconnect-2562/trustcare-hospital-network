@@ -606,15 +606,17 @@ function IdentityCardItem({
               </p>
             </div>
             <div className="shrink-0 flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={(e) => { e.stopPropagation(); onGenerateQR(); }}
-                disabled={!isActive}
+              <span
+                role="button"
+                tabIndex={0}
+                className="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); onGenerateQR(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onGenerateQR(); } }}
+                aria-disabled={!isActive}
+                aria-label="สร้าง QR Code"
               >
                 <QrCode className="h-4 w-4 text-primary" />
-              </Button>
+              </span>
               {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
             </div>
           </button>
