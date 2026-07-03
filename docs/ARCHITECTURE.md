@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.5 (Portraits + Role Enforcement + System Audit)
+**Version:** 5.6 (Prepare for Service Core Workbench)
 **Last updated:** 2026-07-03
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1766,10 +1766,30 @@ Each request includes: ICD-10 diagnosis codes, attending physician name, departm
 
 ---
 
-## 35. Version History Summary
+## 35. Prepare for Service Core Workbench (v5.6.0 - 2026-07-03)
+
+Prepare for Service is now modeled as the central wallet-first readiness function for both patients and hospitals.
+
+Core changes:
+
+- Patient view uses patient-owned bundle labels and hides hospital-only operations.
+- `medical_tourist` is split by audience:
+  - Patient: `เตรียมไปรักษาต่างประเทศ` / `Prepare care abroad`
+  - Hospital: `รับผู้ป่วยต่างชาติ` / `Inbound international patient`
+- Hospital Workbench handles incoming packet verification, partner intake, walk-in wallet onboarding, and deploy-to-wallet drafts.
+- Contract Hub publishes simulated service readiness contracts, FHIR Questionnaire shapes, VC schema references, consent policy, and API contracts.
+- Data Mapping v2 binds source connectors and uploads to service contracts before emitting FHIR, DocumentReference, VC, VP, SHL, or review tasks.
+- Public mock API is exposed at `/api/public/prepare-service/v1` and is explicitly marked simulation-only.
+
+Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CORE_HANDOFF.md`](./PREPARE_FOR_SERVICE_CORE_HANDOFF.md).
+
+---
+
+## 36. Version History Summary
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.6.0 | 2026-07-03 | Prepare for Service core workbench, audience-separated patient/hospital bundles, Contract Hub/Data Mapping v2 mock API |
 | v3.14.0 | 2026-07-03 | Claim Center real DB binding, patient name JOINs, ClaimDetail page with 5 tabs |
 | v3.13.0 | 2026-07-03 | 6 Claim Center DB tables created, 6 realistic scenarios seeded, unique avatar photos for all users |
 | v3.12.0 | 2026-07-03 | Maker/Checker workflow improvements, checker notification, credential_requests seed data |
@@ -1783,7 +1803,7 @@ Each request includes: ICD-10 diagnosis codes, attending physician name, departm
 
 ---
 
-## 36. Current System Statistics
+## 37. Current System Statistics
 
 | Metric | Value |
 |--------|-------|
