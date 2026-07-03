@@ -579,3 +579,30 @@
 - [x] TypeScript compilation: 0 errors
 - [x] Update ARCHITECTURE.md
 - [x] Push to GitHub
+
+## v3.10.0 - Realistic Portrait Photos for All Demo Users
+
+### Portrait Generation (16 unique AI-generated portraits)
+- [ ] demo-sysadmin-001 (นพ.สมชาย ระบบดี) - Thai male doctor, 50s, authoritative
+- [ ] demo-hospadmin-001 (นางวิภา บริหารเก่ง) - Thai female admin, 45-50
+- [ ] demo-doctor-001 (นพ.ธนวัฒน์ รักษาดี) - Thai male doctor, 35-40
+- [ ] demo-doctor-002 (พญ.สุภาพร ใจดี) - Thai female doctor, 30-35
+- [ ] demo-nurse-001 (นางสาวพิมพ์ใจ ดูแลดี) - Thai female nurse, 28-32
+- [ ] demo-nurse-002 (นายอนุชา ช่วยเหลือ) - Thai male nurse, 30-35
+- [ ] demo-engineer-001 (นายปิยะ เชื่อมต่อดี) - Thai male IT engineer, 30-35
+- [ ] demo-patient-001 (นายสมชาย ใจดี) - Thai male, 45-50
+- [ ] demo-patient-002 (นางสาวมาลี วัฒนา) - Thai female, 35-40
+- [ ] demo-patient-003 (Mr. John Williams) - Caucasian male, 55-60
+- [ ] demo-patient-004 (นางสาวฮารุกะ ทานากะ) - Japanese female, 30-35
+- [ ] demo-patient-005 (นายวิชัย สุขสบาย) - Thai male elderly, 60-65
+- [ ] demo-patient-006 (นางพรทิพย์ มั่งมี) - Thai female, 50-55
+- [ ] demo-patient-007 (นายอภิชาติ รักสุขภาพ) - Thai male, 40-45
+- [ ] demo-patient-008 (Mr. David Chen) - Chinese-American male, 45-50
+- [ ] demo-patient-009 (นางสาวสุดา ใจเย็น) - Thai female young, 25-28
+
+### Upload and Seed
+- [ ] Upload all portraits via manus-upload-file --webdev
+- [ ] Update user avatarUrl in database for all 16 demo users
+- [ ] Verify portraits display correctly in UI
+- [ ] Run full test suite
+- [ ] Save checkpoint and push to GitHub

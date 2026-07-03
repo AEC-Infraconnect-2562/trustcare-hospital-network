@@ -916,7 +916,7 @@ export const appRouter = router({
       return { ...result, scanSource: source };
     }),
     // VP Packet verification at service point (staff scanner)
-    verifyServicePacket: protectedProcedure.input(z.object({
+    verifyServicePacket: staffProcedure.input(z.object({
       presentationId: z.string().min(1, "Presentation ID is required"),
     })).mutation(async ({ ctx, input }) => {
       // 1. Look up the stored presentation
@@ -1050,7 +1050,7 @@ export const appRouter = router({
       };
     }),
     // Confirm service check-in after VP verification
-    confirmServiceCheckin: protectedProcedure.input(z.object({
+    confirmServiceCheckin: staffProcedure.input(z.object({
       presentationId: z.string().min(1),
       serviceName: z.string().optional(),
       hospitalId: z.number().optional(),

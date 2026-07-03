@@ -1,7 +1,7 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.4 (Service Readiness + Wallet Requests)
-**Last updated:** 2026-07-02
+**Version:** 5.5 (Portraits + Role Enforcement + System Audit)
+**Last updated:** 2026-07-03
 **Maintainers:** AEC-Infraconnect-2562
 
 ---
@@ -1474,5 +1474,169 @@ Staff scans QR → Extract presentationId
 | `server/serviceVerification.test.ts` | Unit tests (29 tests)                                  |
 | `client/src/pages/ServiceVerify.tsx` | Staff scanner UI                                       |
 | `shared/menuConfig.ts`               | Menu item definition                                   |
+
+---
+
+
+## 30. Portrait Generation & Identity Assets (v3.10.0)
+
+### 30.1 Overview
+
+Every demo user in the TrustCare Hospital Network now has a unique, AI-generated realistic portrait photograph. These portraits are used in:
+
+- **User profile avatars** (sidebar, header, settings)
+- **Patient identity cards** within the wallet
+- **Credential subject photos** embedded in issued VCs
+- **Service verification display** when staff scan VP Packet QR codes
+
+### 30.2 Generation Pipeline
+
+```
+Prompt Engineering → AI Image Generation → Upload to CDN → DB Update
+```
+
+| Step | Tool | Output |
+|------|------|--------|
+| 1. Prompt crafting | Demographic-aware prompts (age, gender, ethnicity, profession) | Detailed text prompts |
+| 2. Image generation | AI portrait generator (1:1 aspect ratio, 1024×1024) | PNG files |
+| 3. CDN upload | `manus-upload-file --webdev` | Permanent `/manus-storage/` URLs |
+| 4. DB seeding | SQL UPDATE on `users.avatarUrl` | All 16 demo users updated |
+
+### 30.3 Demo User Portrait Mapping
+
+| OpenID | Name | Role | Portrait Style |
+|--------|------|------|----------------|
+| demo-sysadmin-001 | นพ.สมชาย ระบบดี | system_admin | Thai male, 50s, formal medical attire |
+| demo-hospadmin-001 | นางสาวพิมพ์ใจ บริหารดี | hospital_admin | Thai female, 40s, business professional |
+| demo-doctor-001 | นพ.วิชัย รักษาดี | doctor | Thai male, 45, white coat |
+| demo-doctor-002 | พญ.สุภาพร ใจเย็น | doctor | Thai female, 38, white coat |
+| demo-nurse-001 | นางสาวนภา ดูแลดี | nurse | Thai female, 30s, nurse uniform |
+| demo-nurse-002 | นายธนกร พยาบาลดี | nurse | Thai male, 35, nurse scrubs |
+| demo-engineer-001 | นายเทคนิค ระบบดี | engineer | Thai male, 30s, casual tech |
+| demo-patient-001 | นายสมชาย ใจดี | patient | Thai male, 55, casual |
+| demo-patient-002 | นางสมหญิง รักสุขภาพ | patient | Thai female, 48, casual |
+| demo-patient-003 | นายวิชัย ผู้สูงวัย | patient | Thai male, 72, elderly |
+| demo-patient-004 | Haruka Tanaka | patient | Japanese female, 35, professional |
+| demo-patient-005 | นายอาทิตย์ เด็กหนุ่ม | patient | Thai male, 22, young casual |
+| demo-patient-006 | Mrs. Sarah Johnson | patient | Caucasian female, 45, professional |
+| demo-patient-007 | นางสาวมาลี โรคเรื้อรัง | patient | Thai female, 60, elderly |
+| demo-patient-008 | Mr. Ahmed Al-Rashid | patient | Middle Eastern male, 50, business |
+| demo-patient-009 | นางสาวน้องใหม่ ยังไม่มีข้อมูล | patient | Thai female, 25, young casual |
+
+### 30.4 Storage Architecture
+
+All portrait images are stored outside the project directory at `/home/ubuntu/webdev-static-assets/portraits/` and served via the CDN path `/manus-storage/`. This prevents deployment timeouts from large binary assets in the project tree.
+
+---
+
+## 31. Role Separation & Access Control Enforcement (v3.10.0)
+
+### 31.1 Access Control Layers
+
+The system enforces role-based access control at three distinct layers:
+
+```
+Layer 1: tRPC Procedure Guards (server/routers.ts)
+  ├── publicProcedure      → Anyone (no auth required)
+  ├── protectedProcedure   → Any authenticated user
+  ├── staffProcedure       → systemRole !== 'patient'
+  ├── adminProcedure       → systemRole === 'system_admin' OR role === 'admin'
+  └── requireMakerCheckerRole() → Explicit maker/checker role in userRoles table
+
+Layer 2: Frontend Route Guards (client/src/App.tsx + menuConfig.ts)
+  ├── Menu visibility based on systemRole
+  ├── Route-level redirects for unauthorized access
+  └── Component-level conditional rendering
+
+Layer 3: Database-Level Role Assignment (drizzle/schema.ts)
+  ├── users.systemRole enum: system_admin | hospital_admin | doctor | nurse | engineer | patient
+  ├── userRoles table: additional role assignments (maker, checker, issuer)
+  └── sanitizeAdditionalRolesForSystemRole(): strips invalid role combinations
+```
+
+### 31.2 Patient Isolation Verification
+
+Verified that patient users (demo-patient-001 through demo-patient-009) are denied access to all staff/admin operations:
+
+| Route | Guard | Patient Result |
+|-------|-------|----------------|
+| `verifier.verifyServicePacket` | staffProcedure | FORBIDDEN |
+| `verifier.confirmServiceCheckin` | staffProcedure | FORBIDDEN |
+| `hospital.create` | adminProcedure | FORBIDDEN |
+| `credential.createTemplate` | adminProcedure | FORBIDDEN |
+| `makerChecker.pendingReviews` | requireMakerCheckerRole("checker") | FORBIDDEN |
+| `makerChecker.submitForReview` | requireMakerCheckerRole("maker") | FORBIDDEN |
+| `users.list` | adminProcedure | FORBIDDEN |
+| `users.updateRole` | adminProcedure | FORBIDDEN |
+
+### 31.3 Staff Access Verification
+
+Staff users (system_admin, hospital_admin, doctor, nurse) have access to their respective operations:
+
+| Role | Accessible Operations |
+|------|----------------------|
+| system_admin | All admin + staff + maker/checker operations |
+| hospital_admin | Staff operations + hospital-scoped admin |
+| doctor | Staff operations + clinical procedures |
+| nurse | Staff operations + service verification + clinical procedures |
+| patient | Wallet, SHL, consent, prepare-service only |
+
+### 31.4 Key Security Properties
+
+1. **No patient holds maker/checker/issuer roles** — Verified via `SELECT COUNT(*) FROM userRoles WHERE userId IN (patient_ids)` = 0
+2. **staffProcedure blocks all patients** — Checks `systemRole !== 'patient'` before proceeding
+3. **adminProcedure blocks non-admins** — Only `system_admin` or legacy `admin` role passes
+4. **requireMakerCheckerRole() uses sanitized roles** — Even if stale role data exists, `sanitizeAdditionalRolesForSystemRole()` strips invalid combinations for patient users
+5. **Frontend menu filtering** — Patient sidebar only shows wallet, SHL, consent, and prepare-service items
+
+---
+
+## 32. System Audit Summary (v3.10.0 — 2026-07-03)
+
+### 32.1 Data Inventory (demo-patient-001 / นายสมชาย ใจดี)
+
+| Metric | Count | Details |
+|--------|-------|---------|
+| Wallet Cards | 21 | Across 6 categories, 17 distinct types |
+| Card Categories | 6 | identity_and_access, clinical_summary, medication_and_pharmacy, care_transition, sharing_and_sync, claims_and_finance |
+| Issuing Hospitals | 3 | TrustCare Central, Phuket International, Chiang Mai Cross-Border |
+| Issued Credentials | 26 | All status=active |
+| SHL Packages | 8 | 6 active, 2 revoked |
+| SHL Purposes | 6 | patient_summary, self_share, referral, cross_border, insurance, medical_tourist |
+| Manifest Versions | 8 | One per SHL package |
+| SHL Files | 8 | Encrypted FHIR bundles |
+| SHL Access Logs | 12 | 9 granted, 3 bad_passcode |
+| Issued Presentations | 10 | All status=active |
+| Demo Users with Portraits | 16/16 | 100% coverage |
+| Patient Staff-Route Denials | 6/6 tested | All correctly FORBIDDEN |
+
+### 32.2 Test Coverage
+
+| Test File | Tests | Status |
+|-----------|-------|--------|
+| server/auth.logout.test.ts | 1 | ✓ |
+| server/trustcare.test.ts | 3 | ✓ |
+| server/tao-consent.test.ts | 7 | ✓ |
+| server/role-policy.test.ts | 4 | ✓ |
+| server/serviceReadiness.test.ts | 53 | ✓ |
+| server/readiness.test.ts | 12 | ✓ |
+| server/webhookDocumentImport.test.ts | 22 | ✓ |
+| server/serviceVerification.test.ts | 29 | ✓ |
+| e2e/portability-flow.e2e.test.ts | 2 | ✓ |
+| **Total** | **302** | **All passing** |
+
+### 32.3 TypeScript Compilation
+
+- **0 errors** across all source files
+- Strict mode enabled
+- All imports resolved correctly
+
+### 32.4 Files Modified in v3.10.0
+
+| File | Change |
+|------|--------|
+| `server/routers.ts` | Changed `verifyServicePacket` and `confirmServiceCheckin` from `protectedProcedure` to `staffProcedure` |
+| `users.avatarUrl` (DB) | Updated all 16 demo users with unique AI-generated portrait URLs |
+| `docs/ARCHITECTURE.md` | Added Sections 30–32 |
 
 ---
