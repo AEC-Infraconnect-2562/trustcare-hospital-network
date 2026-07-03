@@ -46,7 +46,12 @@ export default function Home() {
 
   useEffect(() => {
     if (user && !loading) {
-      setLocation("/dashboard");
+      const role = (user as any)?.activeRole || (user as any)?.systemRole || "patient";
+      if (role === "patient") {
+        setLocation("/profile");
+      } else {
+        setLocation("/dashboard");
+      }
     }
   }, [user, loading, setLocation]);
 

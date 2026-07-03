@@ -41,7 +41,6 @@ const routeAccessConfig: RouteAccess[] = [
       "doctor",
       "nurse",
       "integration_engineer",
-      "patient",
     ],
   },
   { path: "/executive", roles: ["system_admin", "hospital_admin"] },
@@ -300,8 +299,8 @@ export default function RoleGuard({ children }: { children: React.ReactNode }) {
             </p>
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setLocation("/dashboard")}>
-              กลับแดชบอร์ด
+            <Button variant="outline" onClick={() => setLocation(activeRole === "patient" ? "/profile" : "/dashboard")}>
+              {activeRole === "patient" ? "กลับหน้าโปรไฟล์" : "กลับแดชบอร์ด"}
             </Button>
             <Button onClick={() => window.history.back()}>ย้อนกลับ</Button>
           </div>

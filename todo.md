@@ -692,3 +692,11 @@
 - [x] Optimize large component re-renders - added useMemo to MakerQueue.tsx filtering operations
 - [x] Run full test suite - 307 tests passing, 0 TypeScript errors
 - [x] Save checkpoint and push to GitHub
+
+## v3.17.0 - Patient Wallet Access Control & Landing Page Fix
+- [x] Remove "งานโรงพยาบาล" menu group from patient role view (removed patient from dashboard menu item roles)
+- [x] Remove "กิจกรรมล่าสุด" section from patient dashboard (patient can no longer access /dashboard)
+- [x] Add route guardrails to prevent patient from accessing hospital work pages (RoleGuard blocks /dashboard for patient)
+- [x] Change patient landing page after login to Patient Profile instead of Dashboard (Home.tsx redirects patient to /profile)
+- [x] Test all patient accounts see correct menu and landing page (307 tests passing)
+- [x] Save checkpoint and push to GitHub

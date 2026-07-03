@@ -30,7 +30,6 @@ const routeAccessConfig: RouteAccess[] = [
       "doctor",
       "nurse",
       "integration_engineer",
-      "patient",
     ],
   },
   { path: "/executive", roles: ["system_admin", "hospital_admin"] },
@@ -237,7 +236,6 @@ describe("RoleGuard - Route Access Control", () => {
 
   describe("patient role restrictions", () => {
     const patientAllowed = [
-      "/dashboard",
       "/profile",
       "/prepare-service",
       "/wallet",
@@ -245,6 +243,7 @@ describe("RoleGuard - Route Access Control", () => {
       "/shl",
     ];
     const patientDenied = [
+      "/dashboard",
       "/executive",
       "/service-verify",
       "/referral",

@@ -108,7 +108,7 @@ const menuItemsEn: Record<string, string> = {
 };
 
 const allMenuItems: MenuItemDef[] = [
-  { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
+  { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
   { id: "executive", label: "แดชบอร์ดผู้บริหาร", icon: "BarChart3", path: "/executive", roles: ["system_admin", "hospital_admin"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
   { id: "profile", label: "โปรไฟล์ผู้ป่วย", icon: "UserCircle", path: "/profile", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient", "maker", "checker"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
   { id: "prepare-service", label: "เตรียมเข้ารับบริการ", icon: "HeartPulse", path: "/prepare-service", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
