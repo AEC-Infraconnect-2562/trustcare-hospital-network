@@ -704,11 +704,13 @@ function DataMappingView({ workbench, workbenchQuery }: any) {
                 <Badge variant="outline">{profile.context ?? profile.sourceSystem}</Badge>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Contract: {profile.contractId ?? "N/A"} | Validation: {profile.validation?.length ?? 0} rules
+                Contract: {profile.contractId ?? "N/A"} | Validation: {profile.validation ? Object.keys(profile.validation).length : 0} rules
               </p>
               <div className="mt-2 flex flex-wrap gap-1">
-                {((profile.requiredOutputs ?? profile.mappedFields) ?? []).slice(0, 5).map((field: any) => (
-                  <Badge key={field} variant="secondary" className="text-xs">{field}</Badge>
+                {((profile.requiredOutputs ?? profile.mappedFields) ?? []).slice(0, 5).map((field: any, idx: number) => (
+                  <Badge key={typeof field === 'string' ? field : (field.requirementKey ?? idx)} variant="secondary" className="text-xs">
+                    {typeof field === 'string' ? field : (field.documentType ?? field.requirementKey ?? JSON.stringify(field))}
+                  </Badge>
                 ))}
                 {((profile.requiredOutputs ?? profile.mappedFields) ?? []).length > 5 && (
                   <Badge variant="secondary" className="text-xs">
