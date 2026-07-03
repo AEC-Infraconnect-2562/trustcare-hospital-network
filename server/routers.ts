@@ -1,5 +1,6 @@
 import { COOKIE_NAME, isSingletonType } from "@shared/const";
 import { assessReadiness, readinessContextValues, type ReadinessContext } from "@shared/readiness";
+import { buildTrustLayerChecklist, classifyPacketTransport } from "@shared/trustLayer";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -1097,32 +1098,90 @@ export const appRouter = router({
     }),
     present: protectedProcedure.input(z.object({
       cardId: z.number(),
+      selectedFields: z.array(z.string()).optional(),
+      audience: z.string().max(255).optional(),
+      validMinutes: z.number().min(1).max(24 * 60).default(10),
     })).mutation(async ({ ctx, input }) => {
       const cards = await db.listWalletCards(ctx.user.id);
       const card = cards.find((item: any) => item.id === input.cardId);
       if (!card) throw new TRPCError({ code: "NOT_FOUND", message: "Wallet card not found" });
-      const [presentation] = await db.listIssuedPresentations({ patientId: ctx.user.id, status: "active", limit: 1 });
-      if (!presentation) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "No active verifiable presentation is available for this patient. Issue or reseed a VP first." });
+      const credentialRow = await db.getCredentialById(Number(card.credentialId));
+      if (!credentialRow || credentialRow.subjectId !== ctx.user.id) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Credential for this wallet card was not found." });
       }
+      if (credentialRow.status !== "active" || !credentialRow.sdJwtVc) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "This wallet card does not have an active signed VC available for presentation." });
+      }
+      const selectedFields = input.selectedFields?.filter(Boolean) ?? [];
+      const transportDecision = classifyPacketTransport({
+        documentTypes: [String(credentialRow.type ?? card.cardType)],
+        credentialCount: 1,
+      });
+      const checklist = buildTrustLayerChecklist({
+        mode: "direct_vp",
+        hasIssuer: true,
+        hasHolder: true,
+        hasSchema: true,
+        hasStatus: true,
+        hasConsent: true,
+      });
+      const presentation = await createPresentation({
+        holderDid: defaultHolderDid(ctx.user.id),
+        credentials: [issuedCredentialRowToIssuedVc(credentialRow)],
+        purpose: purposeForWalletCardType(String(credentialRow.type ?? card.cardType)),
+        audience: input.audience ?? "TrustCare credential verifier",
+        validMinutes: input.validMinutes,
+      });
+      await db.createIssuedPresentation({
+        presentationId: presentation.id,
+        patientId: ctx.user.id,
+        holderDid: defaultHolderDid(ctx.user.id),
+        context: "single_document",
+        purpose: presentation.purpose,
+        audience: presentation.audience,
+        presentationJwt: presentation.jwt,
+        credentialIds: presentation.credentialIds,
+        credentialRowIds: [credentialRow.id],
+        verifier: input.audience ?? "single-document-verifier",
+        status: "active",
+        expiresAt: new Date(presentation.expiresAt),
+        metadata: {
+          directSingleDocument: true,
+          selectedFields,
+          cardId: card.id,
+          cardType: card.cardType,
+          transportDecision,
+          verificationChecklist: checklist,
+        },
+      } as any);
       await db.createAuditEvent({
         actorId: ctx.user.id,
         actorRole: (ctx.user as any).systemRole,
         action: "credential.presented",
         resourceType: "wallet_card",
         resourceId: String(input.cardId),
-        details: { presentationId: presentation.presentationId, credentialIds: presentation.credentialIds },
+        details: {
+          presentationId: presentation.id,
+          credentialIds: presentation.credentialIds,
+          selectedFields,
+          mode: transportDecision.mode,
+        },
       });
       // QR Code has ~2,953 byte limit; JWT is too large.
       // Use a short verification URL that the verifier can resolve.
       const proto = ctx.req.headers["x-forwarded-proto"] || ctx.req.protocol || "https";
       const host = ctx.req.headers["x-forwarded-host"] || ctx.req.headers.host || "";
       const origin = `${proto}://${host}`;
-      const qrUrl = `${origin}/verifier?vp=${presentation.presentationId}`;
+      const qrUrl = `${origin}/verifier?vp=${presentation.id}`;
       return {
-        presentationId: presentation.presentationId,
+        presentationId: presentation.id,
         format: "jwt-vp",
-        expiresAt: presentation.expiresAt?.toISOString(),
+        mode: transportDecision.mode,
+        credentialCount: 1,
+        selectedFields,
+        transportDecision,
+        verificationChecklist: checklist,
+        expiresAt: presentation.expiresAt,
         qrData: qrUrl,
       };
     }),
@@ -1136,7 +1195,19 @@ export const appRouter = router({
       token: z.string().optional(),
       vpUrl: z.string().optional(),
     })).mutation(async ({ input }) => {
-      const presented = input.vpUrl || input.token;
+      let presented = input.vpUrl || input.token;
+      if (presented?.startsWith("http")) {
+        try {
+          const url = new URL(presented);
+          presented = url.searchParams.get("token") || url.searchParams.get("vp") || url.searchParams.get("vc") || presented;
+        } catch {
+          // Keep original input when it is not a valid URL.
+        }
+      }
+      if (presented && !presented.startsWith("{") && !presented.startsWith("eyJ") && !presented.startsWith("http") && presented.length < 300) {
+        const storedPresentation = await db.getIssuedPresentationByPresentationId(presented);
+        if (storedPresentation?.presentationJwt) presented = storedPresentation.presentationJwt;
+      }
       if (presented?.trim().startsWith("{")) {
         const presentation = JSON.parse(presented);
         const result = verifyJsonPresentation({ presentation });
@@ -1161,6 +1232,15 @@ export const appRouter = router({
           issuer: "TrustCare JSON VP",
           holderDid: result.holderDid,
           credentials: presentation.verifiableCredential ?? [],
+          transportDecision: classifyPacketTransport({ credentialCount: presentation.verifiableCredential?.length ?? 1 }),
+          verificationChecklist: buildTrustLayerChecklist({
+            mode: (presentation.verifiableCredential?.length ?? 1) > 1 ? "vp_bundle" : "direct_vp",
+            hasIssuer: Boolean(firstCred),
+            hasHolder: Boolean(result.holderDid),
+            hasSchema: true,
+            hasStatus: result.verified,
+            hasConsent: Boolean(result.purpose),
+          }),
           highPriority: result.highPriority,
           warnings: taoTrust?.reason ? [...(result.warnings || []), `TAO: ${taoTrust.reason}`] : result.warnings,
           errors: result.errors,
@@ -1176,6 +1256,15 @@ export const appRouter = router({
             issuer: result.credentials[0]?.issuer?.name ?? result.credentials[0]?.issuer?.id ?? "Unknown issuer",
             holderDid: result.holderDid,
             credentials: result.credentials,
+            transportDecision: classifyPacketTransport({ credentialCount: result.credentials.length }),
+            verificationChecklist: buildTrustLayerChecklist({
+              mode: result.credentials.length > 1 ? "vp_bundle" : "direct_vp",
+              hasIssuer: result.credentials.length > 0,
+              hasHolder: Boolean(result.holderDid),
+              hasSchema: true,
+              hasStatus: result.verified,
+              hasConsent: true,
+            }),
             warnings: result.warnings,
             errors: result.errors,
           };
@@ -1186,6 +1275,15 @@ export const appRouter = router({
           verified: credentialResult.verified,
           issuer: credentialResult.issuer,
           credential: credentialResult.credential,
+          transportDecision: classifyPacketTransport({ credentialCount: 1, documentTypes: [credentialResult.credentialType ?? "credential"] }),
+          verificationChecklist: buildTrustLayerChecklist({
+            mode: "direct_vp",
+            hasIssuer: Boolean(credentialResult.issuer),
+            hasHolder: true,
+            hasSchema: Boolean(credentialResult.credentialType),
+            hasStatus: credentialResult.verified,
+            hasConsent: true,
+          }),
           warnings: credentialResult.warnings,
           errors: credentialResult.errors,
         };
@@ -1247,6 +1345,15 @@ export const appRouter = router({
             issuer: "TrustCare JSON VP",
             holderDid: verResult.holderDid,
             credentials: presentation.verifiableCredential ?? [],
+            transportDecision: classifyPacketTransport({ credentialCount: presentation.verifiableCredential?.length ?? 1 }),
+            verificationChecklist: buildTrustLayerChecklist({
+              mode: (presentation.verifiableCredential?.length ?? 1) > 1 ? "vp_bundle" : "direct_vp",
+              hasIssuer: Boolean(presentation.verifiableCredential?.length),
+              hasHolder: Boolean(verResult.holderDid),
+              hasSchema: true,
+              hasStatus: verResult.verified,
+              hasConsent: Boolean(verResult.purpose),
+            }),
             highPriority: verResult.highPriority,
             warnings: verResult.warnings,
             errors: verResult.errors,
@@ -1269,6 +1376,15 @@ export const appRouter = router({
             issuer: vpResult.credentials[0]?.issuer?.name ?? vpResult.credentials[0]?.issuer?.id ?? "Unknown issuer",
             holderDid: vpResult.holderDid,
             credentials: vpResult.credentials,
+            transportDecision: classifyPacketTransport({ credentialCount: vpResult.credentials.length }),
+            verificationChecklist: buildTrustLayerChecklist({
+              mode: vpResult.credentials.length > 1 ? "vp_bundle" : "direct_vp",
+              hasIssuer: vpResult.credentials.length > 0,
+              hasHolder: Boolean(vpResult.holderDid),
+              hasSchema: true,
+              hasStatus: vpResult.verified,
+              hasConsent: true,
+            }),
             warnings: vpResult.warnings,
             errors: vpResult.errors,
           };
@@ -1279,6 +1395,15 @@ export const appRouter = router({
             verified: credResult.verified,
             issuer: credResult.issuer,
             credential: credResult.credential,
+            transportDecision: classifyPacketTransport({ credentialCount: 1, documentTypes: [credResult.credentialType ?? "credential"] }),
+            verificationChecklist: buildTrustLayerChecklist({
+              mode: "direct_vp",
+              hasIssuer: Boolean(credResult.issuer),
+              hasHolder: true,
+              hasSchema: Boolean(credResult.credentialType),
+              hasStatus: credResult.verified,
+              hasConsent: true,
+            }),
             warnings: credResult.warnings,
             errors: credResult.errors,
           };
@@ -1417,6 +1542,19 @@ export const appRouter = router({
       return {
         verified: verificationResult?.verified ?? (credentials.length > 0),
         trustLevel,
+        transportDecision: meta.transportDecision ?? classifyPacketTransport({
+          credentialCount: credentials.length,
+          context: storedPresentation.context,
+          hasFhirBundle: true,
+        }),
+        verificationChecklist: meta.verificationChecklist ?? buildTrustLayerChecklist({
+          mode: credentials.length > 1 ? "vp_bundle" : "direct_vp",
+          hasIssuer: credentials.length > 0,
+          hasHolder: Boolean(storedPresentation.holderDid),
+          hasSchema: true,
+          hasStatus: verificationResult?.verified ?? credentials.length > 0,
+          hasConsent: Boolean(storedPresentation.purpose),
+        }),
         patient: patient ? {
           id: patient.id,
           name: patient.name,
@@ -4816,6 +4954,15 @@ function servicePacketPurpose(context: ReadinessContext): ConsentPurpose {
     pharmacy_dispense: "treatment",
   };
   return map[context];
+}
+
+function purposeForWalletCardType(cardType: string): ConsentPurpose {
+  const insuranceTypes = new Set(["insurance_eligibility", "claim_package", "claim_receipt"]);
+  const referralTypes = new Set(["referral_vc", "discharge_summary", "travel_document_verification", "visa_support_letter", "quotation", "guarantee_letter"]);
+  if (insuranceTypes.has(cardType)) return "insurance";
+  if (referralTypes.has(cardType)) return "referral";
+  if (cardType === "consent_receipt") return "treatment";
+  return "treatment";
 }
 
 type ShlPurpose = (typeof shlPurposeValues)[number];

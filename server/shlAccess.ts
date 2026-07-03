@@ -4,12 +4,14 @@ import { buildManifestResponse, verifyPasscode } from "./portability";
 export class ShlAccessError extends Error {
   statusCode: number;
   trpcCode: "NOT_FOUND" | "FORBIDDEN" | "UNAUTHORIZED" | "BAD_REQUEST";
+  details?: Record<string, unknown>;
 
-  constructor(message: string, statusCode = 403, trpcCode: ShlAccessError["trpcCode"] = "FORBIDDEN") {
+  constructor(message: string, statusCode = 403, trpcCode: ShlAccessError["trpcCode"] = "FORBIDDEN", details?: Record<string, unknown>) {
     super(message);
     this.name = "ShlAccessError";
     this.statusCode = statusCode;
     this.trpcCode = trpcCode;
+    this.details = details;
   }
 }
 
@@ -28,7 +30,7 @@ export async function resolveShlManifestAccessPacket(input: {
   const requestedAt = new Date();
   const recipient = input.recipient || input.accessorOrg || input.accessorName || "unknown-recipient";
 
-  const deny = async (result: string, message: string, statusCode = 403, trpcCode: ShlAccessError["trpcCode"] = "FORBIDDEN") => {
+  const deny = async (result: string, message: string, statusCode = 403, trpcCode: ShlAccessError["trpcCode"] = "FORBIDDEN", details?: Record<string, unknown>) => {
     await db.createShlAccessLog({
       shlId: shl.id,
       recipient,
@@ -42,7 +44,7 @@ export async function resolveShlManifestAccessPacket(input: {
       manifestRequestedAt: requestedAt,
       countryHint: input.accessorCountry ?? undefined,
     });
-    throw new ShlAccessError(message, statusCode, trpcCode);
+    throw new ShlAccessError(message, statusCode, trpcCode, details);
   };
 
   if (!shl || !shl.id) {
@@ -76,7 +78,11 @@ export async function resolveShlManifestAccessPacket(input: {
 
   if (shl.passcodeRequired) {
     if (!input.passcode || !shl.passcodeSalt || !shl.passcodeHash) {
-      await deny("bad_passcode", "Passcode is required.", 401, "UNAUTHORIZED");
+      const maxAttempts = Number(shl.passcodeMaxAttempts ?? 5);
+      const failedAttempts = Number(shl.passcodeFailedAttempts ?? 0);
+      await deny("bad_passcode", "Passcode is required.", 401, "UNAUTHORIZED", {
+        remainingAttempts: Math.max(maxAttempts - failedAttempts, 0),
+      });
     }
     const passcode = input.passcode;
     const passcodeSalt = shl.passcodeSalt;
@@ -92,7 +98,14 @@ export async function resolveShlManifestAccessPacket(input: {
         passcodeFailedAttempts: failedAttempts,
         ...(failedAttempts >= maxAttempts ? { status: "disabled", disabledReason: "Passcode failure limit reached" } : {}),
       } as any);
-      await deny("bad_passcode", failedAttempts >= maxAttempts ? "Passcode failure limit reached." : "Passcode is incorrect.", 401, "UNAUTHORIZED");
+      const remainingAttempts = Math.max(maxAttempts - failedAttempts, 0);
+      await deny(
+        "bad_passcode",
+        failedAttempts >= maxAttempts ? "Passcode failure limit reached." : "Passcode is incorrect.",
+        401,
+        "UNAUTHORIZED",
+        { remainingAttempts },
+      );
     }
   }
 

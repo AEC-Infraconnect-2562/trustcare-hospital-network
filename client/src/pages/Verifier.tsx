@@ -104,11 +104,16 @@ export default function Verifier() {
                       <ScanLine className={`h-10 w-10 text-muted-foreground/50 ${verify.isPending ? "animate-pulse" : ""}`} />
                     </div>
                     <Textarea
-                      placeholder="Paste JSON VP, JWT VP, or JWT VC here..."
+                      placeholder="Paste VP URL, presentation ID, JSON VP, JWT VP, or JWT VC here..."
                       className="min-h-[180px] font-mono text-xs"
                       value={vpInput}
                       onChange={(event) => setVpInput(event.target.value)}
                     />
+                    {vpInput.trim().startsWith("shlink:/") && (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                        This is an SHL transport link. Open it in Smart Health Link Viewer to resolve the manifest and passcode, then verify the bound Manifest VC and Holder VP here if needed.
+                      </div>
+                    )}
                     <Button onClick={() => verify.mutate({ vpUrl: vpInput })} disabled={!vpInput || verify.isPending} className="w-full gap-2">
                       <ClipboardCheck className="h-4 w-4" />
                       {verify.isPending ? "กำลังตรวจสอบ..." : "เริ่มตรวจสอบ"}
@@ -150,6 +155,7 @@ export default function Verifier() {
             </div>
 
             <TrustBadge level={trustLevel} warnings={result.warnings} errors={result.errors} />
+            <VerifierTrustLayer result={result} />
 
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm">Subject</CardTitle></CardHeader>
@@ -189,6 +195,47 @@ export default function Verifier() {
         )}
       </div>
     </DashboardLayout>
+  );
+}
+
+function VerifierTrustLayer({ result }: { result: any }) {
+  const decision = result?.transportDecision;
+  const checklist = result?.verificationChecklist ?? [];
+  if (!decision && checklist.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          Trust layer decision
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {decision && (
+          <div className="rounded-md border bg-muted/30 p-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{decision.mode}</Badge>
+              <span className="font-medium">{decision.label}</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{decision.reason}</p>
+          </div>
+        )}
+        {checklist.length > 0 && (
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {checklist.map((check: any) => (
+              <div key={check.key} className="rounded-md border p-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{check.label}</span>
+                  <Badge variant={check.status === "missing" ? "destructive" : "secondary"}>{check.status}</Badge>
+                </div>
+                <p className="mt-1 text-muted-foreground">{check.detail}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

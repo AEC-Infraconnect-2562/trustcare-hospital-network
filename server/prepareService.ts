@@ -8,6 +8,12 @@ import {
   type ReadinessContext,
   type ReadinessRequirement,
 } from "../shared/readiness";
+import {
+  buildTrustLayerChecklist,
+  classifyPacketTransport,
+  singleDocumentCredentialContracts,
+  type TrustLayerDecision,
+} from "../shared/trustLayer";
 
 export type PrepareAudience =
   | "patient"
@@ -51,6 +57,11 @@ export interface ServiceReadinessContract {
     hospital: string;
   };
   recommendedTransports: BundleTransport[];
+  packetTrustPolicy: {
+    singleDocument: TrustLayerDecision;
+    bundled: TrustLayerDecision;
+    shl: TrustLayerDecision;
+  };
   requirements: ReadinessRequirement[];
   questionnaire: Record<string, unknown>;
   vcTypes: string[];
@@ -344,6 +355,17 @@ export function buildServiceReadinessContracts(): ServiceReadinessContract[] {
         hospital: presentation.hospitalBundle,
       },
       recommendedTransports: presentation.transports,
+      packetTrustPolicy: {
+        singleDocument: classifyPacketTransport({ credentialCount: 1 }),
+        bundled: classifyPacketTransport({ credentialCount: Math.min(readinessRequirements[context].length, 5) }),
+        shl: classifyPacketTransport({
+          credentialCount: readinessRequirements[context].length,
+          context,
+          hasFhirBundle: true,
+          hasLegacyDocuments: presentation.transports.includes("document_reference"),
+          estimatedBytes: 120_000,
+        }),
+      },
       requirements: readinessRequirements[context],
       questionnaire: buildQuestionnaire(context),
       vcTypes: Array.from(new Set(readinessRequirements[context].flatMap((item) => item.cardTypes.map(toCredentialType)))),
@@ -394,6 +416,7 @@ export function buildPrepareServiceWorkbench(input: PrepareWorkbenchInput = {}) 
       dynamicQuestionnaire: contract.questionnaire,
       bundlePreview: bundle,
       packetActions: [
+        "present_single_document_vp",
         "request_missing_documents",
         "import_legacy_document",
         "verify_vc_or_vp",
@@ -422,6 +445,18 @@ export function buildPrepareServiceWorkbench(input: PrepareWorkbenchInput = {}) 
       }),
     },
     contractHub: buildContractHubCatalog(),
+    singleDocumentVcVp: {
+      policy: classifyPacketTransport({ credentialCount: 1 }),
+      catalog: singleDocumentCredentialContracts,
+      checklist: buildTrustLayerChecklist({
+        mode: "direct_vp",
+        hasIssuer: true,
+        hasHolder: true,
+        hasSchema: true,
+        hasStatus: true,
+        hasConsent: true,
+      }),
+    },
     dataMappingV2: buildDataMappingV2Profiles(),
     api: buildPrepareServicePublicApiExamples(context),
   };
@@ -465,6 +500,27 @@ export function buildServiceBundleEnvelope(input: {
       },
     };
   });
+  const transportDecision = classifyPacketTransport({
+    documentTypes: items.map((item) => item.documentType),
+    credentialCount: readiness.selectedCardIds.length || items.filter((item) => item.status === "ready").length || items.length,
+    context,
+    hasFhirBundle: true,
+    hasLegacyDocuments: contract.recommendedTransports.includes("document_reference"),
+    estimatedBytes: items.length * 18_000,
+  });
+  const verificationChecklist = buildTrustLayerChecklist({
+    mode: transportDecision.mode,
+    hasIssuer: true,
+    hasHolder: true,
+    hasSchema: true,
+    hasStatus: true,
+    hasConsent: true,
+    hasManifestCredential: transportDecision.mode === "shl_packet",
+    hasPresentation: true,
+    hasPasscodePolicy: transportDecision.mode === "shl_packet",
+    hasFileHashes: transportDecision.mode === "shl_packet",
+    hasDocumentReferences: contract.recommendedTransports.includes("document_reference"),
+  });
 
   return {
     bundleId,
@@ -482,13 +538,16 @@ export function buildServiceBundleEnvelope(input: {
     receiver: input.receiver ?? "TrustCare service intake",
     items,
     trustLayer: {
+      transportDecision,
+      verificationChecklist,
       vp: {
-        recommended: contract.recommendedTransports.includes("vp"),
+        recommended: transportDecision.mode !== "shl_packet" || contract.recommendedTransports.includes("vp"),
         holderDid: `did:key:patient-${input.patientId ?? "demo"}`,
         credentialCount: readiness.selectedCardIds.length,
+        directSingleDocument: transportDecision.mode === "direct_vp",
       },
       shl: {
-        recommended: contract.recommendedTransports.includes("shl"),
+        recommended: transportDecision.mode === "shl_packet" || contract.recommendedTransports.includes("shl"),
         manifestCredentialType: "ShlManifestCredential",
         useWhen: "Large or mixed FHIR/legacy bundle, cross-network referral, international care, or partner review.",
       },
@@ -644,7 +703,13 @@ export function buildContractHubCatalog() {
     version: VERSION,
     status: "simulated_contracts_ready_for_db_seed",
     contracts,
+    singleDocumentCredentialContracts,
     artifactTypes: [
+      {
+        type: "SingleDocumentVpContract",
+        purpose: "Rules for presenting one VC directly as a holder VP without creating an SHL envelope.",
+        owner: "wallet_product",
+      },
       {
         type: "ServiceReadinessContract",
         purpose: "Versioned document/data requirements per care context and audience.",
@@ -680,8 +745,15 @@ export function buildContractHubCatalog() {
         purpose: "Issuer, holder, verifier, consent, revocation, and audit requirements.",
         owner: "system_admin",
       },
+      {
+        type: "ShlPacketTrustLayer",
+        purpose: "VC/VP claims and verifier checklist wrapped around an SHL manifest and encrypted files.",
+        owner: "trust_governance",
+      },
     ],
     compatibilityRules: [
+      "Single high-value documents such as patient identity, prescription, medical certificate, appointment, or eligibility should be shared as a direct VP unless they are part of a larger service packet.",
+      "Small credential sets should use a purpose-bound VP bundle before escalating to SHL.",
       "Patient menus show patient_outbound/shared use cases only.",
       "Inbound international patient is hospital-facing; patient menu uses Prepare care abroad.",
       "Legacy documents enter as DocumentReference before optional VC issuance.",
@@ -764,6 +836,30 @@ export function buildPrepareServicePublicApiExamples(context: ReadinessContext =
         path: "/import",
         request: { patientId: 1, context, sourceType: "patient_upload", documentType: contract.requirements[0].cardTypes[0] },
         response: simulatePrepareServiceImport({ context, patientId: 1, now: "2026-07-03T10:00:00.000Z" }),
+      },
+      {
+        method: "POST",
+        path: "/presentations/single-document",
+        request: { patientId: 1, credentialId: "vc-prescription-001", documentType: "prescription", audience: "TrustCare Pharmacy" },
+        response: {
+          mode: "direct_vp",
+          transportDecision: classifyPacketTransport({ credentialCount: 1, documentTypes: ["prescription"] }),
+          presentation: {
+            format: "jwt-vp",
+            purpose: "treatment",
+            audience: "TrustCare Pharmacy",
+            credentialCount: 1,
+            expiresInMinutes: 10,
+          },
+          verificationChecklist: buildTrustLayerChecklist({
+            mode: "direct_vp",
+            hasIssuer: true,
+            hasHolder: true,
+            hasSchema: true,
+            hasStatus: true,
+            hasConsent: true,
+          }),
+        },
       },
       {
         method: "POST",

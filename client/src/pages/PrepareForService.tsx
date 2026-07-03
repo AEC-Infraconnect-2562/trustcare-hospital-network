@@ -239,6 +239,13 @@ function PatientView({
   bundleMutation,
   workbenchQuery,
 }: any) {
+  if (workbenchQuery.isError) {
+    return <ErrorCard label="Prepare for Service data could not be loaded." error={workbenchQuery.error?.message} />;
+  }
+
+  const packetPolicy = activeContract?.packetTrustPolicy;
+  const singleDocumentPolicy = workbench?.singleDocumentVcVp?.policy;
+
   return (
     <div className="space-y-5">
       {workbenchQuery.isLoading ? (
@@ -408,6 +415,20 @@ function PatientView({
                 />
                 <CheckinQRPanel context={context} readiness={readiness} />
               </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <TrustPolicyCard
+                  title="Single document"
+                  policy={singleDocumentPolicy ?? packetPolicy?.singleDocument}
+                />
+                <TrustPolicyCard
+                  title="Small wallet bundle"
+                  policy={packetPolicy?.bundled}
+                />
+                <TrustPolicyCard
+                  title="Large packet"
+                  policy={packetPolicy?.shl}
+                />
+              </div>
             </CardContent>
           </Card>
 
@@ -447,6 +468,10 @@ function HospitalWorkbench({
   walkInMutation,
   workbenchQuery,
 }: any) {
+  if (workbenchQuery.isError) {
+    return <ErrorCard label="Hospital workbench could not be loaded." error={workbenchQuery.error?.message} />;
+  }
+
   return (
     <div className="space-y-5">
       {workbenchQuery.isLoading ? (
@@ -574,7 +599,9 @@ function HospitalWorkbench({
 // ============================================================
 function ContractHubView({ workbench, workbenchQuery }: any) {
   if (workbenchQuery.isLoading) return <LoadingCard label="Loading contracts..." />;
-  const contracts = workbench?.contracts?.catalog ?? [];
+  if (workbenchQuery.isError) return <ErrorCard label="Contract Hub could not be loaded." error={workbenchQuery.error?.message} />;
+  const contracts = workbench?.contractHub?.contracts ?? [];
+  const singleDocumentContracts = workbench?.singleDocumentVcVp?.catalog ?? workbench?.contractHub?.singleDocumentCredentialContracts ?? [];
   return (
     <Card>
       <CardHeader>
@@ -587,6 +614,27 @@ function ContractHubView({ workbench, workbenchQuery }: any) {
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {singleDocumentContracts.length > 0 && (
+          <div className="rounded-lg border bg-muted/30 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold">Single-document VC/VP contracts</p>
+                <p className="text-xs text-muted-foreground">
+                  Direct VP is preferred for patient cards, prescriptions, certificates, appointments, and eligibility documents.
+                </p>
+              </div>
+              <Badge variant="outline">{singleDocumentContracts.length} types</Badge>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {singleDocumentContracts.map((item: any) => (
+                <div key={item.documentType} className="rounded-md border bg-background p-3 text-sm">
+                  <div className="font-medium">{item.label}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{item.documentType} - {item.recommendedMode}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {contracts.length === 0 ? (
           <p className="text-sm text-muted-foreground">No contracts loaded. Run seed to populate.</p>
         ) : (
@@ -605,6 +653,8 @@ function ContractHubView({ workbench, workbenchQuery }: any) {
                   <ContractLine label="Consent" value={contract.consentPolicy?.purposeCode ?? "N/A"} />
                   <ContractLine label="Patient bundle" value={contract.bundleTypes?.patient ?? "N/A"} />
                   <ContractLine label="Hospital bundle" value={contract.bundleTypes?.hospital ?? "N/A"} />
+                  <ContractLine label="Single VC/VP" value={contract.packetTrustPolicy?.singleDocument?.mode ?? "direct_vp"} />
+                  <ContractLine label="Packet share" value={contract.packetTrustPolicy?.shl?.mode ?? "shl_packet"} />
                 </div>
               </div>
             ))}
@@ -620,7 +670,8 @@ function ContractHubView({ workbench, workbenchQuery }: any) {
 // ============================================================
 function DataMappingView({ workbench, workbenchQuery }: any) {
   if (workbenchQuery.isLoading) return <LoadingCard label="Loading data mapping..." />;
-  const profiles = workbench?.mapping?.profiles ?? [];
+  if (workbenchQuery.isError) return <ErrorCard label="Data Mapping profiles could not be loaded." error={workbenchQuery.error?.message} />;
+  const profiles = workbench?.dataMappingV2?.profiles ?? workbench?.mapping?.profiles ?? [];
   return (
     <Card>
       <CardHeader>
@@ -637,18 +688,22 @@ function DataMappingView({ workbench, workbenchQuery }: any) {
           <p className="text-sm text-muted-foreground">No mapping profiles loaded.</p>
         ) : (
           profiles.map((profile: any) => (
-            <div key={profile.profileId} className="rounded-lg border p-3">
+            <div key={profile.mappingProfileId ?? profile.profileId} className="rounded-lg border p-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold">{profile.name}</p>
-                <Badge variant="outline">{profile.sourceSystem}</Badge>
+                <p className="text-sm font-semibold">{profile.mappingProfileId ?? profile.name}</p>
+                <Badge variant="outline">{profile.context ?? profile.sourceSystem}</Badge>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">{profile.description}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Contract: {profile.contractId ?? "N/A"} | Validation: {profile.validation?.length ?? 0} rules
+              </p>
               <div className="mt-2 flex flex-wrap gap-1">
-                {(profile.mappedFields ?? []).slice(0, 5).map((field: any) => (
+                {((profile.requiredOutputs ?? profile.mappedFields) ?? []).slice(0, 5).map((field: any) => (
                   <Badge key={field} variant="secondary" className="text-xs">{field}</Badge>
                 ))}
-                {(profile.mappedFields ?? []).length > 5 && (
-                  <Badge variant="secondary" className="text-xs">+{profile.mappedFields.length - 5}</Badge>
+                {((profile.requiredOutputs ?? profile.mappedFields) ?? []).length > 5 && (
+                  <Badge variant="secondary" className="text-xs">
+                    +{((profile.requiredOutputs ?? profile.mappedFields) ?? []).length - 5}
+                  </Badge>
                 )}
               </div>
             </div>
@@ -664,6 +719,7 @@ function DataMappingView({ workbench, workbenchQuery }: any) {
 // ============================================================
 function ApiView({ workbench, workbenchQuery }: any) {
   if (workbenchQuery.isLoading) return <LoadingCard label="Loading API docs..." />;
+  if (workbenchQuery.isError) return <ErrorCard label="Public API examples could not be loaded." error={workbenchQuery.error?.message} />;
   return (
     <Card>
       <CardHeader>
@@ -848,6 +904,32 @@ function LoadingCard({ label }: { label: string }) {
   );
 }
 
+function ErrorCard({ label, error }: { label: string; error?: string }) {
+  return (
+    <Card className="border-red-200 bg-red-50/40">
+      <CardContent className="flex min-h-[180px] flex-col items-center justify-center gap-2 text-center text-sm">
+        <ShieldAlert className="h-6 w-6 text-red-600" />
+        <p className="font-medium text-red-800">{label}</p>
+        {error && <p className="max-w-xl text-xs text-red-700">{error}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrustPolicyCard({ title, policy }: { title: string; policy?: any }) {
+  if (!policy) return null;
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-semibold">{title}</p>
+        <Badge variant="outline">{policy.mode}</Badge>
+      </div>
+      <p className="mt-1 font-medium">{policy.label}</p>
+      <p className="mt-1 text-muted-foreground">{policy.reason}</p>
+    </div>
+  );
+}
+
 function ActionPanel({
   icon: Icon,
   title,
@@ -886,6 +968,7 @@ function BundlePreview({ bundle }: { bundle: any }) {
           <ContractLine label="สถานะ" value={bundle.status} />
           <ContractLine label="ทิศทาง" value={bundle.direction} />
           <ContractLine label="คะแนน" value={`${bundle.readinessScore}%`} />
+          <ContractLine label="Share mode" value={bundle.trustLayer?.transportDecision?.label ?? "N/A"} />
           <ContractLine label="Trust hash" value={bundle.trustLayer?.integrityHash?.slice(0, 16) + "..."} />
         </div>
       </div>
@@ -900,6 +983,22 @@ function BundlePreview({ bundle }: { bundle: any }) {
           </div>
         ))}
       </div>
+      {(bundle.trustLayer?.verificationChecklist ?? []).length > 0 && (
+        <div className="rounded-lg border bg-muted/30 p-3 lg:col-span-2">
+          <p className="mb-2 text-sm font-semibold">Verifier trust checklist</p>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {bundle.trustLayer.verificationChecklist.map((check: any) => (
+              <div key={check.key} className="rounded-md border bg-background p-2 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{check.label}</span>
+                  <Badge variant={check.status === "missing" ? "destructive" : "secondary"}>{check.status}</Badge>
+                </div>
+                <p className="mt-1 text-muted-foreground">{check.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

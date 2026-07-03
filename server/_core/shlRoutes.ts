@@ -23,7 +23,7 @@ export function registerShlRoutes(app: Express) {
       return res.json(manifest);
     } catch (error) {
       if (error instanceof ShlAccessError) {
-        return res.status(error.statusCode).json({ error: error.message });
+        return res.status(error.statusCode).json({ error: error.message, ...(error.details ?? {}) });
       }
       console.error("[SHL] Manifest access failed:", error);
       return res.status(500).json({ error: "SHL manifest access failed" });
