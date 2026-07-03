@@ -340,6 +340,17 @@ export const menuItems: MenuItem[] = [
     groupLabel: "เชื่อมต่อและกำกับดูแล",
     groupLabelEn: "Integration & Governance",
   },
+  {
+    id: "contract-admin",
+    label: "Contract Admin",
+    labelEn: "Contract Admin",
+    icon: "FileStack",
+    path: "/contract-admin",
+    roles: ["system_admin", "hospital_admin"],
+    group: "integration_governance",
+    groupLabel: "Contract Hub",
+    groupLabelEn: "Integration & Governance",
+  },
 ];
 
 export function getMenuForRole(role: SystemRole): MenuItem[] {

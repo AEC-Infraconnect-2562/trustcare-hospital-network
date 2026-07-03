@@ -1978,3 +1978,26 @@ The Contract Admin page (`/contract-admin`) provides system administrators with 
 | `docs/V320_PROGRESS.md` | Implementation progress tracking |
 | `docs/V320_CURRENT_STATE.md` | Current state analysis |
 | `docs/V320_IMPLEMENTATION_NOTES.md` | Implementation notes |
+
+## 39. SHL + VC/VP Packet Trust Layer Addendum
+
+TrustCare uses SHL as a transport/share-link layer and VC/VP as the trust layer around SHL. A `shlink:/...` payload is not itself treated as a VC. It points to a manifest and encrypted health files; the surrounding trust artifacts prove issuer, holder, consent, manifest integrity, file integrity, status, and auditability.
+
+Transport selection is centralized in `shared/trustLayer.ts`:
+
+| Situation | Transport |
+|-----------|-----------|
+| One high-value wallet document | Direct single-document VP |
+| Small selected set of wallet credentials | VP bundle |
+| Large FHIR bundle, legacy files, many credentials, referral, cross-border, medical tourist | SHL packet with Manifest VC and Holder VP |
+
+Important UX/API surfaces:
+
+- `wallet.present` issues a fresh single-document VP for the selected wallet card.
+- `/wallet` shows direct VP guidance for single-document cards.
+- `/verifier` accepts VP URL, presentation ID, JSON VP, JWT VP, and JWT VC, and shows a trust checklist.
+- `/shl` shows a trust-layer checklist for Manifest VC, Holder VP, hashes, and access policy.
+- `/shl-viewer` displays remaining passcode attempts and manifest trust checks.
+- `/prepare-service` exposes single-document contracts, packet policy, Data Mapping v2, and Contract Hub compatibility rules.
+
+Implementation and Manus DB validation details are documented in `docs/SHL_VC_VP_PACKET_TRUST_LAYER_HANDOFF.md`.

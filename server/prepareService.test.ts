@@ -39,6 +39,8 @@ describe("Prepare for Service core workbench", () => {
     expect(contracts).toHaveLength(7);
     expect(contracts.every((contract) => contract.questionnaire.resourceType === "Questionnaire")).toBe(true);
     expect(contracts.every((contract) => contract.consentPolicy.pdpaControls.includes("data_minimization"))).toBe(true);
+    expect(contracts.every((contract) => contract.packetTrustPolicy.singleDocument.mode === "direct_vp")).toBe(true);
+    expect(contracts.every((contract) => contract.packetTrustPolicy.shl.mode === "shl_packet")).toBe(true);
   });
 
   it("creates patient and hospital workbench data from the same contract", () => {
@@ -49,6 +51,8 @@ describe("Prepare for Service core workbench", () => {
     expect(workbench.activeContract.hospitalLabelEn).toBe("Inbound international patient");
     expect(workbench.patient.visibleUseCases.some((item) => item.id === "hospital.inbound_international_patient")).toBe(false);
     expect(workbench.hospital.hiddenFromPatient.some((item) => item.id === "hospital.inbound_international_patient")).toBe(true);
+    expect(workbench.singleDocumentVcVp.catalog.length).toBeGreaterThan(4);
+    expect(workbench.patient.packetActions).toContain("present_single_document_vp");
   });
 
   it("builds service bundle envelopes with trust layer and FHIR bundle", () => {
@@ -62,6 +66,8 @@ describe("Prepare for Service core workbench", () => {
     expect(bundle.bundleType).toBe("ReferralReadinessBundle");
     expect(bundle.fhirBundle.resourceType).toBe("Bundle");
     expect(bundle.trustLayer.integrityHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(bundle.trustLayer.transportDecision.mode).toBe("shl_packet");
+    expect(bundle.trustLayer.verificationChecklist.length).toBeGreaterThan(5);
     expect(bundle.operationOutcome.resourceType).toBe("OperationOutcome");
   });
 
@@ -100,6 +106,8 @@ describe("Prepare for Service core workbench", () => {
     expect(mappings.profiles).toHaveLength(7);
     expect(api.basePath).toBe("/api/public/prepare-service/v1");
     expect(api.endpoints.map((endpoint) => endpoint.path)).toContain("/wallet-deployments");
+    expect(api.endpoints.map((endpoint) => endpoint.path)).toContain("/presentations/single-document");
+    expect(hub.singleDocumentCredentialContracts.length).toBeGreaterThan(4);
     expect(hub.compatibilityRules.some((rule) => rule.includes("Inbound international patient"))).toBe(true);
   });
 });

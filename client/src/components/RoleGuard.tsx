@@ -216,6 +216,7 @@ const routeAccessConfig: RouteAccess[] = [
   { path: "/audit", roles: ["system_admin", "hospital_admin"] },
   { path: "/users", roles: ["system_admin", "hospital_admin"] },
   { path: "/settings", roles: ["system_admin", "hospital_admin"] },
+  { path: "/contract-admin", roles: ["system_admin", "hospital_admin"] },
 ];
 
 function normalizeRoutePath(path: string): string {

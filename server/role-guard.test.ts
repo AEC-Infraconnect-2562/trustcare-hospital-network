@@ -199,6 +199,7 @@ const routeAccessConfig: RouteAccess[] = [
   { path: "/audit", roles: ["system_admin", "hospital_admin"] },
   { path: "/users", roles: ["system_admin", "hospital_admin"] },
   { path: "/settings", roles: ["system_admin", "hospital_admin"] },
+  { path: "/contract-admin", roles: ["system_admin", "hospital_admin"] },
 ];
 
 function normalizeRoutePath(path: string): string {
@@ -283,6 +284,7 @@ describe("RoleGuard - Route Access Control", () => {
       "/audit",
       "/users",
       "/settings",
+      "/contract-admin",
     ];
 
     it("allows patient to access patient readiness and wallet routes", () => {
@@ -345,6 +347,7 @@ describe("RoleGuard - Route Access Control", () => {
       "/audit",
       "/users",
       "/settings",
+      "/contract-admin",
     ];
 
     it("allows nurse to access clinical intake routes", () => {
@@ -395,6 +398,7 @@ describe("RoleGuard - Route Access Control", () => {
       "/audit",
       "/users",
       "/settings",
+      "/contract-admin",
     ];
 
     it("allows integration_engineer to access interop and readiness routes", () => {

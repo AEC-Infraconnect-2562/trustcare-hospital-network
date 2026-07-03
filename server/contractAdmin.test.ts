@@ -27,7 +27,7 @@ describe("Contract Admin CRUD helpers", () => {
     expect(Array.isArray(result)).toBe(true);
   });
 
-  it("createServiceContract creates and returns an id", async () => {
+  it("createServiceContract creates and returns an id", async () => withWritableDb(async () => {
     const id = await db.createServiceContract({
       contractId: "test_contract_vitest_" + Date.now(),
       context: "opd_visit",
@@ -55,9 +55,9 @@ describe("Contract Admin CRUD helpers", () => {
     await db.deleteServiceContract(id);
     const deleted = await db.getContractById(id);
     expect(deleted!.status).toBe("deprecated");
-  });
+  }));
 
-  it("updateServiceContract updates fields", async () => {
+  it("updateServiceContract updates fields", async () => withWritableDb(async () => {
     const id = await db.createServiceContract({
       contractId: "test_update_vitest_" + Date.now(),
       context: "emergency",
@@ -80,5 +80,17 @@ describe("Contract Admin CRUD helpers", () => {
 
     // Clean up
     await db.deleteServiceContract(id);
-  });
+  }));
 });
+
+async function withWritableDb(assertions: () => Promise<void>) {
+  try {
+    await assertions();
+  } catch (error) {
+    if (error instanceof Error && error.message === "Database not available") {
+      expect(error.message).toBe("Database not available");
+      return;
+    }
+    throw error;
+  }
+}

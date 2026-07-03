@@ -25,11 +25,13 @@ export default function ShlViewer() {
   const [manifest, setManifest] = useState<any>(null);
   const [bundle, setBundle] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<any>(null);
   const resourceCounts = useMemo(() => countResources(bundle), [bundle]);
 
   async function loadManifest(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setErrorDetails(null);
     setManifest(null);
     setBundle(null);
     const decoded = payload ?? decodeShlink(payloadText);
@@ -46,6 +48,7 @@ export default function ShlViewer() {
     const data = await response.json();
     if (!response.ok) {
       setError(data?.error ?? "Manifest request failed");
+      setErrorDetails(data);
       return;
     }
     setManifest(data);
@@ -93,7 +96,16 @@ export default function ShlViewer() {
               </div>
               <Button type="submit"><KeyRound className="mr-2 h-4 w-4" />Open</Button>
             </form>
-            {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+            {error && (
+              <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div>{error}</div>
+                {typeof errorDetails?.remainingAttempts === "number" && (
+                  <div className="mt-1 font-medium">
+                    Remaining passcode attempts: {errorDetails.remainingAttempts}
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -107,7 +119,9 @@ export default function ShlViewer() {
                 <TrustRow label="Manifest hash" value={manifest.trustcare?.manifestHash} />
                 <TrustRow label="FHIR hash" value={manifest.trustcare?.sourceBundleHash} />
                 <TrustRow label="Access after grant" value={String(manifest.trustcare?.accessCountAfterGrant ?? "")} />
+                <TrustRow label="Remaining access" value={String(manifest.trustcare?.remainingAccessCount ?? "unlimited")} />
                 <Separator />
+                <TrustChecklist manifest={manifest} />
                 <div className="flex items-center gap-2 text-emerald-700">
                   <CheckCircle2 className="h-4 w-4" />
                   <span>{manifest.trustcare?.trustLayer ?? "vc-vp-around-shl"}</span>
@@ -133,6 +147,29 @@ export default function ShlViewer() {
         )}
       </div>
     </main>
+  );
+}
+
+function TrustChecklist({ manifest }: { manifest: any }) {
+  const checks: Array<[string, boolean, string]> = [
+    ["SHL transport", Boolean(manifest.files?.length), "Manifest returned encrypted FHIR/health files."],
+    ["Manifest VC", Boolean(manifest.trustcare?.manifestCredentialId), "Credential binds manifest hash and context."],
+    ["Holder VP", Boolean(manifest.trustcare?.presentationId), "Presentation binds patient holder to packet."],
+    ["File hash", Boolean(manifest.trustcare?.manifestHash), "Verifier can compare manifest/file digest."],
+    ["Access policy", manifest.trustcare?.status === "active", "Expiry, revocation and max access were enforced."],
+  ];
+  return (
+    <div className="space-y-2">
+      {checks.map(([label, ok, detail]) => (
+        <div key={String(label)} className="rounded-md border p-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className={`h-3.5 w-3.5 ${ok ? "text-emerald-600" : "text-muted-foreground"}`} />
+            <span className="text-xs font-medium">{label}</span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+        </div>
+      ))}
+    </div>
   );
 }
 

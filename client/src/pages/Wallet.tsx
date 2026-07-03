@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { DOCUMENT_CATEGORIES, type DocumentCategory } from "@shared/const";
+import { classifyPacketTransport } from "@shared/trustLayer";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -368,7 +369,13 @@ export default function Wallet() {
       `แชร์ข้อมูล ${selectedFields.length} รายการ (Selective Disclosure)`
     );
     setShareOpen(false);
-    if (selectedCard) presentMutation.mutate({ cardId: selectedCard.id });
+    if (selectedCard) {
+      presentMutation.mutate({
+        cardId: selectedCard.id,
+        selectedFields,
+        audience: "TrustCare credential verifier",
+      });
+    }
   }, [disclosureFields, selectedCard, presentMutation]);
 
   return (
@@ -925,6 +932,14 @@ export default function Wallet() {
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2 rounded-lg border bg-muted/30 p-3 text-xs">
+                    <div className="font-medium">
+                      {classifyPacketTransport({ credentialCount: 1, documentTypes: [selectedCard.cardType] }).label}
+                    </div>
+                    <div className="mt-1 text-muted-foreground">
+                      {classifyPacketTransport({ credentialCount: 1, documentTypes: [selectedCard.cardType] }).reason}
+                    </div>
+                  </div>
                   <Button
                     onClick={handleGenerateQR}
                     disabled={
@@ -1035,6 +1050,12 @@ export default function Wallet() {
                     <p className="text-xs text-muted-foreground">
                       หมดอายุ:{" "}
                       {new Date(presentation.expiresAt).toLocaleString("th-TH")}
+                    </p>
+                  )}
+                  {presentation?.mode && (
+                    <p className="text-xs text-muted-foreground">
+                      Mode: {presentation.mode} | Credentials: {presentation.credentialCount ?? 1}
+                      {presentation.selectedFields?.length ? ` | Fields: ${presentation.selectedFields.length}` : ""}
                     </p>
                   )}
                 </div>

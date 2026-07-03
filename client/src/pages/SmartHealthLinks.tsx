@@ -594,6 +594,7 @@ export default function SmartHealthLinks() {
                         />
                       </div>
                     </div>
+                    <ShlTrustChecklist shl={selectedRecord} fileCount={fileRows.length} />
                     <Separator className="my-4" />
                     <div className="grid gap-2 text-xs">
                       <div className="truncate">
@@ -711,6 +712,61 @@ function Row({
           {right}
         </div>
       )}
+    </div>
+  );
+}
+
+function ShlTrustChecklist({ shl, fileCount }: { shl: any; fileCount: number }) {
+  const checks = [
+    {
+      key: "transport",
+      label: "SHL transport",
+      present: Boolean(shl?.manifestUrl && shl?.qrPayload),
+      detail: "QR/link points to a manifest and encrypted health files, not to a VC directly.",
+    },
+    {
+      key: "manifestCredential",
+      label: "Manifest VC",
+      present: Boolean(shl?.manifestCredentialId),
+      detail: "Manifest hash, source bundle hash, purpose, expiry, and issuer trust are bound to a credential.",
+    },
+    {
+      key: "holderPresentation",
+      label: "Holder VP",
+      present: Boolean(shl?.presentationId),
+      detail: "A holder presentation proves patient consent/holder binding around the shared packet.",
+    },
+    {
+      key: "fileHashes",
+      label: "File hashes",
+      present: Boolean(fileCount > 0 && shl?.manifestHash),
+      detail: "FHIR JSON and legacy DocumentReference files can be checked against the manifest.",
+    },
+    {
+      key: "accessPolicy",
+      label: "Access policy",
+      present: Boolean(shl?.passcodeRequired || shl?.expiresAt || shl?.maxAccessCount),
+      detail: "Passcode, expiry, access count, revocation, and audit controls protect the link.",
+    },
+  ];
+
+  return (
+    <div className="mt-4 rounded-md border bg-muted/30 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">VC/VP trust layer around SHL</p>
+        <Badge variant="outline">{checks.filter((check) => check.present).length}/{checks.length}</Badge>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {checks.map((check) => (
+          <div key={check.key} className="rounded-md border bg-background p-2 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">{check.label}</span>
+              <Badge variant={check.present ? "secondary" : "destructive"}>{check.present ? "present" : "missing"}</Badge>
+            </div>
+            <p className="mt-1 text-muted-foreground">{check.detail}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
