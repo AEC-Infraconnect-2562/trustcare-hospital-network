@@ -735,3 +735,10 @@
 - [x] Fix any non-compliant seed data or mock data per Agent Guide
 - [x] Update Architecture Documents for v3.20.0
 - [x] Run tests (319 passing, 25 test files), save checkpoint, push to GitHub
+
+## v3.20.1 - Patient Profile Page Fix
+- [x] Remove back button from Patient Profile page
+- [x] Add DashboardLayout with sidebar (same as other pages)
+- [x] Add VC/VP expandable section with full credential details and QR code (role-based)
+- [x] Avatar display works correctly (fallback letter when no photo, image loads when uploaded)
+- [x] Push to GitHub

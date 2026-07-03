@@ -78,7 +78,7 @@ const menuGroupsEn: Record<string, string> = {
 const menuItemsEn: Record<string, string> = {
   dashboard: "Dashboard",
   executive: "Executive Dashboard",
-  profile: "Patient Profile",
+  profile: "Profile",
   "prepare-service": "Prepare for Service",
   wallet: "Health Wallet",
   consent: "Consent Management",
@@ -112,7 +112,7 @@ const menuItemsEn: Record<string, string> = {
 const allMenuItems: MenuItemDef[] = [
   { id: "dashboard", label: "แดชบอร์ด", icon: "LayoutDashboard", path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
   { id: "executive", label: "แดชบอร์ดผู้บริหาร", icon: "BarChart3", path: "/executive", roles: ["system_admin", "hospital_admin"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
-  { id: "profile", label: "โปรไฟล์ผู้ป่วย", icon: "UserCircle", path: "/profile", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient", "maker", "checker"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
+  { id: "profile", label: "โปรไฟล์", icon: "UserCircle", path: "/profile", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient", "maker", "checker"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
   { id: "prepare-service", label: "เตรียมเข้ารับบริการ", icon: "HeartPulse", path: "/prepare-service", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
   { id: "wallet", label: "กระเป๋าสุขภาพ", icon: "Wallet", path: "/wallet", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "integration_engineer", "patient", "maker", "checker"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
   { id: "consent", label: "จัดการความยินยอม", icon: "ShieldCheck", path: "/consent", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"], group: "service_readiness", groupLabel: "ความพร้อมก่อนรับบริการ" },
