@@ -65,6 +65,16 @@ import { sha256 } from "./portability/utils";
 import { resolveShlManifestAccessPacket, ShlAccessError } from "./shlAccess";
 import { storagePut } from "./storage";
 import {
+  buildClaimPackageCredential,
+  buildClaimWorkbench,
+  buildPayerAdjudicationEnvelope,
+  buildPaymentReconciliationEnvelope,
+  buildPayerSubmissionEnvelope,
+  parseCodes,
+  parseServiceItems,
+  validateClaimPacket,
+} from "./claimCenter";
+import {
   buildCarePackageManifest,
   buildDocumentReference,
   buildServiceRequest,
@@ -1971,6 +1981,16 @@ export const appRouter = router({
     listEligibility: protectedProcedure.input(z.object({ patientId: z.number() })).query(async ({ input }) => {
       return db.listCoverageEligibility(input.patientId);
     }),
+    workbench: protectedProcedure.query(async () => {
+      const [claimCases, payerAdapters] = await Promise.all([
+        db.listClaimCases({}),
+        db.listPayerAdapters(),
+      ]);
+      return buildClaimWorkbench({
+        claimCases: claimCases as any,
+        payerAdapters: payerAdapters as any,
+      });
+    }),
     listCases: protectedProcedure.input(z.object({
       hospitalId: z.number().optional(),
       status: z.string().optional(),
@@ -1995,6 +2015,55 @@ export const appRouter = router({
       const id = await db.createClaimCase(input as any);
       return { id };
     }),
+    createReadiness: protectedProcedure.input(z.object({
+      patientId: z.number(),
+      hospitalId: z.number(),
+      payerAdapterId: z.number(),
+      memberId: z.string().optional(),
+      encounterRef: z.string().optional(),
+      claimType: z.enum(["opd", "ipd", "dental", "pharmacy", "rehabilitation", "emergency"]),
+      totalAmount: z.string().optional(),
+      diagnosisCodes: z.string().optional(),
+      procedureCodes: z.string().optional(),
+      serviceItems: z.string().optional(),
+      intakeChannel: z.enum(["wallet_vp", "shl", "legacy_upload", "his_import", "partner_portal"]).default("wallet_vp"),
+      consentRef: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const diagnosisCodes = parseCodes(input.diagnosisCodes);
+      const procedureCodes = parseCodes(input.procedureCodes);
+      const serviceItems = parseServiceItems(input.serviceItems);
+      const id = await db.createClaimCase({
+        patientId: input.patientId,
+        hospitalId: input.hospitalId,
+        payerAdapterId: input.payerAdapterId,
+        encounterRef: input.encounterRef,
+        claimType: input.claimType,
+        totalAmount: input.totalAmount,
+        diagnosisCodes,
+        procedureCodes,
+        serviceItems,
+        validationIssues: [],
+      } as any);
+      if (id) {
+        await db.createAuditEvent({
+          actorId: ctx.user.id,
+          action: "claim.readiness.created",
+          resourceType: "claim_case",
+          resourceId: String(id),
+          details: {
+            intakeChannel: input.intakeChannel,
+            consentRef: input.consentRef,
+            memberId: input.memberId,
+          },
+        });
+      }
+      return {
+        id,
+        simulationMode: !id,
+        intakeChannel: input.intakeChannel,
+        nextStep: "Validate evidence and issue ClaimPackageCredential before payer submission.",
+      };
+    }),
     updateStatus: protectedProcedure.input(z.object({
       id: z.number(),
       status: z.enum(["draft", "validating", "correction_required", "ready_to_submit", "submitted", "accepted", "rejected", "more_info_requested", "appeal", "paid", "closed"]),
@@ -2018,6 +2087,110 @@ export const appRouter = router({
         validationIssues: issues,
       } as any);
       return { valid: issues.length === 0, issues };
+    }),
+    issueClaimPackageVc: protectedProcedure.input(z.object({
+      claimCaseId: z.number().optional(),
+      simulatedCaseId: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const { packet } = await claimPacketForAction(input);
+      const issues = validateClaimPacket(packet);
+      const blockingIssues = issues.filter((issue) => issue.severity === "error");
+      if (input.claimCaseId) {
+        await db.updateClaimCase(input.claimCaseId, {
+          status: blockingIssues.length === 0 ? "ready_to_submit" : "correction_required",
+          validationIssues: issues,
+        } as any);
+        await db.createAuditEvent({
+          actorId: ctx.user.id,
+          action: "claim.claim_package_vc.issued",
+          resourceType: "claim_case",
+          resourceId: String(input.claimCaseId),
+        });
+      }
+      return {
+        valid: blockingIssues.length === 0,
+        issues,
+        credentialType: "claim_package",
+        credential: buildClaimPackageCredential(packet),
+        fhirClaim: packet.fhirClaim,
+        simulation: packet.simulated,
+      };
+    }),
+    submitToPayer: protectedProcedure.input(z.object({
+      claimCaseId: z.number().optional(),
+      simulatedCaseId: z.string().optional(),
+      adapterMode: z.enum(["api", "portal", "batch_file", "email", "rpa"]).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const { packet } = await claimPacketForAction(input);
+      if (input.claimCaseId) {
+        await db.updateClaimCase(input.claimCaseId, {
+          status: "submitted",
+          submittedAt: new Date(),
+          payerClaimId: `PAYER-${packet.caseRef}`,
+        } as any);
+        await db.createAuditEvent({
+          actorId: ctx.user.id,
+          action: "claim.payer.submitted",
+          resourceType: "claim_case",
+          resourceId: String(input.claimCaseId),
+          details: { adapterMode: input.adapterMode ?? packet.payer.submissionFormat },
+        });
+      }
+      return buildPayerSubmissionEnvelope(packet, input.adapterMode);
+    }),
+    recordPayerResponse: protectedProcedure.input(z.object({
+      claimCaseId: z.number().optional(),
+      simulatedCaseId: z.string().optional(),
+      decision: z.enum(["accepted", "rejected", "more_info_requested"]),
+      reason: z.string().optional(),
+      approvedAmount: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const { packet } = await claimPacketForAction(input);
+      const envelope = buildPayerAdjudicationEnvelope(packet, input.decision, input.reason);
+      if (input.claimCaseId) {
+        await db.updateClaimCase(input.claimCaseId, {
+          status: input.decision,
+          respondedAt: new Date(),
+          rejectionReason: input.decision === "rejected" || input.decision === "more_info_requested" ? input.reason : undefined,
+          approvedAmount: input.approvedAmount ?? String(envelope.approvedAmount ?? packet.approvedAmount),
+        } as any);
+        await db.createAuditEvent({
+          actorId: ctx.user.id,
+          action: `claim.payer.${input.decision}`,
+          resourceType: "claim_case",
+          resourceId: String(input.claimCaseId),
+        });
+      }
+      return envelope;
+    }),
+    recordPayment: protectedProcedure.input(z.object({
+      claimCaseId: z.number().optional(),
+      simulatedCaseId: z.string().optional(),
+      paidAmount: z.number().optional(),
+      paymentReference: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const { packet } = await claimPacketForAction(input);
+      const envelope = buildPaymentReconciliationEnvelope(packet, input.paidAmount);
+      if (input.claimCaseId) {
+        await db.updateClaimCase(input.claimCaseId, {
+          status: "paid",
+          paidAt: new Date(),
+          approvedAmount: String(input.paidAmount ?? packet.approvedAmount),
+          claimReceiptVcId: String(envelope.claimReceiptCredential.id),
+        } as any);
+        await db.createAuditEvent({
+          actorId: ctx.user.id,
+          action: "claim.payment.reconciled",
+          resourceType: "claim_case",
+          resourceId: String(input.claimCaseId),
+          details: { paymentReference: input.paymentReference },
+        });
+      }
+      return envelope;
+    }),
+    publicApiExamples: protectedProcedure.query(async () => {
+      const workbench = buildClaimWorkbench({ claimCases: await db.listClaimCases({}) as any, payerAdapters: await db.listPayerAdapters() as any });
+      return workbench.apiExamples;
     }),
     analytics: protectedProcedure.query(async () => {
       return db.getClaimAnalytics();
@@ -4745,6 +4918,24 @@ function benefitsForPayer(payerType: string) {
   if (payerType === "private_insurance") return { opd: true, ipd: true, dental: true, preAuthorizationRequired: true };
   if (payerType === "corporate") return { opd: true, ipd: true, dental: false, guaranteeLetterRequired: true };
   return { opd: true, ipd: true, dental: false };
+}
+
+async function claimPacketForAction(input: { claimCaseId?: number; simulatedCaseId?: string }) {
+  const payerAdapters = await db.listPayerAdapters();
+  if (input.claimCaseId) {
+    const claimCase = await db.getClaimCaseById(input.claimCaseId);
+    if (!claimCase) throw new TRPCError({ code: "NOT_FOUND", message: "Claim case not found" });
+    const workbench = buildClaimWorkbench({
+      claimCases: [claimCase as any],
+      payerAdapters: payerAdapters as any,
+    });
+    return { packet: workbench.casePackets[0], claimCase };
+  }
+  const workbench = buildClaimWorkbench({ payerAdapters: payerAdapters as any });
+  const packet =
+    workbench.seedPackets.find((item) => item.id === input.simulatedCaseId || item.caseRef === input.simulatedCaseId) ??
+    workbench.seedPackets[0];
+  return { packet, claimCase: undefined };
 }
 
 function validateClaimCase(claimCase: {
