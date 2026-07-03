@@ -1497,6 +1497,27 @@ export async function getUnreadNotificationCount(userId: number) {
 }
 
 // ============================================================
+// GET CHECKERS FOR NOTIFICATION
+// ============================================================
+export async function getCheckerUserIds(hospitalId?: number | null): Promise<number[]> {
+  const db = await getDb();
+  if (!db) return [];
+  // Find users who have 'checker' role in user_roles table
+  const checkerRoles = await db.select({ userId: userRoles.userId }).from(userRoles).where(and(eq(userRoles.role, "checker"), eq(userRoles.isActive, true)));
+  const checkerIds = checkerRoles.map(r => r.userId);
+  // Also include system_admin and hospital_admin users as they can act as checkers
+  const conditions = [];
+  if (hospitalId) {
+    conditions.push(sql`(${users.systemRole} IN ('system_admin', 'hospital_admin') AND (${users.hospitalId} = ${hospitalId} OR ${users.hospitalId} IS NULL))`);
+  } else {
+    conditions.push(sql`${users.systemRole} IN ('system_admin', 'hospital_admin')`);
+  }
+  const admins = await db.select({ id: users.id }).from(users).where(sql`${users.systemRole} IN ('system_admin', 'hospital_admin')`);
+  const adminIds = admins.map(a => a.id);
+  return Array.from(new Set([...checkerIds, ...adminIds]));
+}
+
+// ============================================================
 // CREDENTIAL REQUESTS (Maker/Checker Workflow v2.2)
 // ============================================================
 export async function listCredentialRequests(filters?: { makerId?: number; hospitalId?: number; status?: string; checkerId?: number }) {

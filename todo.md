@@ -633,3 +633,11 @@
 - [x] Update db.ts listCredentialRequests filters to use makerId/checkerId
 - [x] Update routers.ts maker/checker workflow to use correct column names
 - [x] 302 tests passing, 0 TypeScript errors
+
+## v3.12.0 - Maker/Checker Workflow Improvements
+
+- [x] Seed credential_requests with demo data (various statuses: draft, pending_review, approved, rejected, issued)
+- [x] Update Issuer (Maker) page to use new field names (credentialData instead of requestData)
+- [x] Add checker notification when maker submits request for review
+- [x] Run full test suite (302 tests passing)
+- [x] Save checkpoint and push to GitHub

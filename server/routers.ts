@@ -245,12 +245,24 @@ export const appRouter = router({
       if (!request) throw new TRPCError({ code: "NOT_FOUND" });
       if (request.makerId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
       await db.updateCredentialRequest(input.id, { status: "pending_review", submittedAt: new Date() });
+      // Notify the maker
       await db.createNotification({
         userId: ctx.user.id,
         type: "vc_submitted_for_review" as any,
         title: "ส่งคำขอตรวจสอบ",
-        message: `คำขอ #${input.id} ถูกส่งตรวจสอบแล้ว`,
+        message: `คำขอ ${request.requestNumber} ถูกส่งตรวจสอบแล้ว`,
       });
+      // Notify all checkers about the new pending review
+      const checkerIds = await db.getCheckerUserIds(request.hospitalId);
+      const checkerNotifications = checkerIds
+        .filter(id => id !== ctx.user.id) // Don't notify the maker themselves
+        .map(checkerId => db.createNotification({
+          userId: checkerId,
+          type: "vc_pending_review" as any,
+          title: "มีคำขอ VC ใหม่รอตรวจสอบ",
+          message: `คำขอ ${request.requestNumber} จาก ${ctx.user.name} รอการตรวจสอบ${request.priority === 'urgent' ? ' (เร่งด่วน)' : ''}`,
+        }));
+      await Promise.all(checkerNotifications);
       return { success: true };
     }),
     cancelRequest: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
