@@ -726,3 +726,12 @@
 - [x] Patient sees only patient view, hospital sees all tabs (patient/hospital/contracts/mapping/api)
 - [x] Run tests - 314 tests passing, 0 TS errors
 - [x] Save checkpoint and push to GitHub
+
+## v3.20.0 - Document Upload Flow, QR Check-in, Contract Admin CRUD (SHL/VC/VP Compliant)
+- [x] Audit existing portability code for SHL/VC/VP compliance
+- [x] Implement Document Upload Flow with FHIR DocumentReference (hash, provenance, review queue)
+- [x] Implement QR Code Check-in via SHL packet generation (VP + FHIR Bundle + DocumentReference Bundle)
+- [x] Implement Contract Admin CRUD UI for admin to manage service contracts without seed script
+- [x] Fix any non-compliant seed data or mock data per Agent Guide
+- [x] Update Architecture Documents for v3.20.0
+- [x] Run tests (319 passing, 25 test files), save checkpoint, push to GitHub

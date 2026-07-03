@@ -38,6 +38,7 @@ import {
   claimSubmissionEvents, InsertClaimSubmissionEvent,
   claimPayments, InsertClaimPayment,
   payerRulesets, InsertPayerRuleset,
+  patientUploadedDocuments, InsertPatientUploadedDocument,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isIssuerPrivilegeRole, isPatientRole } from "@shared/rolePolicy";
@@ -2169,8 +2170,8 @@ import {
   serviceBundleInstances, InsertServiceBundleInstance,
   walletImportJobs, InsertWalletImportJob,
   walkInWalletConnections, InsertWalkInWalletConnection,
-  serviceReadinessContracts,
-  serviceBundleTemplates,
+  serviceReadinessContracts, InsertServiceReadinessContract,
+  serviceBundleTemplates, InsertServiceBundleTemplate,
   contractArtifacts,
 } from "../drizzle/schema";
 
@@ -2238,4 +2239,122 @@ export async function listContractArtifacts(contractId?: string) {
     return db.select().from(contractArtifacts).where(eq(contractArtifacts.contractId, contractId));
   }
   return db.select().from(contractArtifacts).where(eq(contractArtifacts.status, "active"));
+}
+
+
+// ============================================================
+// PATIENT UPLOADED DOCUMENTS
+// ============================================================
+export async function createPatientUploadedDocument(data: InsertPatientUploadedDocument) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(patientUploadedDocuments).values(data).$returningId();
+  return result.id;
+}
+
+export async function listPatientUploadedDocuments(filters: {
+  patientId: number;
+  context?: string;
+  status?: string;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [eq(patientUploadedDocuments.patientId, filters.patientId)];
+  if (filters.context) conditions.push(eq(patientUploadedDocuments.context, filters.context as any));
+  if (filters.status) conditions.push(eq(patientUploadedDocuments.status, filters.status as any));
+  return db.select().from(patientUploadedDocuments)
+    .where(and(...conditions))
+    .orderBy(desc(patientUploadedDocuments.createdAt))
+    .limit(filters.limit ?? 50);
+}
+
+export async function getPatientUploadedDocumentById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(patientUploadedDocuments).where(eq(patientUploadedDocuments.id, id));
+  return row ?? null;
+}
+
+export async function getPatientUploadedDocumentByUploadId(uploadId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(patientUploadedDocuments).where(eq(patientUploadedDocuments.uploadId, uploadId));
+  return row ?? null;
+}
+
+export async function updatePatientUploadedDocument(id: number, data: Partial<InsertPatientUploadedDocument>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(patientUploadedDocuments).set(data).where(eq(patientUploadedDocuments.id, id));
+}
+
+export async function listDocumentsNeedingReview(filters: { hospitalId?: number; limit?: number } = {}) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(patientUploadedDocuments)
+    .where(eq(patientUploadedDocuments.status, "needs_review"))
+    .orderBy(desc(patientUploadedDocuments.createdAt))
+    .limit(filters.limit ?? 50);
+}
+// ============================================================
+// CONTRACT ADMIN CRUD
+// ============================================================
+export async function listAllContracts() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(serviceReadinessContracts).orderBy(desc(serviceReadinessContracts.updatedAt));
+}
+export async function getContractById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(serviceReadinessContracts).where(eq(serviceReadinessContracts.id, id));
+  return row ?? null;
+}
+export async function getContractByContractId(contractId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(serviceReadinessContracts).where(eq(serviceReadinessContracts.contractId, contractId));
+  return row ?? null;
+}
+export async function createServiceContract(data: Omit<InsertServiceReadinessContract, "id" | "createdAt" | "updatedAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(serviceReadinessContracts).values(data).$returningId();
+  return result.id;
+}
+export async function updateServiceContract(id: number, data: Partial<InsertServiceReadinessContract>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(serviceReadinessContracts).set(data).where(eq(serviceReadinessContracts.id, id));
+}
+export async function deleteServiceContract(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  // Soft delete by setting status to deprecated
+  await db.update(serviceReadinessContracts).set({ status: "deprecated" }).where(eq(serviceReadinessContracts.id, id));
+}
+export async function listBundleTemplates(contractId?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  if (contractId) {
+    return db.select().from(serviceBundleTemplates).where(eq(serviceBundleTemplates.contractId, contractId));
+  }
+  return db.select().from(serviceBundleTemplates).where(eq(serviceBundleTemplates.status, "active"));
+}
+export async function createBundleTemplate(data: Omit<InsertServiceBundleTemplate, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(serviceBundleTemplates).values(data).$returningId();
+  return result.id;
+}
+export async function updateBundleTemplate(id: number, data: Partial<InsertServiceBundleTemplate>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(serviceBundleTemplates).set(data).where(eq(serviceBundleTemplates.id, id));
+}
+export async function deleteBundleTemplate(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(serviceBundleTemplates).set({ status: "deprecated" }).where(eq(serviceBundleTemplates.id, id));
 }

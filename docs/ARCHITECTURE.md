@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v3.20.0 | 2026-07-03 | Document Upload Flow (FHIR DocumentReference), QR Check-in via SHL, Contract Admin CRUD, UploadDocButton + CheckinQRPanel UI |
 | v5.6.0 | 2026-07-03 | Prepare for Service core workbench, audience-separated patient/hospital bundles, Contract Hub/Data Mapping v2 mock API |
 | v3.14.0 | 2026-07-03 | Claim Center real DB binding, patient name JOINs, ClaimDetail page with 5 tabs |
 | v3.13.0 | 2026-07-03 | 6 Claim Center DB tables created, 6 realistic scenarios seeded, unique avatar photos for all users |
@@ -1807,15 +1808,173 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Metric | Value |
 |--------|-------|
-| Database tables | 61 (59 in schema.ts + 2 DB-only) |
-| Migration batches | 15 |
-| tRPC routers | 29 |
-| Frontend pages | 36 |
+| Database tables | 67 (in schema.ts) |
+| Migration batches | 18 |
+| tRPC routers | 30 |
+| Frontend pages | 37 |
 | Reusable components | 22 |
-| Test files | 24 |
-| Test cases | 307 (all passing) |
+| Test files | 25 |
+| Test cases | 319 (all passing) |
 | TypeScript errors | 0 |
 | Demo users | 16 (all with unique avatars) |
 | Claim scenarios | 6 (fully seeded with FHIR data) |
 | Payer adapters | 6 (all payer types covered) |
 | Credential requests | 10 (all statuses represented) |
+
+---
+
+## 38. Document Upload, QR Check-in & Contract Admin (v3.20.0 — 2026-07-03)
+
+### 38.1 Document Upload Flow
+
+The patient document upload flow enables patients to upload supporting documents (PDF, JPEG, PNG, WebP) directly from the PrepareForService readiness view. Each upload is stored in S3, hashed (SHA-256), and wrapped in a FHIR R4 `DocumentReference` resource.
+
+**Database table:** `patient_uploaded_documents`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | serial PK | Auto-increment |
+| uploadId | varchar | Unique upload identifier (`pud_<nanoid>`) |
+| patientId | int FK | References users.id |
+| context | enum | Readiness context (opd_visit, emergency, etc.) |
+| documentType | varchar | Document type from contract requirements |
+| documentCategory | enum | identity, clinical, insurance, consent, legal, imaging, lab, other |
+| title | varchar | Human-readable title |
+| fileName | varchar | Original file name |
+| mimeType | varchar | MIME type |
+| fileSize | int | File size in bytes |
+| fileKey | varchar | S3 storage key |
+| fileUrl | varchar | Accessible URL via /manus-storage/ |
+| fileHash | varchar | SHA-256 hash of file content |
+| fhirDocumentReference | json | Full FHIR R4 DocumentReference resource |
+| status | enum | uploaded → needs_review → verified → converted_to_vc → rejected |
+| reviewPolicy | enum | auto_accept / manual_review |
+| reviewedBy | int FK | Reviewer user ID |
+| reviewedAt | timestamp | Review timestamp |
+| reviewComment | text | Reviewer notes |
+| walletDocumentRequestId | int FK | Links to wallet_document_requests |
+| createdAt | timestamp | Upload timestamp |
+| updatedAt | timestamp | Last update |
+
+**tRPC Procedures:**
+
+| Procedure | Access | Description |
+|-----------|--------|-------------|
+| `wallet.uploadDocument` | protected | Upload file (base64), store in S3, create FHIR DocumentReference |
+| `wallet.listUploadedDocuments` | protected | List patient's uploads filtered by context |
+| `wallet.reviewUploadedDocument` | protected (staff) | Approve/reject uploaded document |
+| `wallet.pendingDocumentReviews` | protected (staff) | List documents needing review |
+
+**FHIR DocumentReference structure:**
+```json
+{
+  "resourceType": "DocumentReference",
+  "status": "current",
+  "type": { "coding": [{ "system": "http://loinc.org", "code": "document-type" }] },
+  "subject": { "reference": "Patient/<patientId>" },
+  "content": [{
+    "attachment": {
+      "contentType": "application/pdf",
+      "url": "/manus-storage/<fileKey>",
+      "hash": "<sha256>",
+      "size": 12345,
+      "title": "filename.pdf"
+    }
+  }],
+  "context": { "event": [{ "coding": [{ "code": "opd_visit" }] }] }
+}
+```
+
+### 38.2 QR Code Check-in via SHL
+
+The `wallet.generateCheckinQR` procedure creates a Smart Health Link (SHL) packet for patient check-in at service points. It combines wallet credentials and uploaded documents into a single scannable QR code.
+
+**Flow:**
+1. Patient completes readiness check (critical documents ready)
+2. Patient clicks "สร้าง QR Check-in" button
+3. System calls `wallet.generateCheckinQR` with context + consent attestation
+4. Backend resolves patient ID, gathers wallet cards + uploaded documents
+5. Backend calls `createSmartHealthLinkPackage` with:
+   - Purpose: mapped from context (e.g., opd_visit → "patient_summary")
+   - Credentials: active wallet cards matching the context
+   - Documents: verified uploaded documents as DocumentReference bundle
+   - Expiry: 24 hours
+   - Max access: 3 scans
+6. Returns QR payload (shlink:/ URI), expiry, access count, readiness score
+
+**tRPC Input/Output:**
+```typescript
+// Input
+{ context: ReadinessContext, consentAttested: boolean }
+
+// Output
+{
+  qrPayload: string,        // shlink:/... URI for QR code
+  shlId: string,            // SHL record ID
+  expiresAt: string,        // ISO timestamp
+  maxAccessCount: number,   // Max scans allowed
+  credentialCount: number,  // Number of credentials in bundle
+  readinessScore: number,   // Readiness percentage
+}
+```
+
+**Frontend Components:**
+- `CheckinQRPanel` — Generates and displays QR code in a dialog with expiry info
+- Uses `qrcode.react` (QRCodeCanvas) for client-side QR rendering
+
+### 38.3 Inline Document Upload (UploadDocButton)
+
+The `UploadDocButton` component provides inline upload capability next to each missing document item in the readiness checklist. It validates file type and size client-side before encoding to base64 and calling the `wallet.uploadDocument` mutation.
+
+**Constraints:**
+- Max file size: 10 MB
+- Allowed types: PDF, JPEG, PNG, WebP
+- Immediate feedback via toast notifications
+- Automatic context and document type binding from readiness requirements
+
+### 38.4 Contract Admin CRUD
+
+The Contract Admin page (`/contract-admin`) provides system administrators with full CRUD capabilities over service readiness contracts without requiring seed scripts.
+
+**tRPC Procedures (admin only):**
+
+| Procedure | Description |
+|-----------|-------------|
+| `contractAdmin.list` | List all contracts ordered by creation date |
+| `contractAdmin.getById` | Get single contract by ID |
+| `contractAdmin.create` | Create new contract with all fields |
+| `contractAdmin.update` | Update existing contract (version, status, labels, JSON configs) |
+| `contractAdmin.delete` | Soft-delete (set status to "deprecated") |
+| `contractAdmin.listTemplates` | List bundle templates with optional contractId filter |
+
+**Contract fields managed:**
+- Contract ID, context, version, status (draft/active/deprecated)
+- Patient/Hospital labels (TH/EN)
+- Patient/Hospital visibility flags
+- Bundle types (patient_readiness_bundle, hospital_readiness_bundle)
+- Requirements JSON (array of requirement definitions)
+- Questionnaire JSON (FHIR Questionnaire shape)
+- Consent Policy JSON (consent rules and policies)
+
+**Frontend (ContractAdmin.tsx):**
+- Tabbed interface: Contracts list + Bundle Templates list
+- Create/Edit dialog with full form validation
+- JSON editor fields for requirements, questionnaire, consent policy
+- Inline status badges with color coding
+- Edit and soft-delete actions per row
+
+### 38.5 Files Modified/Created in v3.20.0
+
+| File | Change |
+|------|--------|
+| `drizzle/schema.ts` | Added `patient_uploaded_documents` table |
+| `server/db.ts` | Added CRUD helpers for contracts and uploaded documents |
+| `server/routers.ts` | Added `wallet.uploadDocument`, `wallet.listUploadedDocuments`, `wallet.reviewUploadedDocument`, `wallet.pendingDocumentReviews`, `wallet.generateCheckinQR`, `contractAdmin.*` procedures |
+| `client/src/pages/PrepareForService.tsx` | Added `UploadDocButton` and `CheckinQRPanel` components |
+| `client/src/pages/ContractAdmin.tsx` | New page — full CRUD UI for service contracts |
+| `client/src/App.tsx` | Added `/contract-admin` route |
+| `client/src/components/DashboardLayout.tsx` | Added FileStack icon, contract-admin menu item |
+| `server/contractAdmin.test.ts` | New test file — 7 tests for contract CRUD helpers |
+| `docs/V320_PROGRESS.md` | Implementation progress tracking |
+| `docs/V320_CURRENT_STATE.md` | Current state analysis |
+| `docs/V320_IMPLEMENTATION_NOTES.md` | Implementation notes |

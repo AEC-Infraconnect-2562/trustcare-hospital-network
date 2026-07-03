@@ -27,7 +27,7 @@ import {
   LayoutDashboard, LogOut, PanelLeft, Wallet, ArrowRightLeft, ShieldCheck,
   BadgeCheck, ScanLine, GitBranch, BookOpen, Building2, FileSearch, Users,
   Settings, Moon, Sun, Bell, Globe, Plane, Receipt, Plug, ShieldAlert, Link2,
-  FileJson2, Code2, UserCircle, Handshake, HeartPulse, FilePlus, ClipboardCheck,
+  FileJson2, Code2, UserCircle, Handshake, HeartPulse, FilePlus, ClipboardCheck, FileStack,
 } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -44,7 +44,7 @@ const iconMap: Record<string, any> = {
   LayoutDashboard, Wallet, ArrowRightLeft, ShieldCheck, BadgeCheck, ScanLine,
   GitBranch, BookOpen, Building2, FileSearch, Users, Settings, Globe, Plane,
   Receipt, Plug, ShieldAlert, Link2, FileJson2, Code2, UserCircle, Handshake, HeartPulse,
-  FilePlus, ClipboardCheck,
+  FilePlus, ClipboardCheck, FileStack,
 };
 
 type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
@@ -106,6 +106,7 @@ const menuItemsEn: Record<string, string> = {
   audit: "Audit Trail",
   users: "User Management",
   settings: "Settings",
+  "contract-admin": "Contract Admin",
 };
 
 const allMenuItems: MenuItemDef[] = [
@@ -139,6 +140,7 @@ const allMenuItems: MenuItemDef[] = [
   { id: "audit", label: "บันทึกการเข้าถึง", icon: "FileSearch", path: "/audit", roles: ["system_admin", "hospital_admin"], group: "hospital_ops", groupLabel: "งานโรงพยาบาล" },
   { id: "users", label: "จัดการผู้ใช้", icon: "Users", path: "/users", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
   { id: "settings", label: "ตั้งค่าระบบ", icon: "Settings", path: "/settings", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "contract-admin", label: "จัดการสัญญาบริการ", icon: "FileStack", path: "/contract-admin", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
 ];
 
 function getMenuForRole(role: SystemRole) {

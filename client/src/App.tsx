@@ -42,6 +42,7 @@ const PatientProfile = lazy(() => import("./pages/PatientProfile"));
 const PrepareForService = lazy(() => import("./pages/PrepareForService"));
 const ServiceVerify = lazy(() => import("./pages/ServiceVerify"));
 const PatientNotifications = lazy(() => import("./pages/PatientNotifications"));
+const ContractAdmin = lazy(() => import("./pages/ContractAdmin"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 function PageLoader() {
@@ -94,6 +95,7 @@ function Router() {
         <Route path="/audit" component={Audit} />
         <Route path="/users" component={Users} />
         <Route path="/settings" component={Settings} />
+        <Route path="/contract-admin" component={ContractAdmin} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

@@ -1,6 +1,6 @@
 # TrustCare Hospital Network
 
-**Version:** 3.14.0  
+**Version:** 3.20.0  
 **Last Updated:** 2026-07-03  
 **Stack:** React 19 + Tailwind 4 + Express 4 + tRPC 11 + Drizzle ORM + MySQL
 
@@ -26,13 +26,13 @@ The system enables:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Frontend (React 19 + Tailwind 4 + shadcn/ui)               │
-│  36 pages · DashboardLayout · i18n (TH/EN)                  │
+│  37 pages · DashboardLayout · i18n (TH/EN)                  │
 ├─────────────────────────────────────────────────────────────┤
-│  tRPC Layer (29 routers · type-safe · Superjson)            │
+│  tRPC Layer (30 routers · type-safe · Superjson)            │
 ├─────────────────────────────────────────────────────────────┤
 │  Backend (Express 4 + Manus OAuth + Role Guards)            │
 ├─────────────────────────────────────────────────────────────┤
-│  Database (MySQL · 61 tables · Drizzle ORM)                 │
+│  Database (MySQL · 67 tables · Drizzle ORM)                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -42,7 +42,7 @@ The system enables:
 
 | Module | Description |
 |--------|-------------|
-| Patient Wallet | VC/VP storage, biometric access, consent management, QR presentation |
+| Patient Wallet | VC/VP storage, biometric access, consent management, QR presentation, document upload |
 | Maker/Checker | Credential request workflow with role-based approval |
 | Claim Center | FHIR-based claim packaging, payer adapter submission, payment reconciliation |
 | Cross-Border | International referral management with credential verification |
@@ -56,8 +56,8 @@ The system enables:
 
 ## Database
 
-- **61 tables** across patient identity, credentials, claims, care transitions, and system management
-- **15 migration batches** managed via Drizzle Kit
+- **67 tables** across patient identity, credentials, claims, care transitions, and system management
+- **18 migration batches** managed via Drizzle Kit
 - **24 credential types** in the enum (patient_id, medical_certificate, lab_result, etc.)
 - **6 payer adapter types** (NHSO, SSO, Private Insurance, CSMBS, Travel Insurance, Self-Pay)
 
@@ -65,9 +65,9 @@ The system enables:
 
 ## Testing
 
-- **307 test cases** across 24 test files (all passing)
+- **319 test cases** across 25 test files (all passing)
 - **0 TypeScript errors** with strict mode enabled
-- Coverage includes: role guards, maker/checker workflow, claim analytics, multi-role switching, SHL, portability, QR scanning, DICOM viewer, schema registry
+- Coverage includes: role guards, maker/checker workflow, claim analytics, multi-role switching, SHL, portability, QR scanning, DICOM viewer, schema registry, contract admin CRUD
 
 ---
 
@@ -126,6 +126,8 @@ pnpm drizzle-kit generate
 - `docs/SHL_CONTEXT_VERSIONING.md` — SHL versioning strategy
 - `docs/VC_UNIQUENESS_RULES.md` — Credential uniqueness constraints
 - `docs/UX_FLOW_SYSTEM_AUDIT_2026-07-03.md` — UX audit findings
+- `docs/V320_CURRENT_STATE.md` — v3.20.0 implementation state analysis
+- `docs/V320_PROGRESS.md` — v3.20.0 implementation progress
 
 ---
 

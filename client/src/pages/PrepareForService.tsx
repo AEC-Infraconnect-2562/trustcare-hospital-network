@@ -37,8 +37,10 @@ import {
   UserRoundPlus,
   WalletCards,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { QRCodeCanvas } from "qrcode.react";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const contextIcons: Record<ReadinessContext, any> = {
   opd_visit: Stethoscope,
@@ -334,9 +336,12 @@ function PatientView({
                       (readiness.missing as any[]).map((item: any) => (
                         <div key={item.key} className="flex items-center justify-between gap-2 text-sm">
                           <span>{item.label}</span>
-                          <Badge variant={item.required ? "destructive" : "secondary"}>
-                            {item.required ? "จำเป็น" : "ไม่บังคับ"}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={item.required ? "destructive" : "secondary"}>
+                              {item.required ? "จำเป็น" : "ไม่บังคับ"}
+                            </Badge>
+                            <UploadDocButton context={context} documentType={item.cardTypes?.[0] ?? item.key} label={item.label} />
+                          </div>
                         </div>
                       ))
                     ) : (
@@ -401,14 +406,7 @@ function PatientView({
                   onClick={() => bundleMutation.mutate({ context, audience: "patient", receiver: "TrustCare intake" })}
                   disabled={bundleMutation.isPending}
                 />
-                <ActionPanel
-                  icon={QrCode}
-                  title="แชร์ด้วย QR Code"
-                  description="สร้าง QR Code หรือลิงก์สำหรับแชร์ชุดเอกสารกับโรงพยาบาลอย่างปลอดภัย"
-                  button="สร้าง QR Code"
-                  onClick={() => toast.info("กรุณาสร้างชุดเอกสารก่อน แล้วใช้ฟังก์ชัน Smart Health Link เพื่อแชร์")}
-                  disabled={false}
-                />
+                <CheckinQRPanel context={context} readiness={readiness} />
               </div>
             </CardContent>
           </Card>
@@ -697,6 +695,146 @@ function ApiView({ workbench, workbenchQuery }: any) {
   );
 }
 
+// ============================================================
+// SHARED HELPER COMPONENTS
+// ============================================================
+// ============================================================
+// UPLOAD DOCUMENT BUTTON - Inline upload for missing items
+// ============================================================
+function UploadDocButton({ context, documentType, label }: { context: string; documentType: string; label: string }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadMutation = trpc.wallet.uploadDocument.useMutation({
+    onSuccess: () => {
+      toast.success(`อัปโหลดเอกสาร "${label}" สำเร็จ รอตรวจสอบ`);
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("ไฟล์ต้องมีขนาดไม่เกิน 10MB");
+      return;
+    }
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("รองรับเฉพาะ PDF, JPEG, PNG, WebP");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      uploadMutation.mutate({
+        context: context as any,
+        documentType,
+        documentCategory: "other" as const,
+        title: label,
+        fileName: file.name,
+        mimeType: file.type,
+        fileBase64: base64,
+      });
+    };
+    reader.readAsDataURL(file);
+    // Reset input
+    event.target.value = "";
+  }, [context, documentType, label, uploadMutation]);
+  return (
+    <>
+      <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={handleFileSelect} />
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 gap-1 px-2 text-xs text-primary"
+        onClick={() => fileInputRef.current?.click()}
+        disabled={uploadMutation.isPending}
+      >
+        <UploadCloud className="h-3 w-3" />
+        {uploadMutation.isPending ? "กำลังอัปโหลด..." : "อัปโหลด"}
+      </Button>
+    </>
+  );
+}
+// ============================================================
+// CHECK-IN QR PANEL - Generate SHL-based check-in QR code
+// ============================================================
+function CheckinQRPanel({ context, readiness }: { context: string; readiness: any }) {
+  const [showQR, setShowQR] = useState(false);
+  const [qrData, setQrData] = useState<any>(null);
+  const checkinMutation = trpc.wallet.generateCheckinQR.useMutation({
+    onSuccess: (result) => {
+      setQrData(result);
+      setShowQR(true);
+      toast.success("สร้าง QR Code สำหรับ Check-in สำเร็จ");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const handleGenerate = () => {
+    if (!readiness?.criticalReady) {
+      toast.error("เอกสารสำคัญยังไม่ครบ กรุณาอัปโหลดเอกสารที่จำเป็นก่อน");
+      return;
+    }
+    checkinMutation.mutate({
+      context: context as any,
+      consentAttested: true,
+    });
+  };
+  return (
+    <>
+      <div className="rounded-lg border p-3">
+        <QrCode className="h-5 w-5 text-primary" />
+        <p className="mt-2 text-sm font-semibold">สร้าง QR Check-in</p>
+        <p className="mt-1 min-h-12 text-xs text-muted-foreground">
+          สร้าง QR Code สำหรับแสดงที่จุดรับบริการ ใช้ Smart Health Link มาตรฐาน FHIR
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-3 w-full gap-2"
+          onClick={handleGenerate}
+          disabled={checkinMutation.isPending || !readiness?.criticalReady}
+        >
+          <QrCode className="h-4 w-4" />
+          {checkinMutation.isPending ? "กำลังสร้าง..." : "สร้าง QR Check-in"}
+        </Button>
+      </div>
+      <Dialog open={showQR} onOpenChange={setShowQR}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5 text-primary" />
+              QR Code Check-in
+            </DialogTitle>
+          </DialogHeader>
+          {qrData && (
+            <div className="flex flex-col items-center gap-4 py-4">
+              <div className="rounded-xl border-2 border-primary/20 bg-white p-4">
+                <QRCodeCanvas value={qrData.qrPayload} size={220} level="M" />
+              </div>
+              <div className="w-full space-y-2 text-center">
+                <Badge variant="outline" className="gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Smart Health Link
+                </Badge>
+                <p className="text-sm text-muted-foreground">
+                  หมดอายุ: {new Date(qrData.expiresAt).toLocaleString("th-TH")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  สแกนได้สูงสุด {qrData.maxAccessCount} ครั้ง | คะแนนความพร้อม: {qrData.readinessScore}%
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  เอกสาร: {qrData.credentialCount} รายการ
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setShowQR(false)}>
+                ปิด
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 // ============================================================
 // SHARED HELPER COMPONENTS
 // ============================================================

@@ -1439,3 +1439,40 @@ export const contractArtifacts = mysqlTable("contract_artifacts", {
 });
 export type ContractArtifact = typeof contractArtifacts.$inferSelect;
 export type InsertContractArtifact = typeof contractArtifacts.$inferInsert;
+
+
+// ============================================================
+// PATIENT UPLOADED DOCUMENTS (FHIR DocumentReference-backed)
+// ============================================================
+export const patientUploadedDocuments = mysqlTable("patient_uploaded_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  uploadId: varchar("uploadId", { length: 64 }).notNull().unique(),
+  patientId: int("patientId").notNull(),
+  context: mysqlEnum("context", ["opd_visit", "emergency", "referral", "cross_border", "medical_tourist", "insurance_claim", "pharmacy_dispense"]).notNull(),
+  documentType: varchar("documentType", { length: 100 }).notNull(),
+  documentCategory: mysqlEnum("documentCategory", ["identity", "clinical", "insurance", "consent", "legal", "imaging", "lab", "other"]).default("other").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  mimeType: varchar("mimeType", { length: 120 }).notNull(),
+  fileSize: bigint("fileSize", { mode: "number" }).notNull(),
+  fileKey: varchar("fileKey", { length: 500 }).notNull(),
+  fileUrl: text("fileUrl").notNull(),
+  hash: varchar("hash", { length: 128 }).notNull(),
+  fhirDocumentReference: json("fhirDocumentReference").notNull(),
+  status: mysqlEnum("status", ["uploaded", "needs_review", "verified", "converted_to_vc", "rejected"]).default("uploaded").notNull(),
+  reviewPolicy: mysqlEnum("reviewPolicy", ["auto_accept", "manual_review"]).default("manual_review").notNull(),
+  reviewedBy: int("reviewedBy"),
+  reviewedAt: timestamp("reviewedAt"),
+  reviewNotes: text("reviewNotes"),
+  walletDocumentRequestId: int("walletDocumentRequestId"),
+  credentialId: int("credentialId"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  index("idx_pud_patient").on(table.patientId),
+  index("idx_pud_status").on(table.status),
+  index("idx_pud_context").on(table.context),
+]));
+export type PatientUploadedDocument = typeof patientUploadedDocuments.$inferSelect;
+export type InsertPatientUploadedDocument = typeof patientUploadedDocuments.$inferInsert;

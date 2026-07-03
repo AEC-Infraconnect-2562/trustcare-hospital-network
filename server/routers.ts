@@ -791,6 +791,119 @@ export const appRouter = router({
       });
       return { id, requestId, status: input.consentAttested ? "requested" : "pending_consent" };
     }),
+    // ============================================================
+    // DOCUMENT UPLOAD FLOW (FHIR DocumentReference-backed)
+    // ============================================================
+    uploadDocument: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues),
+      documentType: z.string(),
+      documentCategory: z.enum(["identity", "clinical", "insurance", "consent", "legal", "imaging", "lab", "other"]),
+      title: z.string(),
+      fileName: z.string(),
+      mimeType: z.string(),
+      fileBase64: z.string(),
+      walletDocumentRequestId: z.number().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const buffer = Buffer.from(input.fileBase64, "base64");
+      const fileSize = buffer.length;
+      if (fileSize > 10 * 1024 * 1024) throw new TRPCError({ code: "BAD_REQUEST", message: "File size exceeds 10MB limit" });
+      const allowedMimes = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/dicom"];
+      if (!allowedMimes.includes(input.mimeType)) throw new TRPCError({ code: "BAD_REQUEST", message: `Unsupported file type: ${input.mimeType}` });
+      const fileHash = sha256(buffer.toString("base64"));
+      const uploadId = `pud_${nanoid(16)}`;
+      const fileKey = `patient-documents/${ctx.user.id}/${uploadId}/${input.fileName}`;
+      const { url } = await storagePut(fileKey, buffer, input.mimeType);
+      const fhirDocumentReference = {
+        resourceType: "DocumentReference",
+        id: uploadId,
+        status: "current",
+        type: { coding: [{ system: "https://trustcare.network/fhir/document-type", code: input.documentType, display: input.title }] },
+        category: [{ coding: [{ system: "https://trustcare.network/fhir/document-category", code: input.documentCategory }] }],
+        subject: { reference: `Patient/${ctx.user.id}`, display: ctx.user.name },
+        date: new Date().toISOString(),
+        content: [{
+          attachment: {
+            contentType: input.mimeType,
+            url: url,
+            title: input.fileName,
+            size: fileSize,
+            hash: fileHash,
+          },
+        }],
+        context: { event: [{ coding: [{ system: "https://trustcare.network/fhir/service-context", code: input.context }] }] },
+        securityLabel: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-Confidentiality", code: "R", display: "Restricted" }] }],
+      };
+      const id = await db.createPatientUploadedDocument({
+        uploadId,
+        patientId: ctx.user.id,
+        context: input.context as any,
+        documentType: input.documentType,
+        documentCategory: input.documentCategory as any,
+        title: input.title,
+        fileName: input.fileName,
+        mimeType: input.mimeType,
+        fileSize,
+        fileKey,
+        fileUrl: url,
+        hash: fileHash,
+        fhirDocumentReference,
+        status: "uploaded",
+        reviewPolicy: "manual_review",
+        walletDocumentRequestId: input.walletDocumentRequestId,
+      });
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        action: "document.uploaded",
+        resourceType: "patient_uploaded_document",
+        resourceId: uploadId,
+        details: { context: input.context, documentType: input.documentType, fileSize, mimeType: input.mimeType },
+      });
+      return { id, uploadId, fileUrl: url, fhirDocumentReference };
+    }),
+
+    listUploadedDocuments: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues).optional(),
+      status: z.enum(["uploaded", "needs_review", "verified", "converted_to_vc", "rejected"]).optional(),
+    }).optional()).query(async ({ ctx, input }) => {
+      return db.listPatientUploadedDocuments({
+        patientId: ctx.user.id,
+        context: input?.context,
+        status: input?.status,
+      });
+    }),
+
+    reviewUploadedDocument: protectedProcedure.input(z.object({
+      documentId: z.number(),
+      action: z.enum(["verify", "reject", "needs_review"]),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      if (!canHoldIssuerPrivileges(ctx.user.systemRole)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only hospital staff can review documents" });
+      }
+      const statusMap = { verify: "verified" as const, reject: "rejected" as const, needs_review: "needs_review" as const };
+      await db.updatePatientUploadedDocument(input.documentId, {
+        status: statusMap[input.action],
+        reviewedBy: ctx.user.id,
+        reviewedAt: new Date(),
+        reviewNotes: input.notes,
+      });
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        action: `document.${input.action}`,
+        resourceType: "patient_uploaded_document",
+        resourceId: String(input.documentId),
+        details: { action: input.action, notes: input.notes },
+      });
+      return { success: true };
+    }),
+
+    pendingDocumentReviews: protectedProcedure.query(async ({ ctx }) => {
+      if (!canHoldIssuerPrivileges(ctx.user.systemRole)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only hospital staff can view pending reviews" });
+      }
+      return db.listDocumentsNeedingReview();
+    }),
+
     buildServicePacket: protectedProcedure.input(z.object({
       context: z.enum(readinessContextValues),
       patientId: z.number().optional(),
@@ -883,6 +996,96 @@ export const appRouter = router({
         expiresAt: presentation.expiresAt,
         credentialCount: credentialRows.length,
         qrData: `${proto}://${host}/verifier?vp=${presentation.id}`,
+      };
+    }),
+    generateCheckinQR: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues).default("opd_visit"),
+      patientId: z.number().optional(),
+      hospitalId: z.number().optional(),
+      selectedCardIds: z.array(z.number()).optional(),
+      uploadedDocumentIds: z.array(z.number()).optional(),
+      serviceName: z.string().optional(),
+      consentAttested: z.boolean().default(false),
+    })).mutation(async ({ ctx, input }) => {
+      const patientId = resolveWalletPatientId(ctx, input.patientId);
+      if (!input.consentAttested) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Contextual consent is required before generating a check-in QR code." });
+      }
+      // Assess readiness first
+      const cards = await enrichedWalletCards(patientId);
+      const readiness = assessReadiness(cards, input.context);
+      if (!readiness.criticalReady) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Critical documents are missing. Complete readiness check before generating check-in QR." });
+      }
+      // Resolve credential IDs from selected wallet cards
+      const allowedCardIds = new Set(input.selectedCardIds?.length ? input.selectedCardIds : readiness.selectedCardIds);
+      const selectedCards = cards.filter((card: any) => typeof card.id === "number" && allowedCardIds.has(card.id));
+      const credentialIds = selectedCards
+        .map((card: any) => card.credentialId)
+        .filter(Boolean)
+        .map(String);
+      // Create SHL package with check-in specific defaults
+      // Short expiry (4 hours), limited access (3 times), no passcode for walk-in convenience
+      const shlResult = await createSmartHealthLinkPackage(ctx, {
+        patientId,
+        hospitalId: input.hospitalId,
+        purpose: "patient_summary" as ShlPurpose,
+        context: "treatment" as PortabilityContextValue,
+        label: `Check-in QR: ${input.serviceName ?? input.context}`,
+        credentialIds: credentialIds.length ? credentialIds : undefined,
+        passcodeRequired: false,
+        maxAccessCount: 3,
+        expiresInDays: 0.17, // ~4 hours
+      });
+      // Record the check-in readiness check
+      const checkId = await db.createServiceReadinessCheck({
+        patientId,
+        context: input.context,
+        hospitalId: input.hospitalId,
+        serviceName: input.serviceName,
+        score: readiness.score,
+        criticalReady: readiness.criticalReady,
+        requiredMissing: readiness.missing.filter((item) => item.required),
+        recommendedMissing: readiness.missing.filter((item) => !item.required),
+        selectedCredentialIds: credentialIds,
+        packetPresentationId: shlResult.presentationId ?? null,
+        status: "qr_generated",
+        createdBy: ctx.user.id,
+        metadata: {
+          shlId: shlResult.id,
+          qrType: "checkin",
+          serviceName: input.serviceName,
+          uploadedDocumentIds: input.uploadedDocumentIds,
+          consentAttested: input.consentAttested,
+        },
+      } as any);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "wallet.checkin_qr.generated",
+        resourceType: "smart_health_link",
+        resourceId: String(shlResult.id),
+        details: {
+          context: input.context,
+          score: readiness.score,
+          shlId: shlResult.id,
+          checkId,
+          credentialCount: credentialIds.length,
+          uploadedDocumentCount: input.uploadedDocumentIds?.length ?? 0,
+        },
+      });
+      return {
+        checkId,
+        shlId: shlResult.id,
+        shlUrl: shlResult.shlUrl,
+        qrPayload: shlResult.qrPayload,
+        viewerUrl: shlResult.viewerUrl,
+        expiresAt: shlResult.expiresAt,
+        maxAccessCount: shlResult.maxAccessCount,
+        passcodeRequired: false,
+        readinessScore: readiness.score,
+        credentialCount: credentialIds.length,
+        status: shlResult.status === "active" ? "ready" : "pending_review",
       };
     }),
     superseded: protectedProcedure.query(async ({ ctx }) => {
@@ -1678,7 +1881,147 @@ export const appRouter = router({
       return { avatarUrl: user?.avatarUrl || null };
     }),
   }),
-
+  // ============================================================
+  // CONTRACT ADMIN
+  // ============================================================
+  contractAdmin: router({
+    list: adminProcedure.query(async () => {
+      return db.listAllContracts();
+    }),
+    getById: adminProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      const contract = await db.getContractById(input.id);
+      if (!contract) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
+      return contract;
+    }),
+    create: adminProcedure.input(z.object({
+      contractId: z.string().min(3).max(255),
+      context: z.enum(readinessContextValues),
+      version: z.string().min(1).max(64),
+      status: z.enum(["active", "draft", "deprecated"]).default("draft"),
+      patientLabel: z.string().min(1).max(255),
+      patientLabelEn: z.string().min(1).max(255),
+      hospitalLabel: z.string().min(1).max(255),
+      hospitalLabelEn: z.string().min(1).max(255),
+      patientVisible: z.boolean().default(true),
+      hospitalVisible: z.boolean().default(true),
+      patientBundleType: z.string().min(1).max(128),
+      hospitalBundleType: z.string().min(1).max(128),
+      requirementsJson: z.any().optional(),
+      questionnaireJson: z.any().optional(),
+      consentPolicyJson: z.any().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const existing = await db.getContractByContractId(input.contractId);
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Contract ID already exists" });
+      const id = await db.createServiceContract(input);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "contract_admin.created",
+        resourceType: "service_readiness_contract",
+        resourceId: String(id),
+        details: { contractId: input.contractId, context: input.context },
+      });
+      return { id, contractId: input.contractId };
+    }),
+    update: adminProcedure.input(z.object({
+      id: z.number(),
+      version: z.string().min(1).max(64).optional(),
+      status: z.enum(["active", "draft", "deprecated"]).optional(),
+      patientLabel: z.string().min(1).max(255).optional(),
+      patientLabelEn: z.string().min(1).max(255).optional(),
+      hospitalLabel: z.string().min(1).max(255).optional(),
+      hospitalLabelEn: z.string().min(1).max(255).optional(),
+      patientVisible: z.boolean().optional(),
+      hospitalVisible: z.boolean().optional(),
+      patientBundleType: z.string().min(1).max(128).optional(),
+      hospitalBundleType: z.string().min(1).max(128).optional(),
+      requirementsJson: z.any().optional(),
+      questionnaireJson: z.any().optional(),
+      consentPolicyJson: z.any().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      const existing = await db.getContractById(id);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
+      await db.updateServiceContract(id, data);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "contract_admin.updated",
+        resourceType: "service_readiness_contract",
+        resourceId: String(id),
+        details: { contractId: existing.contractId, updatedFields: Object.keys(data) },
+      });
+      return { success: true };
+    }),
+    delete: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const existing = await db.getContractById(input.id);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Contract not found" });
+      await db.deleteServiceContract(input.id);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "contract_admin.deleted",
+        resourceType: "service_readiness_contract",
+        resourceId: String(input.id),
+        details: { contractId: existing.contractId },
+      });
+      return { success: true };
+    }),
+    listTemplates: adminProcedure.input(z.object({ contractId: z.string().optional() })).query(async ({ input }) => {
+      return db.listBundleTemplates(input.contractId);
+    }),
+    createTemplate: adminProcedure.input(z.object({
+      templateId: z.string().min(3).max(255),
+      contractId: z.string().min(3).max(255),
+      audience: z.enum(["patient", "hospital"]),
+      bundleType: z.string().min(1).max(128),
+      direction: z.enum(["inbound", "outbound", "bidirectional"]).default("inbound"),
+      transportPolicyJson: z.any().optional(),
+      itemsJson: z.any().optional(),
+      status: z.enum(["active", "draft", "deprecated"]).default("draft"),
+    })).mutation(async ({ ctx, input }) => {
+      const id = await db.createBundleTemplate(input);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "contract_admin.template_created",
+        resourceType: "service_bundle_template",
+        resourceId: String(id),
+        details: { templateId: input.templateId, contractId: input.contractId },
+      });
+      return { id, templateId: input.templateId };
+    }),
+    updateTemplate: adminProcedure.input(z.object({
+      id: z.number(),
+      status: z.enum(["active", "draft", "deprecated"]).optional(),
+      transportPolicyJson: z.any().optional(),
+      itemsJson: z.any().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      await db.updateBundleTemplate(id, data);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "contract_admin.template_updated",
+        resourceType: "service_bundle_template",
+        resourceId: String(id),
+        details: { updatedFields: Object.keys(data) },
+      });
+      return { success: true };
+    }),
+    deleteTemplate: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      await db.deleteBundleTemplate(input.id);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "contract_admin.template_deleted",
+        resourceType: "service_bundle_template",
+        resourceId: String(input.id),
+        details: {},
+      });
+      return { success: true };
+    }),
+  }),
   // ============================================================
   // PATIENT IDENTITY / MPI
   // ============================================================
