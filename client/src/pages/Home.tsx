@@ -1,5 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { PersonPhoto } from "@/components/PersonPhoto";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,7 +74,10 @@ export default function Home() {
       if (data.token) {
         sessionStorage.setItem("demo_session_token", data.token);
       }
-      window.location.href = "/dashboard";
+      // Role-aware redirect: patients go to /profile, staff go to /dashboard
+      const effectiveRole = activeRole || data.user?.systemRole || '';
+      const isPatient = effectiveRole === 'patient' || (!activeRole && openId?.includes('patient'));
+      window.location.href = isPatient ? '/profile' : '/dashboard';
     } catch (e: any) {
       toast.error("เข้าสู่ระบบไม่สำเร็จ: " + e.message);
       setLoggingIn(false);
@@ -225,7 +230,7 @@ export default function Home() {
                           <CardContent className="p-4">
                             <div className="flex items-center gap-3">
                               <Avatar className="h-10 w-10 shrink-0 shadow-sm">
-                                {u.avatarUrl && <AvatarImage src={u.avatarUrl} alt={u.name} />}
+                                {u.avatarUrl && <PersonPhoto sources={[u.avatarUrl]} alt={u.name} className="aspect-square size-full rounded-full object-cover" />}
                                 <AvatarFallback className={`${config.bgColor} ${config.color} text-sm font-medium`}>
                                   {u.name?.charAt(0) || "?"}
                                 </AvatarFallback>

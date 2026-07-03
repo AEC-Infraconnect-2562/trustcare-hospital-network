@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.6 (Prepare for Service Core Workbench)
+**Version:** 5.7 (Patient Access Fix & Photo Permanent Fix)
 **Last updated:** 2026-07-03
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v3.26.0 | 2026-07-03 | Patient access denied fix (role-aware post-login redirect), permanent profile photo fix (PersonPhoto everywhere, no raw AvatarImage), SW v6 |
 | v3.25.0 | 2026-07-03 | Staff credential restructure (single staff_identity type with position), profile photo fix for Chrome production (SW cross-origin redirect), seed staff identity VCs for all staff users |
 | v3.24.0 | 2026-07-03 | Merged PR #14: Mobile credential person images fix — shared resolver, PersonPhoto component, wallet API avatarUrl binding, SW network-first |
 | v3.23.0 | 2026-07-03 | Trust Layer Auto-Remediation UI with 10 remediation actions mapped to system pages |
@@ -2130,3 +2131,42 @@ Staff users without a `hospitalId` (e.g., system_admin, integration_engineer) do
 The profile page now shows role-appropriate empty state messages:
 - **Patient:** "บัตรจะถูกออกให้เมื่อลงทะเบียนเข้ารับบริการ"
 - **Staff:** "บัตรจะถูกออกให้โดยผู้ดูแลระบบของโรงพยาบาล"
+
+## 43. Patient Access Fix & Profile Photo Permanent Fix (v3.26.0 — 2026-07-03)
+
+### 43.1 Patient Access Denied Root Cause
+
+After demo login, `Home.tsx` unconditionally redirected all users to `/dashboard` via `window.location.href = "/dashboard"`. Since `/dashboard` is not in the `routeAccessConfig` allowed roles for `patient`, the `RoleGuard` component blocked access and displayed "ไม่มีสิทธิ์เข้าถึง".
+
+**Fix:** Made the post-login redirect role-aware:
+- Patients (`systemRole === 'patient'` or `openId` contains "patient") → `/profile`
+- Staff entering as patient (`activeRole === 'patient'`) → `/profile`
+- All other staff → `/dashboard`
+
+### 43.2 Profile Photo Permanent Fix
+
+**Root cause chain (now fully resolved):**
+1. `storageProxy.ts` previously returned 307 redirect to CloudFront (cross-origin)
+2. Service worker intercepted the redirect, producing opaque responses in Chrome
+3. `<img>` tags received empty/broken responses
+
+**Three-layer fix applied:**
+1. **Backend (v3.25.0):** `storageProxy.ts` now streams file bytes directly (same-origin response with proper `Content-Type` and `Cache-Control` headers)
+2. **Service Worker (v3.26.0):** Bumped to v6, bypasses `/manus-storage/*` entirely (no interception, no caching)
+3. **Frontend (v3.26.0):** Eliminated all raw `AvatarImage` usage outside `ui/avatar.tsx`. Every avatar now uses `PersonPhoto` component with retry source chain via `patientPhotoSources()` or `practitionerPhotoSources()`
+
+**Components updated:**
+- `DashboardLayout.tsx` sidebar footer → `SidebarUserPhoto` component using `PersonPhoto`
+- `Home.tsx` demo user cards → `PersonPhoto` with `[u.avatarUrl]` sources
+
+### 43.3 Statistics Update
+
+| Metric | Value |
+|--------|-------|
+| tRPC routers | 31 |
+| Test files | 27 |
+| Tests passing | 331 |
+| Frontend pages | 26 |
+| UI components | 25 (added SidebarUserPhoto) |
+| Service Worker version | v6 |
+| Raw AvatarImage usage | 0 (outside ui/avatar.tsx) |

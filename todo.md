@@ -792,3 +792,14 @@
 - [x] Fix profile photo not loading in Chrome production
 - [x] Update Architecture Documents (section 42, version history, statistics)
 - [x] Run tests (331 pass, 0 TS errors), save checkpoint, push to GitHub
+
+## v3.26.0 - Patient Access Denied Fix & Photo Permanent Fix
+- [x] Fix patient "ไม่มีสิทธิ์เข้าถึง" after login: Home.tsx demo-login redirect was unconditionally sending to /dashboard
+- [x] Make post-login redirect role-aware: patients → /profile, staff → /dashboard
+- [x] Handle "enter as patient" mode for staff users (activeRole=patient → /profile)
+- [x] Fix profile photo permanently: replace raw AvatarImage in DashboardLayout sidebar with PersonPhoto + source resolver
+- [x] Fix profile photo in Home.tsx demo user cards: replace raw AvatarImage with PersonPhoto
+- [x] Remove all raw AvatarImage usage outside ui/avatar.tsx (use PersonPhoto with retry chain everywhere)
+- [x] Update service worker comments and bump cache version (v6) to reflect streaming approach
+- [x] Confirm storageProxy.ts streams bytes same-origin (no more 307 redirect to CloudFront)
+- [x] Run tests (331 pass, 0 TS errors), save checkpoint, push to GitHub

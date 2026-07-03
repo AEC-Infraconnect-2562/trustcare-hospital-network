@@ -1,5 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +37,8 @@ import { Button } from "./ui/button";
 import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { normalizeActiveRole, sanitizeAdditionalRolesForSystemRole } from "@shared/rolePolicy";
+import { PersonPhoto } from "@/components/PersonPhoto";
+import { patientPhotoSources, practitionerPhotoSources } from "@shared/personImages";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 // Icon map
@@ -304,7 +306,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none">
                   <Avatar className="h-9 w-9 border shrink-0">
-                    {(user as any)?.avatarUrl && <AvatarImage src={(user as any).avatarUrl} alt={user?.name || "User"} />}
+                    <SidebarUserPhoto user={user} activeRole={activeRole} />
                     <AvatarFallback className="text-xs font-medium bg-primary/10 text-primary">
                       {user?.name?.charAt(0).toUpperCase() || "U"}
                     </AvatarFallback>
@@ -362,6 +364,23 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
         <main className="flex-1 p-4 md:p-6">{children}</main>
       </SidebarInset>
     </>
+  );
+}
+
+/** Sidebar user avatar using PersonPhoto with proper source resolution */
+function SidebarUserPhoto({ user, activeRole }: { user: any; activeRole: SystemRole }) {
+  const sources = activeRole === "patient"
+    ? patientPhotoSources({ primaryUrl: user?.avatarUrl })
+    : practitionerPhotoSources({ primaryUrl: user?.avatarUrl, role: activeRole });
+
+  if (sources.length === 0) return null;
+
+  return (
+    <PersonPhoto
+      sources={sources}
+      alt={user?.name || "User"}
+      className="aspect-square size-full rounded-full object-cover"
+    />
   );
 }
 

@@ -1,7 +1,7 @@
 /// Service Worker — Trustcare Hospital Network
 /// Network-first for person images, cache-first for immutable static assets
 
-const CACHE_NAME = "trustcare-sw-v5-person-images";
+const CACHE_NAME = "trustcare-sw-v6-streaming";
 
 // Patterns to cache with cache-first strategy
 const CACHE_FIRST_PATTERNS = [
@@ -9,10 +9,9 @@ const CACHE_FIRST_PATTERNS = [
   /\.woff2?$/,               // Web fonts
 ];
 
-// Uploaded photos: network-first with redirect handling.
-// In production the platform returns 307 → CloudFront (cross-origin).
-// We must NOT intercept these — let the browser handle the redirect natively
-// so that <img> tags follow the 307 transparently.
+// Uploaded photos: bypass service worker entirely.
+// The server now streams file bytes directly (same-origin), no more 307 redirect.
+// We still skip SW interception to avoid unnecessary caching of large images.
 const IMAGE_BYPASS_PATTERNS = [
   /\/manus-storage\//,
 ];
@@ -55,10 +54,8 @@ self.addEventListener("fetch", (event) => {
   if (NO_CACHE_PATTERNS.some((p) => p.test(url.pathname))) return;
 
   // DO NOT intercept manus-storage requests.
-  // In production, these return 307 redirects to CloudFront signed URLs.
-  // If the service worker intercepts them, the cross-origin redirect produces
-  // an opaque response that breaks <img> rendering in Chrome.
-  // Let the browser handle these natively — it follows 307 correctly.
+  // Server streams bytes directly (same-origin), but we skip SW to avoid
+  // caching potentially large image/document files in the SW cache.
   if (IMAGE_BYPASS_PATTERNS.some((p) => p.test(url.pathname))) return;
 
   // Cache-first for matching patterns (vendor chunks, fonts)
