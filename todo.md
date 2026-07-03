@@ -641,3 +641,18 @@
 - [x] Add checker notification when maker submits request for review
 - [x] Run full test suite (302 tests passing)
 - [x] Save checkpoint and push to GitHub
+
+## v3.13.0 - Claim Center Real DB + Realistic Seed Data
+
+- [x] Fetch PR #11 (codex/claim-center-real-flows) and merge into main
+- [x] Read architecture docs and assess current DB state
+- [x] Add Claim Center DB tables (claim_intake_sessions, claim_documents, claim_packages, claim_submission_events, claim_payments, payer_rulesets)
+- [x] Bind claim backend APIs to real DB (workbench, createReadiness, issueClaimPackageVc, submitToPayer, recordPayerResponse, recordPayment)
+- [x] Seed 6 realistic claim scenarios (NHSO OPD, SSO rehab, Private IPD, Travel insurance, CSMBS dental, Self-pay pharmacy)
+- [x] Each scenario: FHIR Claim JSON, evidence docs, ClaimPackageCredential, payer submission, adjudication, payment, audit events
+- [x] Generate realistic person avatar photos for all seed users
+- [x] Improve existing seed/mock data quality across all entities (patients, doctors, hospitals)
+- [x] Verify UX: /claim-center tabs work, buttons functional, wallet displays claims
+- [x] Simulated data clearly labeled with simulationFlag in DB and UI
+- [x] Run full test suite (307 tests passing)
+- [x] Save checkpoint and push to GitHub

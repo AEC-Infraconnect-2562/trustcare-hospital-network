@@ -99,6 +99,13 @@
       "when": 1783003800000,
       "tag": "0013_service_readiness_wallet_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1783046686496,
+      "tag": "0014_blushing_shooting_star",
+      "breakpoints": true
     }
   ]
 }

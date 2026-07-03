@@ -32,6 +32,12 @@ import {
   caseDecisions, InsertCaseDecision,
   documentBundles, InsertDocumentBundle,
   vcSchemaRegistry, InsertVcSchemaRegistry,
+  claimIntakeSessions, InsertClaimIntakeSession,
+  claimDocuments, InsertClaimDocument,
+  claimPackages, InsertClaimPackage,
+  claimSubmissionEvents, InsertClaimSubmissionEvent,
+  claimPayments, InsertClaimPayment,
+  payerRulesets, InsertPayerRuleset,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isIssuerPrivilegeRole, isPatientRole } from "@shared/rolePolicy";
@@ -1921,4 +1927,153 @@ export async function recordServiceVerification(data: {
       hospitalId: data.hospitalId,
     },
   });
+}
+
+
+// ============================================================
+// CLAIM CENTER - Persistent DB Helpers (v3.13)
+// ============================================================
+
+// --- Claim Intake Sessions ---
+export async function createClaimIntakeSession(data: InsertClaimIntakeSession) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(claimIntakeSessions).values(data).$returningId();
+  return result?.id ?? null;
+}
+
+export async function listClaimIntakeSessions(filters?: { patientId?: number; hospitalId?: number; status?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (filters?.patientId) conditions.push(eq(claimIntakeSessions.patientId, filters.patientId));
+  if (filters?.hospitalId) conditions.push(eq(claimIntakeSessions.hospitalId, filters.hospitalId));
+  if (filters?.status) conditions.push(eq(claimIntakeSessions.status, filters.status as any));
+  return db.select().from(claimIntakeSessions).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(claimIntakeSessions.createdAt));
+}
+
+export async function updateClaimIntakeSession(id: number, data: Partial<InsertClaimIntakeSession>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(claimIntakeSessions).set(data).where(eq(claimIntakeSessions.id, id));
+}
+
+// --- Claim Documents ---
+export async function createClaimDocument(data: InsertClaimDocument) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(claimDocuments).values(data).$returningId();
+  return result?.id ?? null;
+}
+
+export async function listClaimDocuments(claimCaseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(claimDocuments).where(eq(claimDocuments.claimCaseId, claimCaseId)).orderBy(desc(claimDocuments.createdAt));
+}
+
+export async function updateClaimDocument(id: number, data: Partial<InsertClaimDocument>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(claimDocuments).set(data).where(eq(claimDocuments.id, id));
+}
+
+// --- Claim Packages ---
+export async function createClaimPackage(data: InsertClaimPackage) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(claimPackages).values(data).$returningId();
+  return result?.id ?? null;
+}
+
+export async function listClaimPackages(claimCaseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(claimPackages).where(eq(claimPackages.claimCaseId, claimCaseId)).orderBy(desc(claimPackages.createdAt));
+}
+
+export async function getLatestClaimPackage(claimCaseId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.select().from(claimPackages).where(and(eq(claimPackages.claimCaseId, claimCaseId), eq(claimPackages.status, "issued"))).orderBy(desc(claimPackages.version)).limit(1);
+  return result ?? null;
+}
+
+export async function updateClaimPackage(id: number, data: Partial<InsertClaimPackage>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(claimPackages).set(data).where(eq(claimPackages.id, id));
+}
+
+// --- Claim Submission Events ---
+export async function createClaimSubmissionEvent(data: InsertClaimSubmissionEvent) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(claimSubmissionEvents).values(data).$returningId();
+  return result?.id ?? null;
+}
+
+export async function listClaimSubmissionEvents(claimCaseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(claimSubmissionEvents).where(eq(claimSubmissionEvents.claimCaseId, claimCaseId)).orderBy(desc(claimSubmissionEvents.createdAt));
+}
+
+export async function updateClaimSubmissionEvent(id: number, data: Partial<InsertClaimSubmissionEvent>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(claimSubmissionEvents).set(data).where(eq(claimSubmissionEvents.id, id));
+}
+
+// --- Claim Payments ---
+export async function createClaimPayment(data: InsertClaimPayment) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(claimPayments).values(data).$returningId();
+  return result?.id ?? null;
+}
+
+export async function listClaimPayments(claimCaseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(claimPayments).where(eq(claimPayments.claimCaseId, claimCaseId)).orderBy(desc(claimPayments.createdAt));
+}
+
+export async function updateClaimPayment(id: number, data: Partial<InsertClaimPayment>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(claimPayments).set(data).where(eq(claimPayments.id, id));
+}
+
+// --- Payer Rulesets ---
+export async function createPayerRuleset(data: InsertPayerRuleset) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(payerRulesets).values(data).$returningId();
+  return result?.id ?? null;
+}
+
+export async function listPayerRulesets(payerAdapterId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  if (payerAdapterId) {
+    return db.select().from(payerRulesets).where(eq(payerRulesets.payerAdapterId, payerAdapterId)).orderBy(desc(payerRulesets.createdAt));
+  }
+  return db.select().from(payerRulesets).orderBy(desc(payerRulesets.createdAt));
+}
+
+// --- Claim Center Aggregate Query ---
+export async function getClaimCenterStats() {
+  const db = await getDb();
+  if (!db) return { totalPackages: 0, totalSubmissions: 0, totalPayments: 0, totalDocuments: 0 };
+  const [pkgs] = await db.select({ count: sql<number>`count(*)` }).from(claimPackages);
+  const [subs] = await db.select({ count: sql<number>`count(*)` }).from(claimSubmissionEvents);
+  const [pays] = await db.select({ count: sql<number>`count(*)` }).from(claimPayments);
+  const [docs] = await db.select({ count: sql<number>`count(*)` }).from(claimDocuments);
+  return {
+    totalPackages: pkgs?.count ?? 0,
+    totalSubmissions: subs?.count ?? 0,
+    totalPayments: pays?.count ?? 0,
+    totalDocuments: docs?.count ?? 0,
+  };
 }

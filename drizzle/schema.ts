@@ -801,7 +801,7 @@ export const shlAccessLogs = mysqlTable("shl_access_logs", {
 export const payerAdapters = mysqlTable("payer_adapters", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
-  payerType: mysqlEnum("payerType", ["nhso", "sso", "csmbs", "private_insurance", "corporate", "self_pay"]).notNull(),
+  payerType: mysqlEnum("payerType", ["nhso", "sso", "csmbs", "private_insurance", "corporate", "self_pay", "travel_insurance"]).notNull(),
   apiEndpoint: text("apiEndpoint"),
   authConfig: json("authConfig"),
   submissionFormat: mysqlEnum("submissionFormat", ["api", "portal", "batch_file", "email", "rpa"]).default("api").notNull(),
@@ -1162,3 +1162,139 @@ export const vcSchemaRegistry = mysqlTable("vc_schema_registry", {
 
 export type VcSchemaRegistry = typeof vcSchemaRegistry.$inferSelect;
 export type InsertVcSchemaRegistry = typeof vcSchemaRegistry.$inferInsert;
+
+
+// ============================================================
+// CLAIM CENTER - Persistent DB Layer (v3.13)
+// ============================================================
+
+export const claimIntakeSessions = mysqlTable("claim_intake_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  patientId: int("patientId").notNull(),
+  hospitalId: int("hospitalId").notNull(),
+  claimCaseId: int("claimCaseId"),
+  intakeChannel: mysqlEnum("intakeChannel", ["wallet_vp", "shl", "legacy_upload", "his_import", "partner_portal"]).default("wallet_vp").notNull(),
+  consentRef: varchar("consentRef", { length: 255 }),
+  memberId: varchar("memberId", { length: 100 }),
+  payerAdapterId: int("payerAdapterId"),
+  readinessScore: int("readinessScore").default(0),
+  status: mysqlEnum("status", ["draft", "ready", "blocked", "converted_to_claim"]).default("draft").notNull(),
+  rawInput: json("rawInput"),
+  canonicalSummary: json("canonicalSummary"),
+  simulationFlag: boolean("simulationFlag").default(false).notNull(),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ClaimIntakeSession = typeof claimIntakeSessions.$inferSelect;
+export type InsertClaimIntakeSession = typeof claimIntakeSessions.$inferInsert;
+
+export const claimDocuments = mysqlTable("claim_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  claimCaseId: int("claimCaseId").notNull(),
+  documentType: varchar("documentType", { length: 100 }).notNull(),
+  source: mysqlEnum("source", ["patient_wallet", "his", "payer_portal", "partner_portal", "upload", "finance"]).default("patient_wallet").notNull(),
+  artifactType: mysqlEnum("artifactType", ["legacy_file", "vc", "vp", "shl", "fhir_bundle", "invoice", "receipt"]).default("legacy_file").notNull(),
+  title: varchar("title", { length: 500 }).notNull(),
+  fileUrl: text("fileUrl"),
+  credentialId: varchar("credentialId", { length: 255 }),
+  presentationId: varchar("presentationId", { length: 255 }),
+  shlId: varchar("shlId", { length: 255 }),
+  documentReference: json("documentReference"),
+  hash: varchar("hash", { length: 128 }),
+  status: mysqlEnum("status", ["received", "verified", "needs_review", "accepted", "rejected"]).default("received").notNull(),
+  required: boolean("required").default(true).notNull(),
+  simulationFlag: boolean("simulationFlag").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ClaimDocument = typeof claimDocuments.$inferSelect;
+export type InsertClaimDocument = typeof claimDocuments.$inferInsert;
+
+export const claimPackages = mysqlTable("claim_packages", {
+  id: int("id").autoincrement().primaryKey(),
+  claimCaseId: int("claimCaseId").notNull(),
+  version: int("version").default(1).notNull(),
+  fhirClaim: json("fhirClaim"),
+  fhirClaimHash: varchar("fhirClaimHash", { length: 128 }),
+  evidenceHash: varchar("evidenceHash", { length: 128 }),
+  claimPackageCredentialId: varchar("claimPackageCredentialId", { length: 255 }),
+  credentialPayload: json("credentialPayload"),
+  status: mysqlEnum("status", ["draft", "issued", "superseded", "revoked"]).default("draft").notNull(),
+  issuedBy: int("issuedBy"),
+  issuedAt: timestamp("issuedAt"),
+  supersedesPackageId: int("supersedesPackageId"),
+  simulationFlag: boolean("simulationFlag").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ClaimPackage = typeof claimPackages.$inferSelect;
+export type InsertClaimPackage = typeof claimPackages.$inferInsert;
+
+export const claimSubmissionEvents = mysqlTable("claim_submission_events", {
+  id: int("id").autoincrement().primaryKey(),
+  claimCaseId: int("claimCaseId").notNull(),
+  claimPackageId: int("claimPackageId"),
+  payerAdapterId: int("payerAdapterId"),
+  submissionId: varchar("submissionId", { length: 255 }),
+  payerClaimId: varchar("payerClaimId", { length: 255 }),
+  adapterMode: mysqlEnum("adapterMode", ["api", "portal", "batch_file", "email", "rpa"]).default("api").notNull(),
+  targetFormat: varchar("targetFormat", { length: 100 }),
+  requestDigest: varchar("requestDigest", { length: 128 }),
+  responseDigest: varchar("responseDigest", { length: 128 }),
+  status: mysqlEnum("status", ["queued", "submitted", "accepted", "rejected", "more_info_requested", "failed"]).default("queued").notNull(),
+  requestPayload: json("requestPayload"),
+  responsePayload: json("responsePayload"),
+  submittedBy: int("submittedBy"),
+  submittedAt: timestamp("submittedAt"),
+  respondedAt: timestamp("respondedAt"),
+  simulationFlag: boolean("simulationFlag").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ClaimSubmissionEvent = typeof claimSubmissionEvents.$inferSelect;
+export type InsertClaimSubmissionEvent = typeof claimSubmissionEvents.$inferInsert;
+
+export const claimPayments = mysqlTable("claim_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  claimCaseId: int("claimCaseId").notNull(),
+  payerClaimId: varchar("payerClaimId", { length: 255 }),
+  paymentReference: varchar("paymentReference", { length: 255 }),
+  paymentDate: timestamp("paymentDate"),
+  approvedAmount: varchar("approvedAmount", { length: 20 }),
+  paidAmount: varchar("paidAmount", { length: 20 }),
+  currency: varchar("currency", { length: 3 }).default("THB").notNull(),
+  patientResponsibility: varchar("patientResponsibility", { length: 20 }),
+  paymentReconciliation: json("paymentReconciliation"),
+  claimReceiptCredentialId: varchar("claimReceiptCredentialId", { length: 255 }),
+  receiptCredentialPayload: json("receiptCredentialPayload"),
+  status: mysqlEnum("status", ["pending", "reconciled", "mismatch", "posted"]).default("pending").notNull(),
+  simulationFlag: boolean("simulationFlag").default(false).notNull(),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ClaimPayment = typeof claimPayments.$inferSelect;
+export type InsertClaimPayment = typeof claimPayments.$inferInsert;
+
+export const payerRulesets = mysqlTable("payer_rulesets", {
+  id: int("id").autoincrement().primaryKey(),
+  payerAdapterId: int("payerAdapterId").notNull(),
+  rulesetVersion: varchar("rulesetVersion", { length: 20 }).notNull(),
+  claimType: mysqlEnum("claimType", ["opd", "ipd", "dental", "pharmacy", "rehabilitation", "emergency"]).default("opd").notNull(),
+  requiredDocuments: json("requiredDocuments"),
+  fieldRules: json("fieldRules"),
+  transformProfile: json("transformProfile"),
+  effectiveFrom: timestamp("effectiveFrom"),
+  effectiveTo: timestamp("effectiveTo"),
+  status: mysqlEnum("status", ["draft", "active", "retired"]).default("draft").notNull(),
+  simulationFlag: boolean("simulationFlag").default(false).notNull(),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PayerRuleset = typeof payerRulesets.$inferSelect;
+export type InsertPayerRuleset = typeof payerRulesets.$inferInsert;
