@@ -5,6 +5,7 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerClaimRoutes } from "./claimRoutes";
+import { registerPrepareServiceRoutes } from "./prepareServiceRoutes";
 import { registerShlRoutes } from "./shlRoutes";
 import { registerStorageProxy } from "./storageProxy";
 import { registerUploadRoutes } from "../uploadRoute";
@@ -40,6 +41,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerClaimRoutes(app);
+  registerPrepareServiceRoutes(app);
   registerShlRoutes(app);
   registerUploadRoutes(app);
 

@@ -75,6 +75,17 @@ import {
   validateClaimPacket,
 } from "./claimCenter";
 import {
+  buildContractHubCatalog,
+  buildDataMappingV2Profiles,
+  buildPrepareServicePublicApiExamples,
+  buildPrepareServiceWorkbench,
+  buildServiceBundleEnvelope,
+  buildServiceReadinessContracts,
+  buildWalletDeploymentEnvelope,
+  buildWalkInWalletConnection,
+  simulatePrepareServiceImport,
+} from "./prepareService";
+import {
   buildCarePackageManifest,
   buildDocumentReference,
   buildServiceRequest,
@@ -574,6 +585,102 @@ export const appRouter = router({
       const requests = await db.listWalletDocumentRequests({ patientId, context: input?.context, limit: 20 });
       const previousChecks = await db.listServiceReadinessChecks({ patientId, context: input?.context, limit: 5 });
       return { patientId, readiness, requests, previousChecks };
+    }),
+    prepareWorkbench: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues).default("opd_visit"),
+      patientId: z.number().optional(),
+    }).optional()).query(async ({ ctx, input }) => {
+      const patientId = resolveWalletPatientId(ctx, input?.patientId);
+      const cards = await enrichedWalletCards(patientId);
+      return buildPrepareServiceWorkbench({
+        context: input?.context ?? "opd_visit",
+        patientId,
+        cards,
+      });
+    }),
+    prepareContracts: protectedProcedure.query(() => {
+      return buildServiceReadinessContracts();
+    }),
+    contractHub: protectedProcedure.query(() => {
+      return buildContractHubCatalog();
+    }),
+    dataMappingV2: protectedProcedure.query(() => {
+      return buildDataMappingV2Profiles();
+    }),
+    prepareApiExamples: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues).default("opd_visit"),
+    }).optional()).query(({ input }) => {
+      return buildPrepareServicePublicApiExamples(input?.context ?? "opd_visit");
+    }),
+    buildServiceBundle: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues),
+      patientId: z.number().optional(),
+      audience: z.enum(["patient", "hospital", "integration_engineer", "partner"]).default("patient"),
+      receiver: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const patientId = resolveWalletPatientId(ctx, input.patientId);
+      const cards = await enrichedWalletCards(patientId);
+      return buildServiceBundleEnvelope({
+        context: input.context,
+        audience: input.audience,
+        patientId,
+        cards,
+        receiver: input.receiver,
+      });
+    }),
+    deployBundleToWallet: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues),
+      hospitalId: z.number().optional(),
+      targetPatientIds: z.array(z.number()).optional(),
+      targetWalletMode: z.enum(["single", "appointment_list", "cohort", "walk_in", "external_wallet"]).default("single"),
+      issueDocuments: z.array(z.string()).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const envelope = buildWalletDeploymentEnvelope(input);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "wallet.prepare_service.deployment_simulated",
+        resourceType: "wallet_deployment",
+        resourceId: envelope.deploymentId,
+        details: { context: input.context, targetWalletMode: input.targetWalletMode, targets: envelope.counts.targets },
+      });
+      return envelope;
+    }),
+    connectWalkInWallet: protectedProcedure.input(z.object({
+      patientName: z.string().optional(),
+      phone: z.string().optional(),
+      passport: z.string().optional(),
+      consentAttested: z.boolean().default(false),
+    })).mutation(async ({ ctx, input }) => {
+      const connection = buildWalkInWalletConnection(input);
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "wallet.prepare_service.walkin_wallet_simulated",
+        resourceType: "wallet_connection",
+        resourceId: connection.connectionId,
+        details: { status: connection.status, patientIdentityConfidence: connection.patientIdentityConfidence },
+      });
+      return connection;
+    }),
+    importForService: protectedProcedure.input(z.object({
+      context: z.enum(readinessContextValues),
+      patientId: z.number().optional(),
+      sourceType: z.string().default("patient_upload"),
+      documentType: z.string().optional(),
+      consentRef: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const patientId = resolveWalletPatientId(ctx, input.patientId);
+      const result = simulatePrepareServiceImport({ ...input, patientId });
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "wallet.prepare_service.import_simulated",
+        resourceType: "wallet_import_job",
+        resourceId: result.importId,
+        details: { context: input.context, documentType: result.documentType, sourceType: input.sourceType, dqiScore: result.dqiScore },
+      });
+      return result;
     }),
     documentRequests: protectedProcedure.input(z.object({
       context: z.enum(readinessContextValues).optional(),
