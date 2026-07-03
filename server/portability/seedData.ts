@@ -22,6 +22,7 @@ export const DEMO_PATIENT_MAPPING: Array<{
 }> = [
   { demoOpenId: "demo-patient-001", hospitalCode: "TCC", seedId: "P001", name: "นายสมชาย ใจดี", nameEn: "Mr. Somchai Jaidee", email: "somsak@gmail.com", thaiId: "1100500123456", phone: "089-123-4567", gender: "male", birthDate: "1978-03-15" },
   { demoOpenId: "demo-patient-002", hospitalCode: "TCC", seedId: "P002", name: "นางสาวมาลี วัฒนา", nameEn: "Ms. Malee Wattana", email: "napa@gmail.com", thaiId: "1100500234567", phone: "089-234-5678", gender: "female", birthDate: "1986-09-24" },
+  { demoOpenId: "demo-patient-002", hospitalCode: "TCP", seedId: "P002", name: "นางสาวมาลี วัฒนา", nameEn: "Ms. Malee Wattana", email: "napa@gmail.com", thaiId: "1100500234567", phone: "089-234-5678", gender: "female", birthDate: "1986-09-24" },
   { demoOpenId: "demo-patient-003", hospitalCode: "TCP", seedId: "P003", name: "Mr. John Williams", nameEn: "Mr. John Williams", email: "wichai@gmail.com", thaiId: "1100500345678", phone: "089-345-6789", gender: "male", birthDate: "1969-12-02" },
 ];
 

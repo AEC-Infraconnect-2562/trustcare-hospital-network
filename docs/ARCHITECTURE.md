@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.7 (Patient Access Fix & Photo Permanent Fix)
+**Version:** 5.8 (Storage Proxy, Duplicate Card Revocation, OAuth Removal)
 **Last updated:** 2026-07-03
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v3.27.0 | 2026-07-03 | Storage proxy (/api/storage-proxy/) for production photo fix, duplicate card revocation rule, second patient card details fix, Manus OAuth removed (test users only) |
 | v3.26.0 | 2026-07-03 | Patient access denied fix (role-aware post-login redirect), permanent profile photo fix (PersonPhoto everywhere, no raw AvatarImage), SW v6 |
 | v3.25.0 | 2026-07-03 | Staff credential restructure (single staff_identity type with position), profile photo fix for Chrome production (SW cross-origin redirect), seed staff identity VCs for all staff users |
 | v3.24.0 | 2026-07-03 | Merged PR #14: Mobile credential person images fix — shared resolver, PersonPhoto component, wallet API avatarUrl binding, SW network-first |
@@ -2170,3 +2171,62 @@ After demo login, `Home.tsx` unconditionally redirected all users to `/dashboard
 | UI components | 25 (added SidebarUserPhoto) |
 | Service Worker version | v6 |
 | Raw AvatarImage usage | 0 (outside ui/avatar.tsx) |
+
+## 44. Storage Proxy, Duplicate Card Revocation & OAuth Removal (v3.27.0 — 2026-07-03)
+
+### 44.1 Profile Photo Production Fix (Permanent)
+
+**Root Cause**: In production, the Manus platform infrastructure intercepts `/manus-storage/*` requests and returns a **307 redirect** to CloudFront signed URLs (cross-origin). This cross-origin redirect breaks `<img>` tag rendering in Chrome's strict CORS policy and Safari ITP.
+
+**Solution**: Added `/api/storage-proxy/*` Express route that:
+1. Receives the storage key from the URL path
+2. Calls the Forge presign API to get a signed CloudFront URL
+3. Fetches the file from CloudFront server-side
+4. Streams the bytes back to the client same-origin with proper `Content-Type` and `Cache-Control` headers
+
+**Changes**:
+- `server/_core/storageProxy.ts`: Added `/api/storage-proxy/*` route alongside legacy `/manus-storage/*`
+- `shared/personImages.ts`: `normalizePersonImageUrl()` rewrites `/manus-storage/` → `/api/storage-proxy/`
+- `PERSON_IMAGE_URLS` constants now use `/api/storage-proxy/` directly
+- `server/storage.ts`: `storagePut()`/`storageGet()` return `/api/storage-proxy/` URLs
+- `client/public/sw.js`: Cache version v7, bypasses both paths
+
+### 44.2 Second Patient Card Details Fix
+
+**Root Cause**: Credential #116 (TrustCare Phuket card for demo-patient-002) had `subjectId=754` instead of `subjectId=415`. The wallet card referenced this credential, but `listIssuedCredentials` filtered by `subjectId=415` could not find it, so `credMap.get(116)` returned `undefined` and the card showed no details.
+
+**Fix**:
+- Corrected `subjectId` to 415 in the database
+- Populated `credentialData` with full renderData (hospital, patient, document info)
+- Added TCP hospital mapping for demo-patient-002 in `DEMO_PATIENT_MAPPING` (seedData.ts)
+
+### 44.3 Duplicate Card Revocation Business Rule
+
+**Rule**: A patient cannot have two active identity cards from the same hospital. If a new `patient_identity` credential is issued for the same hospital+patient combination, the system automatically revokes the old credential and removes its wallet card.
+
+**Implementation** (in `server/routers.ts` credential issuance flow):
+```typescript
+if (request.type === "patient_identity") {
+  const existingCreds = await db.listIssuedCredentials({
+    subjectId: request.subjectId,
+    type: "patient_identity",
+    status: "active",
+    hospitalId: request.issuerHospitalId,
+  });
+  for (const oldCred of existingCreds) {
+    await db.revokeCredential(oldCred.id, "Superseded by new issuance");
+    await db.deleteWalletCardByCredentialId(oldCred.id);
+  }
+}
+```
+
+**New DB helper**: `deleteWalletCardByCredentialId(credentialId: number)` in `server/db.ts`
+
+### 44.4 Manus OAuth Removal
+
+Removed Manus OAuth from the active login flow. The system now uses only demo/test users during development:
+- `client/src/main.tsx`: Unauthorized redirect goes to `/` (home page) instead of OAuth URL
+- `client/src/_core/hooks/useAuth.ts`: Default `redirectPath` changed from `getLoginUrl()` to `/`
+- `client/src/const.ts`: `getLoginUrl()` retained as dead code for future External IAM integration
+
+**Future Plan**: An external IAM system will be plugged in later to replace both OAuth and demo login.

@@ -1,7 +1,7 @@
 /// Service Worker — Trustcare Hospital Network
 /// Network-first for person images, cache-first for immutable static assets
 
-const CACHE_NAME = "trustcare-sw-v6-streaming";
+const CACHE_NAME = "trustcare-sw-v7-proxy";
 
 // Patterns to cache with cache-first strategy
 const CACHE_FIRST_PATTERNS = [
@@ -10,10 +10,11 @@ const CACHE_FIRST_PATTERNS = [
 ];
 
 // Uploaded photos: bypass service worker entirely.
-// The server now streams file bytes directly (same-origin), no more 307 redirect.
-// We still skip SW interception to avoid unnecessary caching of large images.
+// Images now go through /api/storage-proxy/ which streams bytes same-origin.
+// We skip SW interception to avoid unnecessary caching of large images.
 const IMAGE_BYPASS_PATTERNS = [
   /\/manus-storage\//,
+  /\/api\/storage-proxy\//,
 ];
 
 // Patterns to skip caching entirely
@@ -50,12 +51,12 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
 
-  // Skip non-cacheable patterns
+  // Skip non-cacheable patterns (API calls, tRPC, debug)
   if (NO_CACHE_PATTERNS.some((p) => p.test(url.pathname))) return;
 
-  // DO NOT intercept manus-storage requests.
-  // Server streams bytes directly (same-origin), but we skip SW to avoid
-  // caching potentially large image/document files in the SW cache.
+  // DO NOT intercept storage proxy or manus-storage requests.
+  // Images are streamed same-origin via /api/storage-proxy/.
+  // Skip SW to avoid caching large image/document files.
   if (IMAGE_BYPASS_PATTERNS.some((p) => p.test(url.pathname))) return;
 
   // Cache-first for matching patterns (vendor chunks, fonts)

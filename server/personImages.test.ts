@@ -8,12 +8,12 @@ import {
 } from "../shared/personImages";
 
 describe("person image helpers", () => {
-  it("normalizes Manus storage URLs without cache-busting params", () => {
+  it("normalizes Manus storage URLs to /api/storage-proxy/ path", () => {
     expect(normalizePersonImageUrl("manus-storage/example.jpg")).toBe(
-      "/manus-storage/example.jpg",
+      "/api/storage-proxy/example.jpg",
     );
-    expect(normalizePersonImageUrl("/manus-storage/example.jpg?size=400")).toBe(
-      "/manus-storage/example.jpg?size=400",
+    expect(normalizePersonImageUrl("/manus-storage/example.jpg")).toBe(
+      "/api/storage-proxy/example.jpg",
     );
   });
 
@@ -53,7 +53,7 @@ describe("person image helpers", () => {
     ]);
 
     expect(sources).toEqual([
-      "/manus-storage/example.jpg",
+      "/api/storage-proxy/example.jpg",
       "data:image/png;base64,abc",
     ]);
   });

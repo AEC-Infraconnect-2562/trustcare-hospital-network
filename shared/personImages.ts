@@ -1,14 +1,14 @@
 export const PERSON_IMAGE_CACHE_VERSION = "20260703";
 
 export const PERSON_IMAGE_URLS = {
-  patientMale: "/manus-storage/patient_male_realistic_opt_e9b1630b.jpg",
-  patientFemale: "/manus-storage/patient_female_realistic_opt_d0edb245.jpg",
-  doctorMale: "/manus-storage/doctor_male_realistic_opt_b09f1058.jpg",
-  doctorFemale: "/manus-storage/doctor_female_realistic_opt_56d94f1d.jpg",
-  nurseFemale: "/manus-storage/nurse_female_realistic_opt_d0e35459.jpg",
-  pharmacistMale: "/manus-storage/pharmacist_male_realistic_opt_2b3b0f56.jpg",
-  radiologist: "/manus-storage/radiologist_realistic_bd97425d.jpg",
-  medTech: "/manus-storage/med_tech_realistic_78575c20.jpg",
+  patientMale: "/api/storage-proxy/patient_male_realistic_opt_e9b1630b.jpg",
+  patientFemale: "/api/storage-proxy/patient_female_realistic_opt_d0edb245.jpg",
+  doctorMale: "/api/storage-proxy/doctor_male_realistic_opt_b09f1058.jpg",
+  doctorFemale: "/api/storage-proxy/doctor_female_realistic_opt_56d94f1d.jpg",
+  nurseFemale: "/api/storage-proxy/nurse_female_realistic_opt_d0e35459.jpg",
+  pharmacistMale: "/api/storage-proxy/pharmacist_male_realistic_opt_2b3b0f56.jpg",
+  radiologist: "/api/storage-proxy/radiologist_realistic_bd97425d.jpg",
+  medTech: "/api/storage-proxy/med_tech_realistic_78575c20.jpg",
 } as const;
 
 export type PersonGender = "male" | "female";
@@ -36,10 +36,13 @@ export function normalizePersonImageUrl(
   if (!raw || raw === "null" || raw === "undefined") return undefined;
   if (raw.startsWith("data:") || raw.startsWith("blob:")) return raw;
 
-  const normalized = raw.startsWith("manus-storage/") ? `/${raw}` : raw;
-  // Do NOT append cache-busting query params to /manus-storage/ URLs.
-  // In production, the platform's presign handler returns 307 redirects
-  // and extra query params can interfere with CloudFront signed URLs.
+  let normalized = raw.startsWith("manus-storage/") ? `/${raw}` : raw;
+  // Rewrite /manus-storage/ paths to /api/storage-proxy/ to bypass the
+  // platform's 307 redirect handler in production. Our Express route streams
+  // file bytes same-origin, avoiding cross-origin issues with CloudFront.
+  if (normalized.startsWith("/manus-storage/")) {
+    normalized = normalized.replace("/manus-storage/", "/api/storage-proxy/");
+  }
   return normalized;
 }
 

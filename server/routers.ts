@@ -4674,6 +4674,21 @@ async function issueCredentialFromRequest(input: {
       canonicalReview: request.canonicalReview,
     },
   };
+  // --- Duplicate Card Revocation Rule ---
+  // If issuing a patient_identity for the same hospital+patient, revoke the old one
+  if (request.type === "patient_identity") {
+    const existingCreds = await db.listIssuedCredentials({
+      subjectId: request.subjectId,
+      type: "patient_identity",
+      status: "active",
+      hospitalId: request.issuerHospitalId,
+    });
+    for (const oldCred of existingCreds) {
+      await db.revokeCredential(oldCred.id, "Superseded by new issuance");
+      await db.deleteWalletCardByCredentialId(oldCred.id);
+    }
+  }
+
   const rowId = await db.createIssuedCredential({
     credentialId: credential.id,
     templateId,

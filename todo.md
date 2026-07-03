@@ -803,3 +803,11 @@
 - [x] Update service worker comments and bump cache version (v6) to reflect streaming approach
 - [x] Confirm storageProxy.ts streams bytes same-origin (no more 307 redirect to CloudFront)
 - [x] Run tests (331 pass, 0 TS errors), save checkpoint, push to GitHub
+
+## v3.27.0 - Photo Fix, Duplicate Card Revocation, Second Card Details
+- [x] Fix profile photo still not displaying in production (root cause: /manus-storage/ intercepted by platform → 307 redirect; fix: /api/storage-proxy/ route streams bytes same-origin)
+- [x] Fix second patient identity card (TrustCare Phuket) missing details (root cause: credential subjectId mismatch; fix: corrected subjectId + populated credentialData)
+- [x] Implement business rule: no duplicate cards from same hospital per user (auto-revoke old on new issue)
+- [x] Remove Manus OAuth from login flow (useAuth redirects to / instead of OAuth URL)
+- [x] Update Architecture Documents
+- [x] Run tests (331 pass, 0 TS errors), save checkpoint, push to GitHub

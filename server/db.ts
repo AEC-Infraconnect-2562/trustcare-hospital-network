@@ -304,6 +304,12 @@ export async function createWalletCard(data: InsertWalletCard) {
   return result[0].insertId;
 }
 
+export async function deleteWalletCardByCredentialId(credentialId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(walletCards).where(eq(walletCards.credentialId, credentialId));
+}
+
 export async function createServiceReadinessCheck(data: InsertServiceReadinessCheck) {
   const db = await getDb();
   if (!db) return;
