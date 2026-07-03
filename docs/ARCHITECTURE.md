@@ -1631,6 +1631,48 @@ Staff users (system_admin, hospital_admin, doctor, nurse) have access to their r
 - Strict mode enabled
 - All imports resolved correctly
 
+## 33. Claim Center Workbench and Payer Adapter Pilot (v3.12.0 - 2026-07-03)
+
+Claim Center now has a workbench-oriented pilot layer for hospital claim readiness, evidence packaging, payer submission, adjudication, payment reconciliation, and patient wallet claim receipts.
+
+### 33.1 Added Runtime Surfaces
+
+| Surface | Purpose |
+|---------|---------|
+| `claim.workbench` | Combines DB claim rows with clearly marked simulated seed packets when the DB has no claim data |
+| `claim.createReadiness` | Creates pre-visit or registration claim readiness case from wallet, SHL, HIS import, legacy upload, or partner portal input |
+| `claim.issueClaimPackageVc` | Validates the package and returns a `ClaimPackageCredential` envelope around FHIR Claim and evidence hashes |
+| `claim.submitToPayer` | Creates payer adapter submission envelope for API, portal, batch, email, or RPA mode |
+| `claim.recordPayerResponse` | Records accepted, rejected, or more-info payer response and emits FHIR `ClaimResponse`-style payload |
+| `claim.recordPayment` | Reconciles payment and returns FHIR `PaymentReconciliation` plus `ClaimReceiptCredential` |
+| `/api/public/claim-center/v1/*` | Public mock API response samples for partner and payer integration testing |
+
+### 33.2 Canonical Models
+
+- FHIR `CoverageEligibilityRequest/Response` for eligibility.
+- FHIR `Claim` for canonical payer claim package.
+- FHIR `ClaimResponse` for payer adjudication.
+- FHIR `PaymentReconciliation` for remittance and payment posting.
+- `CoverageEligibilityCredential`, `ClaimPackageCredential`, and `ClaimReceiptCredential` as the VC trust layer.
+- Patient wallet output should be EOB-style and avoid payer-private notes.
+
+### 33.3 Persistence Handoff
+
+This PR intentionally avoids DB migrations because Manus owns the workspace production database. Persistent tables, seed/reseed rules, and the Manus execution prompt are documented in:
+
+`docs/CLAIM_CENTER_RESEARCH_AND_MANUS_HANDOFF.md`
+
+Recommended new persistent tables:
+
+- `claim_intake_sessions`
+- `claim_documents`
+- `claim_packages`
+- `claim_submission_events`
+- `claim_payments`
+- `payer_rulesets`
+
+---
+
 ### 32.4 Files Modified in v3.10.0
 
 | File | Change |
