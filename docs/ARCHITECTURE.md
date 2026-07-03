@@ -1789,6 +1789,10 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v3.23.0 | 2026-07-03 | Trust Layer Auto-Remediation UI with 10 remediation actions mapped to system pages |
+| v3.22.0 | 2026-07-03 | Trust Layer Checklist UI in prepareWorkbench, Single-Document VP Flow verified, SHL Passcode Lock-out UI with auto-disable |
+| v3.21.0 | 2026-07-03 | Merged PR #13 SHL VC/VP Trust Layer (shared/trustLayer.ts, 7 exports, transport classifier, checklist builder) |
+| v3.20.1 | 2026-07-03 | Profile page fix: DashboardLayout, role-based identity VC/VP section, removed back button |
 | v3.20.0 | 2026-07-03 | Document Upload Flow (FHIR DocumentReference), QR Check-in via SHL, Contract Admin CRUD, UploadDocButton + CheckinQRPanel UI |
 | v5.6.0 | 2026-07-03 | Prepare for Service core workbench, audience-separated patient/hospital bundles, Contract Hub/Data Mapping v2 mock API |
 | v3.14.0 | 2026-07-03 | Claim Center real DB binding, patient name JOINs, ClaimDetail page with 5 tabs |
@@ -1810,16 +1814,19 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 |--------|-------|
 | Database tables | 67 (in schema.ts) |
 | Migration batches | 18 |
-| tRPC routers | 30 |
+| tRPC routers | 31 (added contractAdmin) |
 | Frontend pages | 37 |
-| Reusable components | 22 |
-| Test files | 25 |
-| Test cases | 319 (all passing) |
+| Reusable components | 24 (added TrustLayerRemediationPanel, UploadDocButton, CheckinQRPanel) |
+| Test files | 26 |
+| Test cases | 324 (all passing) |
 | TypeScript errors | 0 |
 | Demo users | 16 (all with unique avatars) |
 | Claim scenarios | 6 (fully seeded with FHIR data) |
 | Payer adapters | 6 (all payer types covered) |
 | Credential requests | 10 (all statuses represented) |
+| Trust layer checklist items | 10 (5 base + 5 SHL-specific) |
+| Remediation actions | 10 (mapped to system pages) |
+| SHL packages | 12 active (5 with passcode) |
 
 ---
 
@@ -2001,3 +2008,57 @@ Important UX/API surfaces:
 - `/prepare-service` exposes single-document contracts, packet policy, Data Mapping v2, and Contract Hub compatibility rules.
 
 Implementation and Manus DB validation details are documented in `docs/SHL_VC_VP_PACKET_TRUST_LAYER_HANDOFF.md`.
+
+
+---
+
+## 40. Trust Layer Auto-Remediation (v3.23.0 — 2026-07-03)
+
+### 40.1 Overview
+
+When the Trust Layer Checklist (from `buildTrustLayerChecklist` in `shared/trustLayer.ts`) reports a checklist item as **"ขาด" (missing/fail)**, the system now provides an actionable remediation button that navigates the user to the relevant system page where the issue can be resolved. This closes the loop between "what's wrong" and "how to fix it."
+
+### 40.2 Remediation Map
+
+The `REMEDIATION_MAP` in `PrepareForService.tsx` maps each of the 10 trust layer checklist keys to a system page route, Thai label, and Lucide icon:
+
+| Checklist Key | Route | Thai Label | Icon | Purpose |
+|---------------|-------|------------|------|---------|
+| `issuer` | `/issuer` | ออก VC ใหม่ | ShieldCheck | Re-issue a missing or expired VC |
+| `holder` | `/wallet` | ตรวจ Wallet | WalletCards | Verify holder wallet binding |
+| `schema` | `/contract-admin` | ตรวจ Schema | ClipboardCheck | Fix schema/contract configuration |
+| `status` | `/issuer` | ตรวจสถานะ VC | RefreshCcw | Check/renew VC revocation status |
+| `consent` | `/consent` | ขอ Consent ใหม่ | BookOpenCheck | Request new patient consent |
+| `manifestCredential` | `/shl` | ตรวจ Manifest VC | PackageCheck | Validate SHL manifest credential |
+| `presentation` | `/wallet` | สร้าง VP ใหม่ | QrCode | Create a new VP presentation |
+| `passcodePolicy` | `/shl` | ตั้งค่า Passcode | ShieldAlert | Configure SHL passcode policy |
+| `fileHashes` | `/shl` | ตรวจ Hash ไฟล์ | DatabaseZap | Verify file integrity hashes |
+| `documentReferences` | `/prepare-service` | อัปโหลดเอกสาร | FileInput | Upload missing documents |
+
+### 40.3 Component: TrustLayerRemediationPanel
+
+The `TrustLayerRemediationPanel` component is embedded in `PrepareForService.tsx` and renders only when there are failing checklist items. It displays:
+
+1. A header with shield icon and "แก้ไขรายการที่ขาด" (Fix Missing Items) title
+2. A grid of remediation action buttons, one per failing checklist item
+3. Each button shows the Thai label and corresponding icon from `REMEDIATION_MAP`
+4. Clicking a button navigates to the mapped route using Wouter's `useLocation` hook
+
+### 40.4 Integration with Trust Layer Checklist UI (v3.22.0)
+
+The remediation panel works in tandem with the Trust Layer Checklist UI added in v3.22.0:
+
+```
+buildTrustLayerChecklist(shlPackage)
+  → TrustLayerChecklist UI (shows pass/fail/recommended badges)
+    → TrustLayerRemediationPanel (shows fix buttons for "fail" items only)
+```
+
+When a user fixes an issue (e.g., uploads a missing document), returning to the PrepareForService page will re-evaluate the checklist and the remediation panel will update accordingly.
+
+### 40.5 Files Modified in v3.23.0
+
+| File | Change |
+|------|--------|
+| `client/src/pages/PrepareForService.tsx` | Added `REMEDIATION_MAP` constant and `TrustLayerRemediationPanel` component |
+| `docs/ARCHITECTURE.md` | Added version history entries (v3.20.1–v3.23.0), updated statistics, added section 40 |

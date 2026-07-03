@@ -761,3 +761,10 @@
 - [x] Add SHL Passcode Lock-out UI (amber warning at 60%, red lockout at 100%, progress bar, Unlock & Reset button)
 - [x] Add resetPasscodeAttempts tRPC procedure (resets attempts, reactivates disabled SHLs, audit trail)
 - [x] Run tests (324 pass, 0 TS errors), save checkpoint, push to GitHub
+
+## v3.23.0 - Trust Layer Auto-Remediation
+- [x] Implement Auto-Remediation action buttons for missing trust layer checklist items
+- [x] Map each checklist failure to specific remediation action (issue VC, request consent, etc.)
+- [x] Add navigation/action handlers for remediation buttons
+- [x] Update Architecture Documents (version history v3.20.1–v3.23.0, statistics, section 40)
+- [x] Run tests (324 pass, 0 TS errors), save checkpoint, push to GitHub

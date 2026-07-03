@@ -36,8 +36,10 @@ import {
   UploadCloud,
   UserRoundPlus,
   WalletCards,
+  Wrench,
 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import { QRCodeCanvas } from "qrcode.react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -239,6 +241,7 @@ function PatientView({
   bundleMutation,
   workbenchQuery,
 }: any) {
+  const [, navigate] = useLocation();
   if (workbenchQuery.isError) {
     return <ErrorCard label="Prepare for Service data could not be loaded." error={workbenchQuery.error?.message} />;
   }
@@ -429,35 +432,12 @@ function PatientView({
                   policy={packetPolicy?.shl}
                 />
               </div>
-              {/* Trust Layer Checklist */}
+              {/* Trust Layer Checklist with Auto-Remediation */}
               {workbench?.singleDocumentVcVp?.checklist && (
-                <div className="mt-4 rounded-lg border bg-muted/30 p-4">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <ShieldCheck className="h-4 w-4 text-primary" />
-                      <p className="text-sm font-semibold">Trust Layer Verification Checklist</p>
-                    </div>
-                    <Badge variant="outline">
-                      {workbench.singleDocumentVcVp.checklist.filter((c: any) => c.status === "present").length}/
-                      {workbench.singleDocumentVcVp.checklist.length}
-                    </Badge>
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                    {workbench.singleDocumentVcVp.checklist.map((check: any) => (
-                      <div key={check.key} className="rounded-md border bg-background p-2.5 text-xs">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium">{check.label}</span>
-                          <Badge
-                            variant={check.status === "present" ? "secondary" : check.status === "missing" ? "destructive" : "outline"}
-                          >
-                            {check.status === "present" ? "\u2713 \u0e1c\u0e48\u0e32\u0e19" : check.status === "missing" ? "\u2717 \u0e02\u0e32\u0e14" : "\u0e41\u0e19\u0e30\u0e19\u0e33"}
-                          </Badge>
-                        </div>
-                        <p className="mt-1 text-muted-foreground">{check.detail}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <TrustLayerRemediationPanel
+                  checklist={workbench.singleDocumentVcVp.checklist}
+                  navigate={navigate}
+                />
               )}
             </CardContent>
           </Card>
@@ -921,6 +901,193 @@ function CheckinQRPanel({ context, readiness }: { context: string; readiness: an
     </>
   );
 }
+// ============================================================
+// TRUST LAYER AUTO-REMEDIATION
+// ============================================================
+const REMEDIATION_MAP: Record<string, {
+  labelTh: string;
+  labelEn: string;
+  descTh: string;
+  descEn: string;
+  route: string;
+  icon: any;
+}> = {
+  issuer: {
+    labelTh: "ลงทะเบียน Issuer ใน Trust Registry",
+    labelEn: "Register Issuer in Trust Registry",
+    descTh: "DID ของผู้ออกเอกสารยังไม่ได้ลงทะเบียนใน Trust Registry/TAO",
+    descEn: "Issuer DID is not yet registered in Trust Registry/TAO",
+    route: "/trust-registry",
+    icon: ShieldCheck,
+  },
+  holder: {
+    labelTh: "ออก VC ใหม่ให้ผู้ป่วย",
+    labelEn: "Issue new VC for patient",
+    descTh: "VP holder DID ไม่ตรงกับ wallet — ต้องออก VC ใหม่ที่ผูกกับ holder ปัจจุบัน",
+    descEn: "VP holder DID mismatch — re-issue VC bound to current holder",
+    route: "/issuer",
+    icon: WalletCards,
+  },
+  schema: {
+    labelTh: "ตรวจสอบ Contract Hub",
+    labelEn: "Check Contract Hub",
+    descTh: "ประเภท credential หรือ claims ไม่ตรงกับ Contract Hub — ตรวจสอบและแก้ไข contract",
+    descEn: "Credential type or claims mismatch — review and fix contract",
+    route: "/contract-admin",
+    icon: ClipboardCheck,
+  },
+  status: {
+    labelTh: "ออก VC ใหม่ (VC เดิมหมดอายุ/ถูกเพิกถอน)",
+    labelEn: "Re-issue VC (expired or revoked)",
+    descTh: "VC ปัจจุบันหมดอายุหรือถูกเพิกถอน — ต้องออกใหม่",
+    descEn: "Current VC is expired or revoked — must re-issue",
+    route: "/issuer",
+    icon: RefreshCcw,
+  },
+  consent: {
+    labelTh: "ขอ consent เพิ่มจากผู้ป่วย",
+    labelEn: "Request additional consent",
+    descTh: "ยังไม่มี consent ที่ครอบคลุมวัตถุประสงค์ ผู้รับ และช่วงเวลา",
+    descEn: "No consent covering purpose, recipient, and time period",
+    route: "/consent",
+    icon: BookOpenCheck,
+  },
+  manifestCredential: {
+    labelTh: "สร้าง SHL Manifest Credential",
+    labelEn: "Create SHL Manifest Credential",
+    descTh: "ยังไม่มี ShlManifestCredential ผูก manifest hash, source bundle hash, purpose, expiry",
+    descEn: "Missing ShlManifestCredential binding manifest hash, source bundle hash, purpose, expiry",
+    route: "/shl",
+    icon: PackageCheck,
+  },
+  presentation: {
+    labelTh: "สร้าง VP สำหรับ SHL",
+    labelEn: "Create VP for SHL",
+    descTh: "ยังไม่มี holder VP ผูกกับ SHL manifest",
+    descEn: "Missing holder VP bound to SHL manifest",
+    route: "/wallet",
+    icon: QrCode,
+  },
+  passcodePolicy: {
+    labelTh: "ตั้งค่า Passcode/Access Policy",
+    labelEn: "Set Passcode/Access Policy",
+    descTh: "SHL ยังไม่มี passcode, expiry, max access, หรือ audit policy",
+    descEn: "SHL missing passcode, expiry, max access, or audit policy",
+    route: "/shl",
+    icon: ShieldAlert,
+  },
+  fileHashes: {
+    labelTh: "ตรวจสอบ Hash ของไฟล์",
+    labelEn: "Verify file hashes",
+    descTh: "ไฟล์ที่เข้ารหัสไม่ตรงกับ manifest hash record",
+    descEn: "Encrypted files do not match manifest hash record",
+    route: "/shl",
+    icon: DatabaseZap,
+  },
+  documentReferences: {
+    labelTh: "เพิ่ม DocumentReference",
+    labelEn: "Add DocumentReference",
+    descTh: "ไฟล์ legacy ยังไม่มี FHIR DocumentReference พร้อม hash และ provenance",
+    descEn: "Legacy files missing FHIR DocumentReference with hash and provenance",
+    route: "/portability",
+    icon: FileInput,
+  },
+};
+
+function TrustLayerRemediationPanel({ checklist, navigate }: { checklist: any[]; navigate: (path: string) => void }) {
+  const passedCount = checklist.filter((c: any) => c.status === "present").length;
+  const missingItems = checklist.filter((c: any) => c.status === "missing");
+  const recommendedItems = checklist.filter((c: any) => c.status === "recommended");
+  const allPassed = missingItems.length === 0;
+
+  return (
+    <div className="mt-4 rounded-lg border bg-muted/30 p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          <p className="text-sm font-semibold">Trust Layer Verification Checklist</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {!allPassed && (
+            <Badge variant="destructive" className="gap-1 text-[10px]">
+              <Wrench className="h-3 w-3" />
+              {missingItems.length} ต้องแก้ไข
+            </Badge>
+          )}
+          <Badge variant={allPassed ? "secondary" : "outline"}>
+            {passedCount}/{checklist.length}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Missing items with remediation actions */}
+      {missingItems.length > 0 && (
+        <div className="mb-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+          <p className="mb-2 text-xs font-semibold text-destructive">รายการที่ต้องแก้ไข (Auto-Remediation)</p>
+          <div className="space-y-2">
+            {missingItems.map((check: any) => {
+              const remedy = REMEDIATION_MAP[check.key];
+              const Icon = remedy?.icon || ShieldAlert;
+              return (
+                <div key={check.key} className="flex items-start justify-between gap-3 rounded-md border bg-background p-2.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Icon className="h-3.5 w-3.5 shrink-0 text-destructive" />
+                      <span className="text-xs font-medium">{check.label}</span>
+                      <Badge variant="destructive" className="text-[10px] shrink-0">✗ ขาด</Badge>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground pl-5.5">
+                      {remedy?.descTh || check.detail}
+                    </p>
+                  </div>
+                  {remedy && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 text-[11px] h-7"
+                      onClick={() => navigate(remedy.route)}
+                    >
+                      <Wrench className="h-3 w-3" />
+                      {remedy.labelTh}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* All passed celebration */}
+      {allPassed && (
+        <div className="mb-3 rounded-md border border-green-500/30 bg-green-50 dark:bg-green-950/20 p-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+            <p className="text-xs font-medium text-green-700 dark:text-green-400">Trust Layer ผ่านครบทุกรายการ — พร้อมใช้งาน</p>
+          </div>
+        </div>
+      )}
+
+      {/* Passed and recommended items grid */}
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {checklist.filter((c: any) => c.status !== "missing").map((check: any) => (
+          <div key={check.key} className="rounded-md border bg-background p-2.5 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">{check.label}</span>
+              <Badge
+                variant={check.status === "present" ? "secondary" : "outline"}
+              >
+                {check.status === "present" ? "✓ ผ่าน" : "แนะนำ"}
+              </Badge>
+            </div>
+            <p className="mt-1 text-muted-foreground">{check.detail}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // SHARED HELPER COMPONENTS
 // ============================================================
