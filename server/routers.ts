@@ -194,7 +194,7 @@ export const appRouter = router({
   // ============================================================
   makerChecker: router({
     myRequests: protectedProcedure.query(async ({ ctx }) => {
-      return db.listCredentialRequests({ requesterId: ctx.user.id });
+      return db.listCredentialRequests({ makerId: ctx.user.id });
     }),
     pendingReviews: protectedProcedure.query(async ({ ctx }) => {
       await requireMakerCheckerRole(ctx.user, "checker");
@@ -202,7 +202,7 @@ export const appRouter = router({
     }),
     myReviews: protectedProcedure.query(async ({ ctx }) => {
       await requireMakerCheckerRole(ctx.user, "checker");
-      return db.listCredentialRequests({ reviewerId: ctx.user.id });
+      return db.listCredentialRequests({ checkerId: ctx.user.id });
     }),
     pendingCount: protectedProcedure.query(async ({ ctx }) => {
       await requireMakerCheckerRole(ctx.user, "checker");
@@ -219,14 +219,15 @@ export const appRouter = router({
       makerNotes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
       await requireMakerCheckerRole(ctx.user, "maker");
+      const requestNumber = `REQ-${Date.now().toString(36).toUpperCase()}`;
       const result = await db.createCredentialRequest({
-        requesterId: ctx.user.id,
-        templateId: input.templateId ?? null,
+        requestNumber,
+        makerId: ctx.user.id,
+        templateId: input.templateId ?? 0,
         patientId: input.patientId,
         hospitalId: input.hospitalId,
-        credentialType: input.credentialType,
         status: "draft",
-        requestData: input.requestData,
+        credentialData: input.requestData,
         priority: input.priority ?? "normal",
         makerNotes: input.makerNotes,
       });
@@ -242,8 +243,8 @@ export const appRouter = router({
       await requireMakerCheckerRole(ctx.user, "maker");
       const request = await db.getCredentialRequestById(input.id);
       if (!request) throw new TRPCError({ code: "NOT_FOUND" });
-      if (request.requesterId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
-      await db.updateCredentialRequest(input.id, { status: "pending_review" });
+      if (request.makerId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+      await db.updateCredentialRequest(input.id, { status: "pending_review", submittedAt: new Date() });
       await db.createNotification({
         userId: ctx.user.id,
         type: "vc_submitted_for_review" as any,
@@ -255,29 +256,29 @@ export const appRouter = router({
     cancelRequest: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
       const request = await db.getCredentialRequestById(input.id);
       if (!request) throw new TRPCError({ code: "NOT_FOUND" });
-      if (request.requesterId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+      if (request.makerId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
       await db.updateCredentialRequest(input.id, { status: "cancelled" });
       return { success: true };
     }),
     approve: protectedProcedure.input(z.object({ id: z.number(), comment: z.string().optional() })).mutation(async ({ ctx, input }) => {
       const request = await db.getCredentialRequestById(input.id);
       if (!request) throw new TRPCError({ code: "NOT_FOUND" });
-      if (request.requesterId === ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "ไม่สามารถอนุมัติคำขอตัวเองได้" });
-      await db.updateCredentialRequest(input.id, { status: "approved", reviewerId: ctx.user.id, reviewComment: input.comment });
+      if (request.makerId === ctx.user.id) throw new TRPCError({ code: "FORBIDDEN", message: "ไม่สามารถอนุมัติคำขอตัวเองได้" });
+      await db.updateCredentialRequest(input.id, { status: "approved", checkerId: ctx.user.id, checkerComment: input.comment, reviewedAt: new Date() });
       // Auto-issue VC
       const credential = await db.createIssuedCredential({
         credentialId: `vc-${nanoid(12)}`,
-        type: request.credentialType as any,
+        type: "patient_summary" as any,
         subjectId: request.patientId,
-        issuerHospitalId: request.hospitalId,
+        issuerHospitalId: request.hospitalId ?? 1,
         issuerId: ctx.user.id,
         templateId: request.templateId ?? 0,
-        credentialData: request.requestData as any,
+        credentialData: request.credentialData as any,
         status: "active",
       });
-      await db.updateCredentialRequest(input.id, { status: "issued", issuedCredentialId: (credential as any)?.id });
+      await db.updateCredentialRequest(input.id, { status: "issued", issuedCredentialId: (credential as any)?.id, issuedAt: new Date() });
       await db.createNotification({
-        userId: request.requesterId,
+        userId: request.makerId,
         type: "vc_approved" as any,
         title: "คำขอ VC ได้รับอนุมัติ",
         message: `คำขอ #${input.id} ได้รับอนุมัติและออก VC แล้ว`,
@@ -287,9 +288,9 @@ export const appRouter = router({
     reject: protectedProcedure.input(z.object({ id: z.number(), comment: z.string() })).mutation(async ({ ctx, input }) => {
       const request = await db.getCredentialRequestById(input.id);
       if (!request) throw new TRPCError({ code: "NOT_FOUND" });
-      await db.updateCredentialRequest(input.id, { status: "rejected", reviewerId: ctx.user.id, reviewComment: input.comment });
+      await db.updateCredentialRequest(input.id, { status: "rejected", checkerId: ctx.user.id, checkerComment: input.comment, reviewedAt: new Date() });
       await db.createNotification({
-        userId: request.requesterId,
+        userId: request.makerId,
         type: "vc_rejected" as any,
         title: "คำขอ VC ถูกปฏิเสธ",
         message: `คำขอ #${input.id} ถูกปฏิเสธ: ${input.comment}`,

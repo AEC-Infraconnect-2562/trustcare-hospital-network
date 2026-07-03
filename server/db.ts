@@ -1499,14 +1499,14 @@ export async function getUnreadNotificationCount(userId: number) {
 // ============================================================
 // CREDENTIAL REQUESTS (Maker/Checker Workflow v2.2)
 // ============================================================
-export async function listCredentialRequests(filters?: { requesterId?: number; hospitalId?: number; status?: string; reviewerId?: number }) {
+export async function listCredentialRequests(filters?: { makerId?: number; hospitalId?: number; status?: string; checkerId?: number }) {
   const db = await getDb();
   if (!db) return [];
   const conditions = [];
-  if (filters?.requesterId) conditions.push(eq(credentialRequests.requesterId, filters.requesterId));
+  if (filters?.makerId) conditions.push(eq(credentialRequests.makerId, filters.makerId));
   if (filters?.hospitalId) conditions.push(eq(credentialRequests.hospitalId, filters.hospitalId));
   if (filters?.status) conditions.push(eq(credentialRequests.status, filters.status as any));
-  if (filters?.reviewerId) conditions.push(eq(credentialRequests.reviewerId, filters.reviewerId));
+  if (filters?.checkerId) conditions.push(eq(credentialRequests.checkerId, filters.checkerId));
   return db.select().from(credentialRequests).where(conditions.length ? and(...conditions) : undefined).orderBy(sql`${credentialRequests.createdAt} DESC`);
 }
 

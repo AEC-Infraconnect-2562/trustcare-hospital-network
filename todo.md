@@ -624,3 +624,12 @@
 - [x] Root cause: version.createdAt is a Date object passed directly to JSX via Row subtitle prop
 - [x] Fix: Convert Date to string with new Date(version.createdAt).toLocaleString()
 - [x] 302 tests passing, 0 TypeScript errors
+
+## v3.11.2 - Checker Queue Schema Mismatch Fix
+
+- [x] Fix credential_requests table schema mismatch between Drizzle code and actual DB
+- [x] Update Drizzle schema: requesterId→makerId, reviewerId→checkerId, credentialType removed, requestData→credentialData, reviewComment→checkerComment
+- [x] Add new columns to schema: requestNumber, submittedAt, reviewedAt, issuedAt
+- [x] Update db.ts listCredentialRequests filters to use makerId/checkerId
+- [x] Update routers.ts maker/checker workflow to use correct column names
+- [x] 302 tests passing, 0 TypeScript errors
