@@ -60,19 +60,19 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 
 ### 1.2 Technology Stack
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| Frontend | React 19, Tailwind CSS 4, shadcn/ui | UI framework |
-| Routing | Wouter | Client-side routing |
-| API Layer | tRPC 11 + Superjson | End-to-end type-safe RPC |
-| Backend | Express 4, Node.js 22 | HTTP server |
-| ORM | Drizzle ORM 0.44 | Type-safe database queries |
-| Database | MySQL (TiDB-compatible) | Persistent storage |
-| Crypto | jose (JWT), HMAC-SHA256 | VC signing and verification |
-| Auth | Manus OAuth + Demo Login | Session management |
-| Storage | S3-compatible | File/credential storage |
-| Testing | Vitest 2 | Unit + E2E testing |
-| Build | Vite 7 | Frontend bundling |
+| Layer     | Technology                          | Purpose                     |
+| --------- | ----------------------------------- | --------------------------- |
+| Frontend  | React 19, Tailwind CSS 4, shadcn/ui | UI framework                |
+| Routing   | Wouter                              | Client-side routing         |
+| API Layer | tRPC 11 + Superjson                 | End-to-end type-safe RPC    |
+| Backend   | Express 4, Node.js 22               | HTTP server                 |
+| ORM       | Drizzle ORM 0.44                    | Type-safe database queries  |
+| Database  | MySQL (TiDB-compatible)             | Persistent storage          |
+| Crypto    | jose (JWT), HMAC-SHA256             | VC signing and verification |
+| Auth      | Manus OAuth + Demo Login            | Session management          |
+| Storage   | S3-compatible                       | File/credential storage     |
+| Testing   | Vitest 2                            | Unit + E2E testing          |
+| Build     | Vite 7                              | Frontend bundling           |
 
 ### 1.3 Module Dependency Graph
 
@@ -110,47 +110,47 @@ routers.ts (care transition release, 29 routers)
 
 ### 2.1 Network Hospitals (3 Hospitals)
 
-| ID | Code | Name (TH) | Name (EN) | DID | Focus |
-|----|------|-----------|-----------|-----|-------|
-| 4 | TCC | โรงพยาบาลทรัสต์แคร์ เซ็นทรัล | TrustCare Central Hospital | `did:web:trustcare.network:hospital:tcc` | General/referral hub |
-| 8 | TCP | โรงพยาบาลทรัสต์แคร์ ภูเก็ต อินเตอร์เนชันแนล | TrustCare Phuket International Hospital | `did:web:trustcare.network:hospital:tcp` | Medical tourism |
-| 9 | TCM | โรงพยาบาลทรัสต์แคร์ เชียงใหม่ ครอสบอร์เดอร์ | TrustCare Chiang Mai Cross-Border Hospital | `did:web:trustcare.network:hospital:tcm` | Cross-border care |
+| ID  | Code | Name (TH)                                   | Name (EN)                                  | DID                                      | Focus                |
+| --- | ---- | ------------------------------------------- | ------------------------------------------ | ---------------------------------------- | -------------------- |
+| 4   | TCC  | โรงพยาบาลทรัสต์แคร์ เซ็นทรัล                | TrustCare Central Hospital                 | `did:web:trustcare.network:hospital:tcc` | General/referral hub |
+| 8   | TCP  | โรงพยาบาลทรัสต์แคร์ ภูเก็ต อินเตอร์เนชันแนล | TrustCare Phuket International Hospital    | `did:web:trustcare.network:hospital:tcp` | Medical tourism      |
+| 9   | TCM  | โรงพยาบาลทรัสต์แคร์ เชียงใหม่ ครอสบอร์เดอร์ | TrustCare Chiang Mai Cross-Border Hospital | `did:web:trustcare.network:hospital:tcm` | Cross-border care    |
 
 > **Important:** The canonical hospital source is `server/portability/seedData.ts` (`TRUSTCARE_DEMO_HOSPITALS`). The `server/seed.ts` file references this same array. Hospital codes TCC/TCP/TCM are the single source of truth — never create duplicate codes.
 
 ### 2.2 Network-Level Issuer
 
-| Entity | DID | Trust Level | Purpose |
-|--------|-----|-------------|---------|
-| เครือข่ายโรงพยาบาลทรัสต์แคร์ | `did:web:trustcare.network` | verified | Network-level credential signing |
+| Entity                       | DID                         | Trust Level | Purpose                          |
+| ---------------------------- | --------------------------- | ----------- | -------------------------------- |
+| เครือข่ายโรงพยาบาลทรัสต์แคร์ | `did:web:trustcare.network` | verified    | Network-level credential signing |
 
 ### 2.3 Trust Registry (Internal)
 
-| # | Entity Type | Name | DID | Trust Level |
-|---|-------------|------|-----|-------------|
-| 1 | issuer | โรงพยาบาลทรัสต์แคร์ เซ็นทรัล | `did:web:trustcare.network:hospital:tcc` | verified |
-| 2 | issuer | โรงพยาบาลทรัสต์แคร์ ภูเก็ต อินเตอร์เนชันแนล | `did:web:trustcare.network:hospital:tcp` | verified |
-| 3 | issuer | โรงพยาบาลทรัสต์แคร์ เชียงใหม่ ครอสบอร์เดอร์ | `did:web:trustcare.network:hospital:tcm` | verified |
-| 4 | issuer | เครือข่ายโรงพยาบาลทรัสต์แคร์ | `did:web:trustcare.network` | verified |
+| #   | Entity Type | Name                                        | DID                                      | Trust Level |
+| --- | ----------- | ------------------------------------------- | ---------------------------------------- | ----------- |
+| 1   | issuer      | โรงพยาบาลทรัสต์แคร์ เซ็นทรัล                | `did:web:trustcare.network:hospital:tcc` | verified    |
+| 2   | issuer      | โรงพยาบาลทรัสต์แคร์ ภูเก็ต อินเตอร์เนชันแนล | `did:web:trustcare.network:hospital:tcp` | verified    |
+| 3   | issuer      | โรงพยาบาลทรัสต์แคร์ เชียงใหม่ ครอสบอร์เดอร์ | `did:web:trustcare.network:hospital:tcm` | verified    |
+| 4   | issuer      | เครือข่ายโรงพยาบาลทรัสต์แคร์                | `did:web:trustcare.network`              | verified    |
 
 ### 2.4 TAO Trust Framework (External Organizations)
 
 **Trusted Issuers (External):**
 
-| # | DID | Name | Type | Trust Level | Anchor |
-|---|-----|------|------|-------------|--------|
-| 1 | `did:web:siriraj.mahidol.ac.th` | โรงพยาบาลศิริราช | hospital | accredited | moph |
-| 2 | `did:web:rama.mahidol.ac.th` | โรงพยาบาลรามาธิบดี | hospital | accredited | moph |
-| 3 | `did:web:bumrungrad.com` | โรงพยาบาลบำรุงราษฎร์ | hospital | recognized | self |
+| #   | DID                             | Name                 | Type     | Trust Level | Anchor |
+| --- | ------------------------------- | -------------------- | -------- | ----------- | ------ |
+| 1   | `did:web:siriraj.mahidol.ac.th` | โรงพยาบาลศิริราช     | hospital | accredited  | moph   |
+| 2   | `did:web:rama.mahidol.ac.th`    | โรงพยาบาลรามาธิบดี   | hospital | accredited  | moph   |
+| 3   | `did:web:bumrungrad.com`        | โรงพยาบาลบำรุงราษฎร์ | hospital | recognized  | self   |
 
 **Trusted Verifiers (External):**
 
-| # | DID | Name | Type | Trust Level |
-|---|-----|------|------|-------------|
-| 1 | `did:web:siriraj.mahidol.ac.th` | โรงพยาบาลศิริราช | hospital | accredited |
-| 2 | `did:web:rama.mahidol.ac.th` | โรงพยาบาลรามาธิบดี | hospital | accredited |
-| 3 | `did:web:bumrungrad.com` | โรงพยาบาลบำรุงราษฎร์ | hospital | recognized |
-| 4 | `did:web:nhso.go.th` | สำนักงานหลักประกันสุขภาพแห่งชาติ (สปสช.) | government | accredited |
+| #   | DID                             | Name                                     | Type       | Trust Level |
+| --- | ------------------------------- | ---------------------------------------- | ---------- | ----------- |
+| 1   | `did:web:siriraj.mahidol.ac.th` | โรงพยาบาลศิริราช                         | hospital   | accredited  |
+| 2   | `did:web:rama.mahidol.ac.th`    | โรงพยาบาลรามาธิบดี                       | hospital   | accredited  |
+| 3   | `did:web:bumrungrad.com`        | โรงพยาบาลบำรุงราษฎร์                     | hospital   | recognized  |
+| 4   | `did:web:nhso.go.th`            | สำนักงานหลักประกันสุขภาพแห่งชาติ (สปสช.) | government | accredited  |
 
 > **Note:** TAO external organizations have `hospitalId = NULL` — they are NOT part of the TrustCare network but are recognized trust anchors for cross-network verification.
 
@@ -162,17 +162,17 @@ routers.ts (care transition release, 29 routers)
 
 The system supports 24 verifiable credential types organized into 9 document categories:
 
-| Category | Document Types | VC Type |
-|----------|---------------|---------|
-| Identity & Access | patient_identity, consent_receipt, mpi_link_certificate | PatientIdentityCredential, ConsentReceiptCredential, MpiLinkCertificateCredential |
-| Clinical Summary | patient_summary, allergy_alert, immunization, medical_certificate | PatientSummaryCredential, AllergyAlertCredential, ImmunizationCredential, MedicalCertificateCredential |
-| Medication & Pharmacy | medication_summary, prescription, pharmacy_dispense | MedicationSummaryCredential, PrescriptionCredential, PharmacyDispenseCredential |
-| Diagnostics & Results | lab_result, diagnostic_report | LabResultCredential, DiagnosticReportCredential |
-| Care Transition | referral_vc, discharge_summary | ReferralCredential, DischargeSummaryCredential |
-| Claims & Finance | insurance_eligibility, claim_package, claim_receipt | CoverageEligibilityCredential, ClaimPackageCredential, ClaimReceiptCredential |
-| Medical Tourism | travel_document_verification, visa_support_letter, quotation, guarantee_letter | TravelDocumentVerificationCredential, VisaSupportLetterCredential, QuotationCredential, GuaranteeLetterCredential |
-| Sharing & Sync | shl_manifest, sync_receipt | ShlManifestCredential, SyncReceiptCredential |
-| Operations | appointment | AppointmentCredential |
+| Category              | Document Types                                                                 | VC Type                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Identity & Access     | patient_identity, consent_receipt, mpi_link_certificate                        | PatientIdentityCredential, ConsentReceiptCredential, MpiLinkCertificateCredential                                 |
+| Clinical Summary      | patient_summary, allergy_alert, immunization, medical_certificate              | PatientSummaryCredential, AllergyAlertCredential, ImmunizationCredential, MedicalCertificateCredential            |
+| Medication & Pharmacy | medication_summary, prescription, pharmacy_dispense                            | MedicationSummaryCredential, PrescriptionCredential, PharmacyDispenseCredential                                   |
+| Diagnostics & Results | lab_result, diagnostic_report                                                  | LabResultCredential, DiagnosticReportCredential                                                                   |
+| Care Transition       | referral_vc, discharge_summary                                                 | ReferralCredential, DischargeSummaryCredential                                                                    |
+| Claims & Finance      | insurance_eligibility, claim_package, claim_receipt                            | CoverageEligibilityCredential, ClaimPackageCredential, ClaimReceiptCredential                                     |
+| Medical Tourism       | travel_document_verification, visa_support_letter, quotation, guarantee_letter | TravelDocumentVerificationCredential, VisaSupportLetterCredential, QuotationCredential, GuaranteeLetterCredential |
+| Sharing & Sync        | shl_manifest, sync_receipt                                                     | ShlManifestCredential, SyncReceiptCredential                                                                      |
+| Operations            | appointment                                                                    | AppointmentCredential                                                                                             |
 
 ### 3.2 Issuance Flow (Maker/Checker)
 
@@ -222,7 +222,7 @@ portability.issuePrescription → issuePrescriptionVc() → issued_credentials
 ```
 Verifier receives JWT → portability.verify (single VC)
                        → portability.verifyJsonPresentation (VP bundle)
-                       
+
 Checks performed:
   1. JWT signature verification (HMAC or asymmetric)
   2. Trusted issuer check (Trust Registry — trustLevel must be "verified")
@@ -252,16 +252,16 @@ Presentations are stored in `issued_presentations` and linked to the patient and
 
 ### 4.1 System Roles
 
-| Role | Code | Description |
-|------|------|-------------|
-| System Admin | `system_admin` | Full system access, user management, trust registry |
-| Hospital Admin | `hospital_admin` | Hospital-scoped administration |
-| Maker | `maker` | Create and submit credential issuance requests |
-| Checker | `checker` | Review, approve/reject, and issue credentials |
-| Doctor | `doctor` | Clinical data access, referrals |
-| Nurse | `nurse` | Patient care, limited credential view |
-| Integration Engineer | `integration_engineer` | Adapter configuration, sync management |
-| Patient | `patient` | Wallet access, consent management |
+| Role                 | Code                   | Description                                         |
+| -------------------- | ---------------------- | --------------------------------------------------- |
+| System Admin         | `system_admin`         | Full system access, user management, trust registry |
+| Hospital Admin       | `hospital_admin`       | Hospital-scoped administration                      |
+| Maker                | `maker`                | Create and submit credential issuance requests      |
+| Checker              | `checker`              | Review, approve/reject, and issue credentials       |
+| Doctor               | `doctor`               | Clinical data access, referrals                     |
+| Nurse                | `nurse`                | Patient care, limited credential view               |
+| Integration Engineer | `integration_engineer` | Adapter configuration, sync management              |
+| Patient              | `patient`              | Wallet access, consent management                   |
 
 ### 4.2 Credential Entitlements
 
@@ -280,15 +280,15 @@ Each user has a `credentialEntitlements` JSON field with the structure:
 
 ### 4.3 Authorization Enforcement
 
-| Action | Required Role | Additional Check |
-|--------|--------------|-----------------|
-| Submit issuance request | `maker` | `credentialEntitlements.makerTypes` includes the credential type |
-| Approve/Issue credential | `checker` | `credentialEntitlements.checkerTypes` includes the credential type |
-| Reject request | `checker` | Same as approve |
-| Request changes | `checker` | Same as approve |
-| Reseed database | `admin` | Admin-only procedure |
-| Manage trust registry | `system_admin` | Admin procedure |
-| View executive dashboard | Any authenticated | Protected procedure |
+| Action                   | Required Role     | Additional Check                                                   |
+| ------------------------ | ----------------- | ------------------------------------------------------------------ |
+| Submit issuance request  | `maker`           | `credentialEntitlements.makerTypes` includes the credential type   |
+| Approve/Issue credential | `checker`         | `credentialEntitlements.checkerTypes` includes the credential type |
+| Reject request           | `checker`         | Same as approve                                                    |
+| Request changes          | `checker`         | Same as approve                                                    |
+| Reseed database          | `admin`           | Admin-only procedure                                               |
+| Manage trust registry    | `system_admin`    | Admin procedure                                                    |
+| View executive dashboard | Any authenticated | Protected procedure                                                |
 
 ### 4.4 Multi-Role Support
 
@@ -302,50 +302,50 @@ The `user_roles` table allows users to hold multiple roles simultaneously. Users
 
 Service readiness release note: migration `0013_service_readiness_wallet_requests` adds `service_readiness_checks` for readiness/VP packet history and `wallet_document_requests` for missing document retrieval/import requests. Use `drizzle/schema.ts` as the canonical full table definition list.
 
-| # | Table | Purpose | Key Relations |
-|---|-------|---------|---------------|
-| 1 | `users` | User accounts with systemRole and credentialEntitlements | — |
-| 2 | `hospitals` | Hospital registry with DID and endpoints | — |
-| 3 | `departments` | Hospital departments | → hospitals |
-| 4 | `credential_templates` | VC template definitions per hospital | → hospitals |
-| 5 | `issued_credentials` | Issued VCs with SD-JWT payload | → users, hospitals, templates |
-| 6 | `credential_issuance_requests` | Maker/Checker workflow queue | → users, hospitals |
-| 7 | `wallet_cards` | Patient wallet card entries | → issued_credentials |
-| 8 | `presentation_history` | VP verification logs | — |
-| 9 | `issued_presentations` | Stored VP packages | → users |
-| 10 | `consent_policies` | Consent policy definitions | → hospitals |
-| 11 | `consent_records` | Patient consent grants | → users, hospitals |
-| 12 | `referrals` | Inter-hospital referrals | → hospitals, users |
-| 13 | `fhir_field_mappings` | FHIR field mapping rules | → hospitals |
-| 14 | `terminology_mappings` | Code system mappings | → hospitals |
-| 15 | `audit_events` | Full audit trail | → users, hospitals |
-| 16 | `vc_vp_seed_batches` | Seed/reseed batch tracking | — |
-| 17 | `notifications` | User notifications | → users, hospitals |
-| 18 | `user_roles` | Multi-role assignments per user | → users |
-| 19 | `credential_requests` | Legacy credential request tracking | → users, hospitals |
-| 20 | `patient_identifiers` | MPI patient identity records | → hospitals |
-| 21 | `mpi_matches` | MPI matching results | → patient_identifiers |
-| 22 | `integration_adapters` | External system adapters | → hospitals |
-| 23 | `adapter_health_logs` | Adapter health monitoring | → integration_adapters |
-| 24 | `mapping_versions` | Mapping version history | → hospitals |
-| 25 | `integration_event_logs` | Integration event tracking | → integration_adapters |
-| 26 | `credential_status_events` | VC revocation/suspension log | — |
-| 27 | `sync_reconciliation_jobs` | Sync-back reconciliation tracking | — |
-| 28 | `trust_registry` | Internal trusted issuer/verifier registry | — |
-| 29 | `tao_trusted_issuers` | TAO framework external issuers (ETSI TL / GDHCN aligned) | → hospitals (nullable) |
-| 30 | `tao_trusted_verifiers` | TAO framework external verifiers | → hospitals (nullable) |
-| 31 | `tao_trust_policies` | TAO credential-type enforcement policies | — |
-| 32 | `smart_health_links` | SHL link management, manifest, consent/access policy | → users, hospitals |
-| 33 | `shl_files` | Encrypted SHL manifest file entries | → smart_health_links |
-| 34 | `shl_manifest_versions` | Immutable SHL trust snapshots and supersede/revoke history | → smart_health_links |
-| 35 | `shl_access_logs` | SHL access audit including passcode failures | → smart_health_links |
-| 36 | `payer_adapters` | Insurance payer configurations | → hospitals |
-| 37 | `coverage_eligibility` | Coverage check results | → users, payer_adapters |
-| 38 | `claim_cases` | Insurance claim cases | → users, hospitals, payer_adapters |
-| 39 | `international_cases` | Medical tourism cases | → hospitals |
-| 40 | `travel_documents` | International patient documents | → international_cases |
-| 41 | `cross_border_referrals` | Cross-border referral tracking | → hospitals |
-| 42 | `vc_schema_registry` | VC schema version registry | — |
+| #   | Table                          | Purpose                                                    | Key Relations                      |
+| --- | ------------------------------ | ---------------------------------------------------------- | ---------------------------------- |
+| 1   | `users`                        | User accounts with systemRole and credentialEntitlements   | —                                  |
+| 2   | `hospitals`                    | Hospital registry with DID and endpoints                   | —                                  |
+| 3   | `departments`                  | Hospital departments                                       | → hospitals                        |
+| 4   | `credential_templates`         | VC template definitions per hospital                       | → hospitals                        |
+| 5   | `issued_credentials`           | Issued VCs with SD-JWT payload                             | → users, hospitals, templates      |
+| 6   | `credential_issuance_requests` | Maker/Checker workflow queue                               | → users, hospitals                 |
+| 7   | `wallet_cards`                 | Patient wallet card entries                                | → issued_credentials               |
+| 8   | `presentation_history`         | VP verification logs                                       | —                                  |
+| 9   | `issued_presentations`         | Stored VP packages                                         | → users                            |
+| 10  | `consent_policies`             | Consent policy definitions                                 | → hospitals                        |
+| 11  | `consent_records`              | Patient consent grants                                     | → users, hospitals                 |
+| 12  | `referrals`                    | Inter-hospital referrals                                   | → hospitals, users                 |
+| 13  | `fhir_field_mappings`          | FHIR field mapping rules                                   | → hospitals                        |
+| 14  | `terminology_mappings`         | Code system mappings                                       | → hospitals                        |
+| 15  | `audit_events`                 | Full audit trail                                           | → users, hospitals                 |
+| 16  | `vc_vp_seed_batches`           | Seed/reseed batch tracking                                 | —                                  |
+| 17  | `notifications`                | User notifications                                         | → users, hospitals                 |
+| 18  | `user_roles`                   | Multi-role assignments per user                            | → users                            |
+| 19  | `credential_requests`          | Legacy credential request tracking                         | → users, hospitals                 |
+| 20  | `patient_identifiers`          | MPI patient identity records                               | → hospitals                        |
+| 21  | `mpi_matches`                  | MPI matching results                                       | → patient_identifiers              |
+| 22  | `integration_adapters`         | External system adapters                                   | → hospitals                        |
+| 23  | `adapter_health_logs`          | Adapter health monitoring                                  | → integration_adapters             |
+| 24  | `mapping_versions`             | Mapping version history                                    | → hospitals                        |
+| 25  | `integration_event_logs`       | Integration event tracking                                 | → integration_adapters             |
+| 26  | `credential_status_events`     | VC revocation/suspension log                               | —                                  |
+| 27  | `sync_reconciliation_jobs`     | Sync-back reconciliation tracking                          | —                                  |
+| 28  | `trust_registry`               | Internal trusted issuer/verifier registry                  | —                                  |
+| 29  | `tao_trusted_issuers`          | TAO framework external issuers (ETSI TL / GDHCN aligned)   | → hospitals (nullable)             |
+| 30  | `tao_trusted_verifiers`        | TAO framework external verifiers                           | → hospitals (nullable)             |
+| 31  | `tao_trust_policies`           | TAO credential-type enforcement policies                   | —                                  |
+| 32  | `smart_health_links`           | SHL link management, manifest, consent/access policy       | → users, hospitals                 |
+| 33  | `shl_files`                    | Encrypted SHL manifest file entries                        | → smart_health_links               |
+| 34  | `shl_manifest_versions`        | Immutable SHL trust snapshots and supersede/revoke history | → smart_health_links               |
+| 35  | `shl_access_logs`              | SHL access audit including passcode failures               | → smart_health_links               |
+| 36  | `payer_adapters`               | Insurance payer configurations                             | → hospitals                        |
+| 37  | `coverage_eligibility`         | Coverage check results                                     | → users, payer_adapters            |
+| 38  | `claim_cases`                  | Insurance claim cases                                      | → users, hospitals, payer_adapters |
+| 39  | `international_cases`          | Medical tourism cases                                      | → hospitals                        |
+| 40  | `travel_documents`             | International patient documents                            | → international_cases              |
+| 41  | `cross_border_referrals`       | Cross-border referral tracking                             | → hospitals                        |
+| 42  | `vc_schema_registry`           | VC schema version registry                                 | —                                  |
 
 ### 5.2 Core VC/VP Tables (ERD)
 
@@ -438,22 +438,22 @@ Service readiness release note: migration `0013_service_readiness_wallet_request
 
 Migrations must be applied sequentially. Each migration builds on the previous state.
 
-| # | Tag | Description | Key Changes |
-|---|-----|-------------|-------------|
-| 0 | `0000_massive_shadow_king` | Initial schema | users, hospitals, departments, credential_templates, issued_credentials, wallet_cards, presentation_history, consent_policies, consent_records, referrals, fhir_field_mappings, terminology_mappings |
-| 1 | `0001_groovy_owl` | Audit and notifications | audit_events, notifications, patient_identifiers, mpi_matches |
-| 2 | `0002_equal_stellaris` | Integration layer | integration_adapters, adapter_health_logs, mapping_versions, integration_event_logs |
-| 3 | `0003_patient_portability_vc_documents` | Extended VC types (11→24) | ALTER credential_templates, issued_credentials, wallet_cards type enums |
-| 4 | `0004_production_portability_hardening` | Production hardening | credential_status_events, sync_reconciliation_jobs, trust_registry, smart_health_links, shl_access_logs, payer_adapters, coverage_eligibility, claim_cases, international_cases, travel_documents, cross_border_referrals |
-| 5 | `0005_seed_vc_vp_extended_documents` | Full 24-type enum expansion | ALTER all type enums to include all 24 document types |
-| 6 | `0006_vc_vp_reseed_persistence` | Seed batch tracking | issued_presentations, vc_vp_seed_batches |
-| 7 | `0007_maker_checker_issuance_requests` | Maker/Checker workflow | ALTER users ADD credentialEntitlements, systemRole enum expansion, CREATE credential_issuance_requests |
-| 8 | `0008_vc_document_storage_taxonomy` | Document taxonomy | ADD documentCategory, documentSubcategory, storageKey, searchTags to credential_templates and issued_credentials |
-| 9 | `0009_mediumtext_jwt_columns` | Large JWT storage | ALTER sdJwtVc and presentationJwt to MEDIUMTEXT |
-| 10 | `0010_vc_schema_versioning` | VC schema registry | vc_schema_registry, schemaVersion columns |
-| 11 | `0011_shl_transport_vc_trust_layer` | SHL production transport and trust layer | smart_health_links manifest/passcode/VC/VP fields, shl_files, shl_manifest_versions, expanded shl_access_logs |
-| 12 | `0012_care_transition_partner_portal` | Care transition and partner portal | care transition cases, document bundles/files, partner source connectors, care packages |
-| 13 | `0013_service_readiness_wallet_requests` | Service readiness and Wallet document requests | service_readiness_checks, wallet_document_requests |
+| #   | Tag                                      | Description                                    | Key Changes                                                                                                                                                                                                               |
+| --- | ---------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | `0000_massive_shadow_king`               | Initial schema                                 | users, hospitals, departments, credential_templates, issued_credentials, wallet_cards, presentation_history, consent_policies, consent_records, referrals, fhir_field_mappings, terminology_mappings                      |
+| 1   | `0001_groovy_owl`                        | Audit and notifications                        | audit_events, notifications, patient_identifiers, mpi_matches                                                                                                                                                             |
+| 2   | `0002_equal_stellaris`                   | Integration layer                              | integration_adapters, adapter_health_logs, mapping_versions, integration_event_logs                                                                                                                                       |
+| 3   | `0003_patient_portability_vc_documents`  | Extended VC types (11→24)                      | ALTER credential_templates, issued_credentials, wallet_cards type enums                                                                                                                                                   |
+| 4   | `0004_production_portability_hardening`  | Production hardening                           | credential_status_events, sync_reconciliation_jobs, trust_registry, smart_health_links, shl_access_logs, payer_adapters, coverage_eligibility, claim_cases, international_cases, travel_documents, cross_border_referrals |
+| 5   | `0005_seed_vc_vp_extended_documents`     | Full 24-type enum expansion                    | ALTER all type enums to include all 24 document types                                                                                                                                                                     |
+| 6   | `0006_vc_vp_reseed_persistence`          | Seed batch tracking                            | issued_presentations, vc_vp_seed_batches                                                                                                                                                                                  |
+| 7   | `0007_maker_checker_issuance_requests`   | Maker/Checker workflow                         | ALTER users ADD credentialEntitlements, systemRole enum expansion, CREATE credential_issuance_requests                                                                                                                    |
+| 8   | `0008_vc_document_storage_taxonomy`      | Document taxonomy                              | ADD documentCategory, documentSubcategory, storageKey, searchTags to credential_templates and issued_credentials                                                                                                          |
+| 9   | `0009_mediumtext_jwt_columns`            | Large JWT storage                              | ALTER sdJwtVc and presentationJwt to MEDIUMTEXT                                                                                                                                                                           |
+| 10  | `0010_vc_schema_versioning`              | VC schema registry                             | vc_schema_registry, schemaVersion columns                                                                                                                                                                                 |
+| 11  | `0011_shl_transport_vc_trust_layer`      | SHL production transport and trust layer       | smart_health_links manifest/passcode/VC/VP fields, shl_files, shl_manifest_versions, expanded shl_access_logs                                                                                                             |
+| 12  | `0012_care_transition_partner_portal`    | Care transition and partner portal             | care transition cases, document bundles/files, partner source connectors, care packages                                                                                                                                   |
+| 13  | `0013_service_readiness_wallet_requests` | Service readiness and Wallet document requests | service_readiness_checks, wallet_document_requests                                                                                                                                                                        |
 
 ---
 
@@ -479,8 +479,8 @@ The reseed process:
 1. **Batch tracking** — Creates a `vc_vp_seed_batches` record with `batchId = urn:trustcare:seed:batch:{hash}`
 2. **Hospital upsert** — Inserts/updates hospitals with DID, code, and metadata
 3. **Template creation** — Creates credential templates for each document type per hospital
-4. **Staff creation** — Creates demo staff users (seed-maker-*, seed-checker-*) with appropriate roles
-5. **Patient creation** — Creates user records with patient role and DID keys (seed-patient-*)
+4. **Staff creation** — Creates demo staff users (seed-maker-_, seed-checker-_) with appropriate roles
+5. **Patient creation** — Creates user records with patient role and DID keys (seed-patient-\*)
 6. **Credential issuance** — Issues VCs for each patient based on their tags
 7. **Wallet cards** — Creates wallet entries for each issued credential
 8. **Presentations** — Creates VP packages for portability scenarios
@@ -492,28 +492,28 @@ The reseed process:
 
 The `server/seed.ts` creates demo login users that can be used without OAuth:
 
-| openId | Name | systemRole | additionalRoles |
-|--------|------|------------|----------------|
-| demo-sysadmin-001 | นพ.สมชาย ระบบดี | system_admin | — |
-| demo-hospadmin-001 | นางวิภา บริหารเก่ง | hospital_admin | — |
-| demo-doctor-001 | นพ.ธนวัฒน์ รักษาดี | doctor | issuer_checker |
-| demo-doctor-002 | พญ.สุภาพร ใจดี | doctor | — |
-| demo-nurse-001 | นางสาวพิมพ์ใจ ดูแลดี | nurse | issuer_maker |
-| demo-nurse-002 | นายอนุชา ช่วยเหลือ | nurse | — |
-| demo-engineer-001 | นายปิยะ เชื่อมต่อดี | integration_engineer | — |
-| demo-patient-001 | นายสมศักดิ์ สุขภาพดี | patient | — |
-| demo-patient-002 | นางสาวนภา แข็งแรง | patient | — |
-| demo-patient-003 | นายวิชัย ใส่ใจสุขภาพ | patient | — |
+| openId             | Name                 | systemRole           | additionalRoles |
+| ------------------ | -------------------- | -------------------- | --------------- |
+| demo-sysadmin-001  | นพ.สมชาย ระบบดี      | system_admin         | —               |
+| demo-hospadmin-001 | นางวิภา บริหารเก่ง   | hospital_admin       | —               |
+| demo-doctor-001    | นพ.ธนวัฒน์ รักษาดี   | doctor               | issuer_checker  |
+| demo-doctor-002    | พญ.สุภาพร ใจดี       | doctor               | —               |
+| demo-nurse-001     | นางสาวพิมพ์ใจ ดูแลดี | nurse                | issuer_maker    |
+| demo-nurse-002     | นายอนุชา ช่วยเหลือ   | nurse                | —               |
+| demo-engineer-001  | นายปิยะ เชื่อมต่อดี  | integration_engineer | —               |
+| demo-patient-001   | นายสมศักดิ์ สุขภาพดี | patient              | —               |
+| demo-patient-002   | นางสาวนภา แข็งแรง    | patient              | —               |
+| demo-patient-003   | นายวิชัย ใส่ใจสุขภาพ | patient              | —               |
 
 ### 7.5 Patient Data Binding
 
 Demo patients (demo-patient-001/002/003) are bound to seed patient data from TCC/TCP/TCM respectively:
 
-| Demo Patient | Seed Source | Hospital | Wallet Cards | Credentials |
-|-------------|-------------|----------|-------------|-------------|
-| demo-patient-001 (id=414) | seed-patient-tcc-p001 | TCC | 16 | 16 |
-| demo-patient-002 (id=415) | seed-patient-tcp-p001 | TCP | 15 | 15 |
-| demo-patient-003 (id=416) | seed-patient-tcm-p001 | TCM | 15 | 15 |
+| Demo Patient              | Seed Source           | Hospital | Wallet Cards | Credentials |
+| ------------------------- | --------------------- | -------- | ------------ | ----------- |
+| demo-patient-001 (id=414) | seed-patient-tcc-p001 | TCC      | 16           | 16          |
+| demo-patient-002 (id=415) | seed-patient-tcp-p001 | TCP      | 15           | 15          |
+| demo-patient-003 (id=416) | seed-patient-tcm-p001 | TCM      | 15           | 15          |
 
 ### 7.6 Reseed Idempotency
 
@@ -528,18 +528,18 @@ Demo patients (demo-patient-001/002/003) are bound to seed patient data from TCC
 
 ### 8.1 DID Methods
 
-| Method | Usage | Format | Example |
-|--------|-------|--------|---------|
-| `did:web` | Hospital/Organization issuers | `did:web:{domain}:hospital:{code}` | `did:web:trustcare.network:hospital:tcc` |
-| `did:web` | Network-level issuer | `did:web:{domain}` | `did:web:trustcare.network` |
-| `did:key` | Patient holders | `did:key:z{base58(ed25519-multicodec)}` | `did:key:z6Mk...` |
+| Method    | Usage                         | Format                                  | Example                                  |
+| --------- | ----------------------------- | --------------------------------------- | ---------------------------------------- |
+| `did:web` | Hospital/Organization issuers | `did:web:{domain}:hospital:{code}`      | `did:web:trustcare.network:hospital:tcc` |
+| `did:web` | Network-level issuer          | `did:web:{domain}`                      | `did:web:trustcare.network`              |
+| `did:key` | Patient holders               | `did:key:z{base58(ed25519-multicodec)}` | `did:key:z6Mk...`                        |
 
 ### 8.2 Key Management
 
-| Environment | Algorithm | Key Source |
-|-------------|-----------|-----------|
-| Development | HMAC-SHA256 | `TRUSTCARE_VC_SIGNING_SECRET` or `JWT_SECRET` |
-| Production | ES256 (P-256) | Per-hospital key pair in trust registry |
+| Environment | Algorithm     | Key Source                                    |
+| ----------- | ------------- | --------------------------------------------- |
+| Development | HMAC-SHA256   | `TRUSTCARE_VC_SIGNING_SECRET` or `JWT_SECRET` |
+| Production  | ES256 (P-256) | Per-hospital key pair in trust registry       |
 
 ### 8.3 Trust Domain
 
@@ -571,21 +571,21 @@ Runtime flow:
 
 Each hospital has two standard connectors:
 
-| Connector | Kind | Supported Inputs |
-|-----------|------|-----------------|
-| `{code}-his-rest` | HIS REST API | patient, encounter, diagnosis, allergy, medication, lab, document |
-| `{code}-legacy-db` | Legacy DB View | patient_master, opd_visit, dx, rx, lis_result |
+| Connector          | Kind           | Supported Inputs                                                  |
+| ------------------ | -------------- | ----------------------------------------------------------------- |
+| `{code}-his-rest`  | HIS REST API   | patient, encounter, diagnosis, allergy, medication, lab, document |
+| `{code}-legacy-db` | Legacy DB View | patient_master, opd_visit, dx, rx, lis_result                     |
 
 ### 10.2 Supported Source Formats
 
-| Format | Parser | Notes |
-|--------|--------|-------|
-| `db_view` | `legacyDbViewToHisPayload()` | Maps patient_master, opd_visit tables |
-| `csv` | `parseCsv()` + `reviewCsvForCanonicalMapping()` | Requires: hospital_code, hn, full_name_th, birth_date, visit_no |
-| `hl7v2` | Direct mapping | HL7 v2 message segments |
-| `rest_api` | Direct FHIR-like JSON | HIS REST API response |
-| `fhir_native` | Pass-through | Already FHIR R4 |
-| `document` | Document extraction | Scanned/uploaded documents |
+| Format        | Parser                                          | Notes                                                           |
+| ------------- | ----------------------------------------------- | --------------------------------------------------------------- |
+| `db_view`     | `legacyDbViewToHisPayload()`                    | Maps patient_master, opd_visit tables                           |
+| `csv`         | `parseCsv()` + `reviewCsvForCanonicalMapping()` | Requires: hospital_code, hn, full_name_th, birth_date, visit_no |
+| `hl7v2`       | Direct mapping                                  | HL7 v2 message segments                                         |
+| `rest_api`    | Direct FHIR-like JSON                           | HIS REST API response                                           |
+| `fhir_native` | Pass-through                                    | Already FHIR R4                                                 |
+| `document`    | Document extraction                             | Scanned/uploaded documents                                      |
 
 ### 10.3 Sync-Back Architecture
 
@@ -597,35 +597,35 @@ After VC issuance, the system can sync data back to legacy systems via `SyncBack
 
 ### 11.1 Document Categories
 
-| Category Key | Thai | English | Retention Class |
-|-------------|------|---------|-----------------|
-| `identity_and_access` | ตัวตนและสิทธิ์เข้าถึง | Identity and Access | long_lived |
-| `clinical_summary` | สรุปและความเสี่ยงทางคลินิก | Clinical Summary and Risk | clinical |
-| `medication_and_pharmacy` | ยาและเภสัชกรรม | Medication and Pharmacy | clinical |
-| `diagnostics_and_results` | ผลตรวจและวินิจฉัย | Diagnostics and Results | clinical |
-| `care_transition` | ส่งต่อและเปลี่ยนผ่านการดูแล | Care Transition | clinical |
-| `claims_and_finance` | เคลมและการเงิน | Claims and Finance | financial |
-| `medical_tourism` | ผู้ป่วยต่างชาติและการเดินทาง | Medical Tourism | administrative |
-| `sharing_and_sync` | การแชร์และซิงก์ข้อมูล | Sharing and Synchronization | audit |
-| `operations` | ปฏิบัติการและนัดหมาย | Operations | operational |
+| Category Key              | Thai                         | English                     | Retention Class |
+| ------------------------- | ---------------------------- | --------------------------- | --------------- |
+| `identity_and_access`     | ตัวตนและสิทธิ์เข้าถึง        | Identity and Access         | long_lived      |
+| `clinical_summary`        | สรุปและความเสี่ยงทางคลินิก   | Clinical Summary and Risk   | clinical        |
+| `medication_and_pharmacy` | ยาและเภสัชกรรม               | Medication and Pharmacy     | clinical        |
+| `diagnostics_and_results` | ผลตรวจและวินิจฉัย            | Diagnostics and Results     | clinical        |
+| `care_transition`         | ส่งต่อและเปลี่ยนผ่านการดูแล  | Care Transition             | clinical        |
+| `claims_and_finance`      | เคลมและการเงิน               | Claims and Finance          | financial       |
+| `medical_tourism`         | ผู้ป่วยต่างชาติและการเดินทาง | Medical Tourism             | administrative  |
+| `sharing_and_sync`        | การแชร์และซิงก์ข้อมูล        | Sharing and Synchronization | audit           |
+| `operations`              | ปฏิบัติการและนัดหมาย         | Operations                  | operational     |
 
 ### 11.2 Credential Validity Periods
 
-| Document Type | Validity (Days) |
-|--------------|----------------|
-| prescription, pharmacy_dispense | 30 |
-| medical_certificate, lab_result, diagnostic_report | 90 |
-| consent_receipt, insurance_eligibility, claim_package, claim_receipt | 180 |
-| All others | 365 |
+| Document Type                                                        | Validity (Days) |
+| -------------------------------------------------------------------- | --------------- |
+| prescription, pharmacy_dispense                                      | 30              |
+| medical_certificate, lab_result, diagnostic_report                   | 90              |
+| consent_receipt, insurance_eligibility, claim_package, claim_receipt | 180             |
+| All others                                                           | 365             |
 
 ### 11.3 Context-Based Validity Override
 
-| Context | Validity (Days) |
-|---------|----------------|
-| `emergency` | 1 |
-| `treatment` / `self_share` / `cross_branch_referral` | 14 |
-| `cross_border` / `medical_tourist` | 30 |
-| `e_claim` | 90 |
+| Context                                              | Validity (Days) |
+| ---------------------------------------------------- | --------------- |
+| `emergency`                                          | 1               |
+| `treatment` / `self_share` / `cross_branch_referral` | 14              |
+| `cross_border` / `medical_tourist`                   | 30              |
+| `e_claim`                                            | 90              |
 
 ---
 
@@ -633,15 +633,15 @@ After VC issuance, the system can sync data back to legacy systems via `SyncBack
 
 ### 12.1 Portability Contexts
 
-| Context | Purpose | Allowed Scopes |
-|---------|---------|---------------|
-| `treatment` | Direct patient care | Patient.read, Condition.read, AllergyIntolerance.read, Medication.read, Observation.read, DocumentReference.read |
-| `cross_branch_referral` | Inter-branch referral | Same as treatment + ServiceRequest.read |
-| `cross_border` | International referral | Same as referral |
-| `e_claim` | Insurance claim | Patient.read, Coverage.read, Claim.read, Condition.read, Procedure.read, Encounter.read |
-| `medical_tourist` | Medical tourism | Treatment scopes + Coverage.read |
-| `emergency` | Emergency access | Patient.read, AllergyIntolerance.read, Medication.read, Condition.read |
-| `self_share` | Patient self-sharing | Same as treatment |
+| Context                 | Purpose                | Allowed Scopes                                                                                                   |
+| ----------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `treatment`             | Direct patient care    | Patient.read, Condition.read, AllergyIntolerance.read, Medication.read, Observation.read, DocumentReference.read |
+| `cross_branch_referral` | Inter-branch referral  | Same as treatment + ServiceRequest.read                                                                          |
+| `cross_border`          | International referral | Same as referral                                                                                                 |
+| `e_claim`               | Insurance claim        | Patient.read, Coverage.read, Claim.read, Condition.read, Procedure.read, Encounter.read                          |
+| `medical_tourist`       | Medical tourism        | Treatment scopes + Coverage.read                                                                                 |
+| `emergency`             | Emergency access       | Patient.read, AllergyIntolerance.read, Medication.read, Condition.read                                           |
+| `self_share`            | Patient self-sharing   | Same as treatment                                                                                                |
 
 ### 12.2 Break-Glass Emergency Access
 
@@ -691,77 +691,77 @@ trustcare-hospital-network/
 
 ## 14. Frontend Pages (34 Pages)
 
-| Page | Route | Purpose |
-|------|-------|--------|
-| Home | `/` | Landing page with demo login |
-| Dashboard | `/dashboard` | Main dashboard overview |
-| Wallet | `/wallet` | Patient health card wallet |
-| PrepareForService | `/prepare-service` | Service readiness cockpit, document request wizard, contextual consent, VP packet QR |
-| SmartHealthLinks | `/shl` | SHL management |
-| ShlViewer | `/shl-viewer` | Public SHL viewer |
-| Consent | `/consent` | Consent management (incl. expiry alerts) |
-| MakerQueue | `/maker-queue` | Credential request submission |
-| CheckerQueue | `/checker-queue` | Credential approval queue |
-| Issuer | `/issuer` | Credential issuance |
-| CredentialDetail | `/issuer/:id` | Single credential view |
-| Verifier | `/verifier` | Credential verification |
-| PortabilityWorkbench | `/portability` | VC/VP workbench + DQI scoring |
-| Hospitals | `/hospitals` | Hospital management |
-| Users | `/users` | User management |
-| TrustRegistry | `/trust-registry` | Trust registry management |
-| CrossBorder | `/cross-border` | Cross-border referrals |
-| International | `/international` | Medical tourism |
-| ClaimCenter | `/claim-center` | Insurance claims |
-| ClaimAnalytics | `/claim-analytics` | Claim analytics dashboard |
-| Integration | `/integration` | System integration |
-| Terminology | `/terminology` | Terminology mappings |
-| FhirMapping | `/fhir-mapping` | FHIR field mappings |
-| PatientIdentity | `/patient-identity` | MPI management |
-| PatientProfile | `/profile` | Patient photo upload & profile |
-| Referral | `/referral` | Referral management |
-| Audit | `/audit` | Audit trail |
-| ExecutiveDashboard | `/executive` | Executive analytics |
-| Settings | `/settings` | System settings |
-| PartnerWizard | `/partner-wizard` | Partner onboarding |
-| PartnerPortal | `/partner-portal` | Partner API layer, document exchange, care packages |
-| AdapterSdk | `/adapter-sdk` | Adapter SDK docs |
-| ComponentShowcase | `/components` | UI component showcase |
-| NotFound | `*` | 404 page |
+| Page                 | Route               | Purpose                                                                              |
+| -------------------- | ------------------- | ------------------------------------------------------------------------------------ |
+| Home                 | `/`                 | Landing page with demo login                                                         |
+| Dashboard            | `/dashboard`        | Main dashboard overview                                                              |
+| Wallet               | `/wallet`           | Patient health card wallet                                                           |
+| PrepareForService    | `/prepare-service`  | Service readiness cockpit, document request wizard, contextual consent, VP packet QR |
+| SmartHealthLinks     | `/shl`              | SHL management                                                                       |
+| ShlViewer            | `/shl-viewer`       | Public SHL viewer                                                                    |
+| Consent              | `/consent`          | Consent management (incl. expiry alerts)                                             |
+| MakerQueue           | `/maker-queue`      | Credential request submission                                                        |
+| CheckerQueue         | `/checker-queue`    | Credential approval queue                                                            |
+| Issuer               | `/issuer`           | Credential issuance                                                                  |
+| CredentialDetail     | `/issuer/:id`       | Single credential view                                                               |
+| Verifier             | `/verifier`         | Credential verification                                                              |
+| PortabilityWorkbench | `/portability`      | VC/VP workbench + DQI scoring                                                        |
+| Hospitals            | `/hospitals`        | Hospital management                                                                  |
+| Users                | `/users`            | User management                                                                      |
+| TrustRegistry        | `/trust-registry`   | Trust registry management                                                            |
+| CrossBorder          | `/cross-border`     | Cross-border referrals                                                               |
+| International        | `/international`    | Medical tourism                                                                      |
+| ClaimCenter          | `/claim-center`     | Insurance claims                                                                     |
+| ClaimAnalytics       | `/claim-analytics`  | Claim analytics dashboard                                                            |
+| Integration          | `/integration`      | System integration                                                                   |
+| Terminology          | `/terminology`      | Terminology mappings                                                                 |
+| FhirMapping          | `/fhir-mapping`     | FHIR field mappings                                                                  |
+| PatientIdentity      | `/patient-identity` | MPI management                                                                       |
+| PatientProfile       | `/profile`          | Patient photo upload & profile                                                       |
+| Referral             | `/referral`         | Referral management                                                                  |
+| Audit                | `/audit`            | Audit trail                                                                          |
+| ExecutiveDashboard   | `/executive`        | Executive analytics                                                                  |
+| Settings             | `/settings`         | System settings                                                                      |
+| PartnerWizard        | `/partner-wizard`   | Partner onboarding                                                                   |
+| PartnerPortal        | `/partner-portal`   | Partner API layer, document exchange, care packages                                  |
+| AdapterSdk           | `/adapter-sdk`      | Adapter SDK docs                                                                     |
+| ComponentShowcase    | `/components`       | UI component showcase                                                                |
+| NotFound             | `*`                 | 404 page                                                                             |
 
 ---
 
 ## 15. tRPC Routers (29 Routers)
 
-| Router | Purpose | Key Procedures |
-|--------|---------|---------------|
-| `auth` | Authentication, demo login, role switching | me, logout, getDemoUsers, switchRole |
-| `seed` | Database seeding | seedDatabase |
-| `makerChecker` | Credential workflow | submitRequest, approveRequest, rejectRequest |
-| `hospital` | Hospital CRUD | list, create, update |
-| `credential` | Credential management | list, getById, revoke |
-| `wallet` | Patient wallet and service readiness | listCards, getCard, readiness, documentRequests, requestDocument, buildServicePacket |
-| `verifier` | Credential verification | verify, verifyQrScan |
-| `consent` | Consent management | listPolicies, grantConsent, revokeConsent, expiringWithinDays |
-| `referral` | Referrals | create, list, accept |
-| `fhir` | FHIR mappings | getMappings, updateMapping |
-| `terminology` | Code mappings | list, create, update |
-| `audit` | Audit trail | list, getEvent |
-| `notification` | Notifications | list, markRead |
-| `dashboard` | Dashboard stats | getStats, getCharts |
-| `users` | User management | list, create, update, delete, uploadPhoto, getPhoto |
-| `patientIdentity` | MPI | search, link, unlink |
-| `integration` | Adapters | listAdapters, createAdapter, healthCheck |
-| `trustRegistry` | Trust registry | list, create, update, verify |
-| `shl` | Smart Health Links | create, list, revoke, getManifest |
-| `claim` | Insurance claims | create, list, submit, analytics |
-| `international` | Medical tourism | createCase, listCases |
-| `crossBorderReferral` | Cross-border | create, list, accept |
-| `careTransition` | Care transition cases + bundles | overview, workspace, initializeCase, addDocument, verifyDocument, updateTask, recordDecision, generatePackage, createBundle, getBundles, getBundleWithFiles, addFileToBundle, updateBundleStatus, removeBundleFile, linkVcToFile, verifyBundleVc, generateBundleHash, generateShlFromBundle |
-| `partnerPortal` | Partner API layer | dashboard, listConnectors, createConnector, validateConnector, activateConnector, submitCase, sendDocument |
-| `portability` | VC/VP engine | createPacket, verify, reseedDb, auditSeedDb, canonicalize (with DQI) |
-| `executiveDashboard` | Executive analytics | getMetrics, getTrends |
-| `tao` | TAO framework | listIssuers, listVerifiers, listPolicies |
-| `schemaRegistry` | VC schema versions | list, getActive, register |
+| Router                | Purpose                                    | Key Procedures                                                                                                                                                                                                                                                                              |
+| --------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth`                | Authentication, demo login, role switching | me, logout, getDemoUsers, switchRole                                                                                                                                                                                                                                                        |
+| `seed`                | Database seeding                           | seedDatabase                                                                                                                                                                                                                                                                                |
+| `makerChecker`        | Credential workflow                        | submitRequest, approveRequest, rejectRequest                                                                                                                                                                                                                                                |
+| `hospital`            | Hospital CRUD                              | list, create, update                                                                                                                                                                                                                                                                        |
+| `credential`          | Credential management                      | list, getById, revoke                                                                                                                                                                                                                                                                       |
+| `wallet`              | Patient wallet and service readiness       | listCards, getCard, readiness, documentRequests, requestDocument, buildServicePacket                                                                                                                                                                                                        |
+| `verifier`            | Credential verification                    | verify, verifyQrScan                                                                                                                                                                                                                                                                        |
+| `consent`             | Consent management                         | listPolicies, grantConsent, revokeConsent, expiringWithinDays                                                                                                                                                                                                                               |
+| `referral`            | Referrals                                  | create, list, accept                                                                                                                                                                                                                                                                        |
+| `fhir`                | FHIR mappings                              | getMappings, updateMapping                                                                                                                                                                                                                                                                  |
+| `terminology`         | Code mappings                              | list, create, update                                                                                                                                                                                                                                                                        |
+| `audit`               | Audit trail                                | list, getEvent                                                                                                                                                                                                                                                                              |
+| `notification`        | Notifications                              | list, markRead                                                                                                                                                                                                                                                                              |
+| `dashboard`           | Dashboard stats                            | getStats, getCharts                                                                                                                                                                                                                                                                         |
+| `users`               | User management                            | list, create, update, delete, uploadPhoto, getPhoto                                                                                                                                                                                                                                         |
+| `patientIdentity`     | MPI                                        | search, link, unlink                                                                                                                                                                                                                                                                        |
+| `integration`         | Adapters                                   | listAdapters, createAdapter, healthCheck                                                                                                                                                                                                                                                    |
+| `trustRegistry`       | Trust registry                             | list, create, update, verify                                                                                                                                                                                                                                                                |
+| `shl`                 | Smart Health Links                         | create, list, revoke, getManifest                                                                                                                                                                                                                                                           |
+| `claim`               | Insurance claims                           | create, list, submit, analytics                                                                                                                                                                                                                                                             |
+| `international`       | Medical tourism                            | createCase, listCases                                                                                                                                                                                                                                                                       |
+| `crossBorderReferral` | Cross-border                               | create, list, accept                                                                                                                                                                                                                                                                        |
+| `careTransition`      | Care transition cases + bundles            | overview, workspace, initializeCase, addDocument, verifyDocument, updateTask, recordDecision, generatePackage, createBundle, getBundles, getBundleWithFiles, addFileToBundle, updateBundleStatus, removeBundleFile, linkVcToFile, verifyBundleVc, generateBundleHash, generateShlFromBundle |
+| `partnerPortal`       | Partner API layer                          | dashboard, listConnectors, createConnector, validateConnector, activateConnector, submitCase, sendDocument                                                                                                                                                                                  |
+| `portability`         | VC/VP engine                               | createPacket, verify, reseedDb, auditSeedDb, canonicalize (with DQI)                                                                                                                                                                                                                        |
+| `executiveDashboard`  | Executive analytics                        | getMetrics, getTrends                                                                                                                                                                                                                                                                       |
+| `tao`                 | TAO framework                              | listIssuers, listVerifiers, listPolicies                                                                                                                                                                                                                                                    |
+| `schemaRegistry`      | VC schema versions                         | list, getActive, register                                                                                                                                                                                                                                                                   |
 
 ---
 
@@ -771,12 +771,12 @@ The role policy module centralizes all authorization logic for the multi-role sy
 
 ### 16.1 Core Concepts
 
-| Concept | Description |
-|---------|-------------|
-| `systemRole` | Primary role assigned at user creation |
-| `additionalRoles` | Supplementary roles from `user_roles` table (issuer_maker, issuer_checker) |
-| `activeRole` | The role the user is currently operating as (stored in cookie) |
-| `credentialEntitlements` | JSON field specifying which VC types they can make/check |
+| Concept                  | Description                                                                |
+| ------------------------ | -------------------------------------------------------------------------- |
+| `systemRole`             | Primary role assigned at user creation                                     |
+| `additionalRoles`        | Supplementary roles from `user_roles` table (issuer_maker, issuer_checker) |
+| `activeRole`             | The role the user is currently operating as (stored in cookie)             |
+| `credentialEntitlements` | JSON field specifying which VC types they can make/check                   |
 
 ### 16.2 Patient Restriction Rules
 
@@ -791,12 +791,12 @@ The role policy module centralizes all authorization logic for the multi-role sy
 
 ### 17.1 Test Suite
 
-| Category | Files | Command |
-|----------|-------|---------|
-| Unit tests | 17 files in `server/*.test.ts` | `pnpm test` |
-| E2E tests | 1 file in `e2e/*.test.ts` | `pnpm test:e2e` |
-| TypeScript check | — | `pnpm check` |
-| Full CI | — | `pnpm ci` |
+| Category         | Files                          | Command         |
+| ---------------- | ------------------------------ | --------------- |
+| Unit tests       | 17 files in `server/*.test.ts` | `pnpm test`     |
+| E2E tests        | 1 file in `e2e/*.test.ts`      | `pnpm test:e2e` |
+| TypeScript check | —                              | `pnpm check`    |
+| Full CI          | —                              | `pnpm ci`       |
 
 ### 17.2 Unit Test Files
 
@@ -821,6 +821,7 @@ The role policy module centralizes all authorization logic for the multi-role sy
 ### 17.3 E2E Test
 
 The `portability-flow.e2e.test.ts` tests the full VC/VP lifecycle:
+
 1. Issue a credential via `createPacket`
 2. Verify the VP via `portability.verify`
 3. Verify individual VC via `portability.verify`
@@ -839,7 +840,7 @@ The `portability-flow.e2e.test.ts` tests the full VC/VP lifecycle:
 - TAO framework uses multi-level trust (accredited, recognized, self_declared)
 - All mutations are logged in `audit_events` with actor, action, and resource details
 - Credential previews display "สำเนา / COPY" watermark to prevent screenshot-based forgery
-- Patient photo uploads are validated (max 5MB, image/* MIME types only) and stored in S3
+- Patient photo uploads are validated (max 5MB, image/\* MIME types only) and stored in S3
 - Consent expiry reminders run on a scheduled heartbeat (daily) to notify patients 7 days before expiration
 - Claim analytics data is aggregated server-side; no raw claim data is exposed to the frontend
 
@@ -851,15 +852,15 @@ Credential schemas evolve over time. The schema versioning system tracks which v
 
 ### 19.1 Schema Registry Table (`vc_schema_registry`)
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | int (PK) | Auto-increment |
-| credentialType | varchar(100) | e.g., `patient_summary`, `prescription` |
-| version | varchar(20) | Semantic version, e.g., `1.0.0`, `1.1.0` |
-| jsonSchema | JSON | The JSON Schema definition for this version |
-| changelog | text | Human-readable description of changes |
-| isActive | boolean | Whether this is the current active version |
-| createdAt | timestamp | When this version was registered |
+| Column         | Type         | Description                                 |
+| -------------- | ------------ | ------------------------------------------- |
+| id             | int (PK)     | Auto-increment                              |
+| credentialType | varchar(100) | e.g., `patient_summary`, `prescription`     |
+| version        | varchar(20)  | Semantic version, e.g., `1.0.0`, `1.1.0`    |
+| jsonSchema     | JSON         | The JSON Schema definition for this version |
+| changelog      | text         | Human-readable description of changes       |
+| isActive       | boolean      | Whether this is the current active version  |
+| createdAt      | timestamp    | When this version was registered            |
 
 ### 19.2 Integration Points
 
@@ -898,6 +899,7 @@ When rendering credentials, the system selects the patient/practitioner photo in
 ### 20.3 Practitioner Role Detection
 
 The `PractitionerSection` component auto-selects the appropriate avatar based on:
+
 - Name prefix: พญ./นพ. → doctor, พย. → nurse, ภก. → pharmacist
 - Title keywords: รังสี → radiologist, เทคนิค → medTech
 - Gender detection from prefix for male/female doctor variants
@@ -912,24 +914,24 @@ The `PractitionerSection` component auto-selects the appropriate avatar based on
 
 ```typescript
 interface DataQualityScore {
-  overall: number;        // 0–100
-  grade: 'A' | 'B' | 'C' | 'D' | 'F';
-  completeness: number;   // 0–100
-  conformance: number;    // 0–100
-  consistency: number;    // 0–100
+  overall: number; // 0–100
+  grade: "A" | "B" | "C" | "D" | "F";
+  completeness: number; // 0–100
+  conformance: number; // 0–100
+  consistency: number; // 0–100
   issueCount: { error: number; warning: number; info: number };
 }
 ```
 
 ### 21.2 Grading Scale
 
-| Grade | Score Range | Meaning |
-|-------|-------------|--------|
-| A | 90–100 | Excellent data quality |
-| B | 75–89 | Good, minor issues |
-| C | 60–74 | Acceptable, needs attention |
-| D | 40–59 | Poor, significant issues |
-| F | 0–39 | Failing, critical problems |
+| Grade | Score Range | Meaning                     |
+| ----- | ----------- | --------------------------- |
+| A     | 90–100      | Excellent data quality      |
+| B     | 75–89       | Good, minor issues          |
+| C     | 60–74       | Acceptable, needs attention |
+| D     | 40–59       | Poor, significant issues    |
+| F     | 0–39        | Failing, critical problems  |
 
 ### 21.3 Penalty Weights
 
@@ -978,12 +980,24 @@ The Consent page shows a `ConsentExpiryAlert` banner when there are consents exp
   approvedCount: number;
   rejectedCount: number;
   pendingCount: number;
-  approvalRate: number;          // percentage
+  approvalRate: number; // percentage
   avgProcessingDays: number;
-  byStatus: { status, count }[];
-  byType: { type, count }[];
-  monthlyTrend: { month, total, approved, rejected }[];
-  topRejectionReasons: { reason, count }[];
+  byStatus: {
+    (status, count);
+  }
+  [];
+  byType: {
+    (type, count);
+  }
+  [];
+  monthlyTrend: {
+    (month, total, approved, rejected);
+  }
+  [];
+  topRejectionReasons: {
+    (reason, count);
+  }
+  [];
 }
 ```
 
@@ -1013,10 +1027,10 @@ The File Bundle system enables structured document exchange per care transition 
 
 ### 25.1 Database Schema
 
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `document_bundles` | Bundle metadata | id, caseType, caseId, title, description, bundleType, status, integrityHash, createdBy, createdAt |
-| `bundle_files` | Individual files within a bundle | id, bundleId, fileName, fileKey, mimeType, fileSize, fileType, vcCredentialId, metadata, uploadedAt |
+| Table              | Purpose                          | Key Columns                                                                                         |
+| ------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `document_bundles` | Bundle metadata                  | id, caseType, caseId, title, description, bundleType, status, integrityHash, createdBy, createdAt   |
+| `bundle_files`     | Individual files within a bundle | id, bundleId, fileName, fileKey, mimeType, fileSize, fileType, vcCredentialId, metadata, uploadedAt |
 
 **Bundle Types:** `clinical`, `administrative`, `imaging`, `lab_results`, `consent_forms`, `insurance`, `referral_package`, `discharge_summary`, `mixed`
 
@@ -1043,23 +1057,23 @@ BundleManager (React)                  Express Upload Route
 
 ### 25.3 Trust Layer Integration
 
-| Procedure | Purpose |
-|-----------|--------|
-| `careTransition.linkVcToFile` | Link a bundle file to an existing issued_credentials record |
-| `careTransition.verifyBundleVc` | Verify VC/VP files via trust registry (DID → issuer → trust level) |
-| `careTransition.generateBundleHash` | Compute SHA-256 integrity hash over all file hashes in a bundle |
-| `careTransition.generateShlFromBundle` | Create encrypted FHIR Bundle from selected files → SHL link |
+| Procedure                              | Purpose                                                            |
+| -------------------------------------- | ------------------------------------------------------------------ |
+| `careTransition.linkVcToFile`          | Link a bundle file to an existing issued_credentials record        |
+| `careTransition.verifyBundleVc`        | Verify VC/VP files via trust registry (DID → issuer → trust level) |
+| `careTransition.generateBundleHash`    | Compute SHA-256 integrity hash over all file hashes in a bundle    |
+| `careTransition.generateShlFromBundle` | Create encrypted FHIR Bundle from selected files → SHL link        |
 
 ### 25.4 Inline Preview System
 
 The BundleManager component provides inline document preview without download:
 
-| File Type | Preview Method | Features |
-|-----------|---------------|----------|
-| PDF (`application/pdf`) | `<iframe>` embed | Full-page rendering, fallback download link |
-| Images (PNG, JPEG, GIF, WebP, SVG, BMP) | `<img>` with zoom controls | Zoom 25%–400%, rotation (90° increments), fit-to-screen |
-| VC/VP credentials | Badge display with verification status | Trust registry check, issuer DID resolution |
-| Unsupported types | Download link with file info | Graceful fallback with toast notification |
+| File Type                               | Preview Method                         | Features                                                |
+| --------------------------------------- | -------------------------------------- | ------------------------------------------------------- |
+| PDF (`application/pdf`)                 | `<iframe>` embed                       | Full-page rendering, fallback download link             |
+| Images (PNG, JPEG, GIF, WebP, SVG, BMP) | `<img>` with zoom controls             | Zoom 25%–400%, rotation (90° increments), fit-to-screen |
+| VC/VP credentials                       | Badge display with verification status | Trust registry check, issuer DID resolution             |
+| Unsupported types                       | Download link with file info           | Graceful fallback with toast notification               |
 
 ### 25.5 Standards Alignment
 
@@ -1075,14 +1089,14 @@ See [FILE_BUNDLE_STANDARDS.md](./FILE_BUNDLE_STANDARDS.md) for detailed standard
 
 ### 25.6 Frontend Components
 
-| Component | Location | Purpose |
-|-----------|----------|--------|
-| `BundleManager` | `components/BundleManager.tsx` | Full bundle CRUD: create, upload, expand/collapse, preview, status management |
-| `ReferralCreationWizard` | `components/ReferralCreationWizard.tsx` | Multi-step referral creation (patient, destination, reason, documents, consent) |
-| `CrossBorderCreateWizard` | `components/CrossBorderCreateWizard.tsx` | Cross-border case creation (direction, partner, patient, documents, translation, consent) |
-| `PartnerTrustVerification` | `components/PartnerTrustVerification.tsx` | DID-based partner trust verification panel |
-| `InternationalWorkflowPanels` | `components/InternationalWorkflowPanels.tsx` | Medical tourism workflow (Document Intake, Clinical Pre-review, Financial, Discharge) |
-| `CareTransitionWorkspace` | `components/CareTransitionWorkspace.tsx` | Tabbed workspace (Documents, Bundles, Tasks, Decisions, Packages, Timeline) |
+| Component                     | Location                                     | Purpose                                                                                   |
+| ----------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `BundleManager`               | `components/BundleManager.tsx`               | Full bundle CRUD: create, upload, expand/collapse, preview, status management             |
+| `ReferralCreationWizard`      | `components/ReferralCreationWizard.tsx`      | Multi-step referral creation (patient, destination, reason, documents, consent)           |
+| `CrossBorderCreateWizard`     | `components/CrossBorderCreateWizard.tsx`     | Cross-border case creation (direction, partner, patient, documents, translation, consent) |
+| `PartnerTrustVerification`    | `components/PartnerTrustVerification.tsx`    | DID-based partner trust verification panel                                                |
+| `InternationalWorkflowPanels` | `components/InternationalWorkflowPanels.tsx` | Medical tourism workflow (Document Intake, Clinical Pre-review, Financial, Discharge)     |
+| `CareTransitionWorkspace`     | `components/CareTransitionWorkspace.tsx`     | Tabbed workspace (Documents, Bundles, Tasks, Decisions, Packages, Timeline)               |
 
 ---
 
@@ -1119,11 +1133,11 @@ All 31 page-level components are imported via `React.lazy()` with a shared `<Sus
 
 Vite manual chunks further isolate heavy vendor libraries:
 
-| Chunk Name | Contents | Approx. Size |
-|---|---|---|
-| `vendor-react` | react, react-dom, wouter, react-hook-form | ~140 KB |
-| `vendor-trpc` | @trpc/client, @trpc/react-query, @tanstack/react-query, superjson | ~90 KB |
-| `vendor-ui` | @radix-ui/*, lucide-react, recharts, sonner | ~430 KB |
+| Chunk Name     | Contents                                                          | Approx. Size |
+| -------------- | ----------------------------------------------------------------- | ------------ |
+| `vendor-react` | react, react-dom, wouter, react-hook-form                         | ~140 KB      |
+| `vendor-trpc`  | @trpc/client, @trpc/react-query, @tanstack/react-query, superjson | ~90 KB       |
+| `vendor-ui`    | @radix-ui/\*, lucide-react, recharts, sonner                      | ~430 KB      |
 
 Result: initial JS payload reduced from ~2.3 MB (single chunk) to ~660 KB main + lazy chunks.
 
@@ -1150,13 +1164,12 @@ The SW does not intercept navigation requests or app JS chunks, ensuring fresh d
 
 ### 25.4 Performance Budget
 
-| Metric | Target | Current |
-|---|---|---|
-| Initial JS (gzipped) | < 300 KB | ~210 KB |
-| Time to Interactive | < 3s (3G) | ~2.5s |
-| Avatar image size | < 25 KB each | ~18 KB (400×400 JPEG) |
-| Largest Contentful Paint | < 2.5s | ~2s (cached) |
-
+| Metric                   | Target       | Current               |
+| ------------------------ | ------------ | --------------------- |
+| Initial JS (gzipped)     | < 300 KB     | ~210 KB               |
+| Time to Interactive      | < 3s (3G)    | ~2.5s                 |
+| Avatar image size        | < 25 KB each | ~18 KB (400×400 JPEG) |
+| Largest Contentful Paint | < 2.5s       | ~2s (cached)          |
 
 ---
 
@@ -1198,15 +1211,15 @@ The Service Readiness module implements a **Wallet-first service preparation** p
 
 ### 26.2 Service Contexts (7 Contexts)
 
-| Context | Label (TH) | Label (EN) | Required Docs | Recommended Docs |
-|---------|-----------|-----------|---------------|-----------------|
-| `opd_visit` | เตรียมเข้ารับบริการ OPD | OPD visit readiness | identity, allergy, medication | summary, coverage |
-| `emergency` | เหตุฉุกเฉิน | Emergency readiness | identity, allergy, medication, conditions | (none) |
-| `referral` | ส่งต่อผู้ป่วย | Referral readiness | identity, referral, summary | labs, coverage |
-| `cross_border` | ส่งต่อข้ามเครือข่าย/ข้ามแดน | Cross-network readiness | identity, referral, summary, consent | labs |
-| `medical_tourist` | ผู้ป่วยต่างชาติ | Medical tourist readiness | identity, summary, quotation | guarantee, visa |
-| `insurance_claim` | เคลม/ประกัน | Insurance claim readiness | identity, coverage, claim | summary, receipt |
-| `pharmacy_dispense` | รับยา/ต่อยา | Pharmacy dispense readiness | identity, prescription, medication, allergy | dispense |
+| Context             | Label (TH)                  | Label (EN)                  | Required Docs                               | Recommended Docs  |
+| ------------------- | --------------------------- | --------------------------- | ------------------------------------------- | ----------------- |
+| `opd_visit`         | เตรียมเข้ารับบริการ OPD     | OPD visit readiness         | identity, allergy, medication               | summary, coverage |
+| `emergency`         | เหตุฉุกเฉิน                 | Emergency readiness         | identity, allergy, medication, conditions   | (none)            |
+| `referral`          | ส่งต่อผู้ป่วย               | Referral readiness          | identity, referral, summary                 | labs, coverage    |
+| `cross_border`      | ส่งต่อข้ามเครือข่าย/ข้ามแดน | Cross-network readiness     | identity, referral, summary, consent        | labs              |
+| `medical_tourist`   | ผู้ป่วยต่างชาติ             | Medical tourist readiness   | identity, summary, quotation                | guarantee, visa   |
+| `insurance_claim`   | เคลม/ประกัน                 | Insurance claim readiness   | identity, coverage, claim                   | summary, receipt  |
+| `pharmacy_dispense` | รับยา/ต่อยา                 | Pharmacy dispense readiness | identity, prescription, medication, allergy | dispense          |
 
 ### 26.3 Score Calculation
 
@@ -1220,12 +1233,12 @@ Where `requiredReady/requiredTotal = 1.0` when `requiredTotal = 0`, and similarl
 
 Score thresholds for UI badges:
 
-| Score | Badge | Color |
-|-------|-------|-------|
-| 100% | Ready | Green |
-| 60-99% | Almost ready | Amber |
-| 1-59% | Needs documents | Red |
-| 0% | Not started | Gray |
+| Score  | Badge           | Color |
+| ------ | --------------- | ----- |
+| 100%   | Ready           | Green |
+| 60-99% | Almost ready    | Amber |
+| 1-59%  | Needs documents | Red   |
+| 0%     | Not started     | Gray  |
 
 ### 26.4 Document Request Status Machine
 
@@ -1235,32 +1248,32 @@ draft → pending_consent → requested → imported → needs_review → conver
                                     ↘ cancelled
 ```
 
-| Status | Description |
-|--------|-------------|
-| `draft` | Request created but not yet sent |
-| `pending_consent` | Awaiting patient consent |
-| `requested` | Sent to source system (HIS/partner) |
-| `imported` | Raw document received |
-| `needs_review` | Imported but requires clinical review |
+| Status            | Description                                  |
+| ----------------- | -------------------------------------------- |
+| `draft`           | Request created but not yet sent             |
+| `pending_consent` | Awaiting patient consent                     |
+| `requested`       | Sent to source system (HIS/partner)          |
+| `imported`        | Raw document received                        |
+| `needs_review`    | Imported but requires clinical review        |
 | `converted_to_vc` | Successfully converted to a Wallet card (VC) |
-| `rejected` | Source system rejected the request |
-| `cancelled` | Patient or staff cancelled |
+| `rejected`        | Source system rejected the request           |
+| `cancelled`       | Patient or staff cancelled                   |
 
 ### 26.5 Source Types
 
-| Source Type | Description | Example |
-|-------------|-------------|---------|
-| `his` | Hospital Information System | โรงพยาบาลเดิม HIS |
-| `lis` | Laboratory Information System | Lab results |
-| `ris` | Radiology Information System | Imaging reports |
-| `pacs` | Picture Archiving System | DICOM images |
-| `hospital_app` | Hospital mobile app | Patient portal |
-| `national_app` | National health app | หมอพร้อม |
-| `partner_portal` | Partner organization portal | Referring hospital |
-| `payer` | Insurance/payer system | ประกันสังคม |
-| `patient_upload` | Patient self-upload | Photo of document |
-| `personal_health_app` | Personal health app | Apple Health |
-| `other` | Other source | Manual entry |
+| Source Type           | Description                   | Example            |
+| --------------------- | ----------------------------- | ------------------ |
+| `his`                 | Hospital Information System   | โรงพยาบาลเดิม HIS  |
+| `lis`                 | Laboratory Information System | Lab results        |
+| `ris`                 | Radiology Information System  | Imaging reports    |
+| `pacs`                | Picture Archiving System      | DICOM images       |
+| `hospital_app`        | Hospital mobile app           | Patient portal     |
+| `national_app`        | National health app           | หมอพร้อม           |
+| `partner_portal`      | Partner organization portal   | Referring hospital |
+| `payer`               | Insurance/payer system        | ประกันสังคม        |
+| `patient_upload`      | Patient self-upload           | Photo of document  |
+| `personal_health_app` | Personal health app           | Apple Health       |
+| `other`               | Other source                  | Manual entry       |
 
 ### 26.6 VP Service Packet
 
@@ -1277,71 +1290,71 @@ The VP is signed with the patient's `did:key` and can be verified by any party i
 
 **`service_readiness_checks`** — Records each readiness assessment:
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | serial | Primary key |
-| patientId | int | FK → users.id |
-| context | varchar(50) | Service context |
-| score | int | Readiness score (0-100) |
-| requiredReady | int | Count of ready required items |
-| requiredTotal | int | Total required items |
-| recommendedReady | int | Count of ready recommended items |
-| recommendedTotal | int | Total recommended items |
-| missingKeys | text (JSON) | Array of missing requirement keys |
-| selectedCardIds | text (JSON) | Array of card IDs used |
-| vpPacketId | varchar(100) | VP packet ID if generated |
-| checkedAt | timestamp | Assessment timestamp |
+| Column           | Type         | Description                       |
+| ---------------- | ------------ | --------------------------------- |
+| id               | serial       | Primary key                       |
+| patientId        | int          | FK → users.id                     |
+| context          | varchar(50)  | Service context                   |
+| score            | int          | Readiness score (0-100)           |
+| requiredReady    | int          | Count of ready required items     |
+| requiredTotal    | int          | Total required items              |
+| recommendedReady | int          | Count of ready recommended items  |
+| recommendedTotal | int          | Total recommended items           |
+| missingKeys      | text (JSON)  | Array of missing requirement keys |
+| selectedCardIds  | text (JSON)  | Array of card IDs used            |
+| vpPacketId       | varchar(100) | VP packet ID if generated         |
+| checkedAt        | timestamp    | Assessment timestamp              |
 
 **`wallet_document_requests`** — Tracks document retrieval requests:
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | serial | Primary key |
-| requestId | varchar(100) | Unique request identifier |
-| patientId | int | FK → users.id |
-| context | varchar(50) | Service context |
-| documentType | varchar(100) | Type of document requested |
-| sourceType | varchar(50) | Source system type |
-| sourceName | varchar(255) | Human-readable source name |
-| status | varchar(50) | Current status |
-| priority | varchar(20) | Priority level |
-| notes | text | Staff/patient notes |
-| importedAt | timestamp | When document was received |
-| convertedCardId | int | FK → wallet_cards.id (after conversion) |
-| createdAt | timestamp | Request creation time |
-| updatedAt | timestamp | Last status change |
+| Column          | Type         | Description                             |
+| --------------- | ------------ | --------------------------------------- |
+| id              | serial       | Primary key                             |
+| requestId       | varchar(100) | Unique request identifier               |
+| patientId       | int          | FK → users.id                           |
+| context         | varchar(50)  | Service context                         |
+| documentType    | varchar(100) | Type of document requested              |
+| sourceType      | varchar(50)  | Source system type                      |
+| sourceName      | varchar(255) | Human-readable source name              |
+| status          | varchar(50)  | Current status                          |
+| priority        | varchar(20)  | Priority level                          |
+| notes           | text         | Staff/patient notes                     |
+| importedAt      | timestamp    | When document was received              |
+| convertedCardId | int          | FK → wallet_cards.id (after conversion) |
+| createdAt       | timestamp    | Request creation time                   |
+| updatedAt       | timestamp    | Last status change                      |
 
 ### 26.8 Test Coverage
 
-| Test File | Tests | Coverage |
-|-----------|-------|----------|
-| `server/serviceReadiness.test.ts` | 53 | All 7 contexts, score calculation, edge cases, demo scenarios |
-| `server/readiness.test.ts` | 3 | Basic readiness module validation |
-| `e2e/portability-flow.e2e.test.ts` | 2 | Full VP creation and verification flow |
+| Test File                          | Tests | Coverage                                                      |
+| ---------------------------------- | ----- | ------------------------------------------------------------- |
+| `server/serviceReadiness.test.ts`  | 53    | All 7 contexts, score calculation, edge cases, demo scenarios |
+| `server/readiness.test.ts`         | 3     | Basic readiness module validation                             |
+| `e2e/portability-flow.e2e.test.ts` | 2     | Full VP creation and verification flow                        |
 
 ### 26.9 Seed Data (Demo Patients with Incomplete Wallets)
 
-| Patient | OpenID | Context | Score | Missing Documents |
-|---------|--------|---------|-------|-------------------|
-| นางสาวฮารุกะ ทานากะ | demo-patient-004 | cross_border | 40% | referral, summary, labs |
-| นายวิชัย สมบูรณ์ | demo-patient-005 | pharmacy_dispense | 40% | prescription, medication, dispense |
-| นางพรทิพย์ แก้วมณี | demo-patient-006 | insurance_claim | 27% | coverage, claim, summary, receipt |
-| นายอภิชาติ วงศ์ประเสริฐ | demo-patient-007 | referral | 27% | referral, summary, labs, coverage |
-| Mr. David Chen | demo-patient-008 | medical_tourist | 53% | quotation, guarantee, visa |
-| นางสุดา รักษ์ธรรม | demo-patient-009 | emergency | 40% | allergy, medication, conditions |
+| Patient                 | OpenID           | Context           | Score | Missing Documents                  |
+| ----------------------- | ---------------- | ----------------- | ----- | ---------------------------------- |
+| นางสาวฮารุกะ ทานากะ     | demo-patient-004 | cross_border      | 40%   | referral, summary, labs            |
+| นายวิชัย สมบูรณ์        | demo-patient-005 | pharmacy_dispense | 40%   | prescription, medication, dispense |
+| นางพรทิพย์ แก้วมณี      | demo-patient-006 | insurance_claim   | 27%   | coverage, claim, summary, receipt  |
+| นายอภิชาติ วงศ์ประเสริฐ | demo-patient-007 | referral          | 27%   | referral, summary, labs, coverage  |
+| Mr. David Chen          | demo-patient-008 | medical_tourist   | 53%   | quotation, guarantee, visa         |
+| นางสุดา รักษ์ธรรม       | demo-patient-009 | emergency         | 40%   | allergy, medication, conditions    |
 
 ---
 
 ## 27. Changelog
 
-| Version | Date | Changes |
-|---------|------|---------|
-| 5.4 | 2026-07-02 | Service Readiness module, wallet document requests, 6 new demo patients, 53 E2E tests |
-| 5.3 | 2026-07-01 | Care Transition partner portal, bundle management, SHL from bundles |
-| 5.2 | 2026-06-30 | Executive dashboard, claim analytics, DICOM viewer |
-| 5.1 | 2026-06-29 | TAO Trust Framework, schema registry, consent expiry notifications |
-| 5.0 | 2026-06-28 | System Realignment: multi-role, maker/checker, portability engine |
-| 5.5 | 2026-07-03 | Document Import Webhook, VP Packet QR Verification at Service Point |
+| Version | Date       | Changes                                                                               |
+| ------- | ---------- | ------------------------------------------------------------------------------------- |
+| 5.4     | 2026-07-02 | Service Readiness module, wallet document requests, 6 new demo patients, 53 E2E tests |
+| 5.3     | 2026-07-01 | Care Transition partner portal, bundle management, SHL from bundles                   |
+| 5.2     | 2026-06-30 | Executive dashboard, claim analytics, DICOM viewer                                    |
+| 5.1     | 2026-06-29 | TAO Trust Framework, schema registry, consent expiry notifications                    |
+| 5.0     | 2026-06-28 | System Realignment: multi-role, maker/checker, portability engine                     |
+| 5.5     | 2026-07-03 | Document Import Webhook, VP Packet QR Verification at Service Point                   |
 
 ---
 
@@ -1353,18 +1366,18 @@ The Document Import Webhook enables external clinical systems (HIS, LIS, RIS, PA
 
 ### 28.2 Endpoint
 
-| Method | Path | Security |
-|--------|------|----------|
-| POST | `/api/webhook/document-import` | HMAC-SHA256 (`X-Webhook-Signature` header) |
-| GET | `/api/webhook/document-import/config` | Public (integration documentation) |
+| Method | Path                                  | Security                                   |
+| ------ | ------------------------------------- | ------------------------------------------ |
+| POST   | `/api/webhook/document-import`        | HMAC-SHA256 (`X-Webhook-Signature` header) |
+| GET    | `/api/webhook/document-import/config` | Public (integration documentation)         |
 
 ### 28.3 Supported Actions
 
-| Action | Status Transition | Description |
-|--------|------------------|-------------|
-| `import` | requested → imported | Raw document received from external system |
+| Action    | Status Transition                    | Description                                                             |
+| --------- | ------------------------------------ | ----------------------------------------------------------------------- |
+| `import`  | requested → imported                 | Raw document received from external system                              |
 | `convert` | requested/imported → converted_to_vc | Document converted to Verifiable Credential and added to patient wallet |
-| `reject` | requested → rejected | External system cannot fulfill the request |
+| `reject`  | requested → rejected                 | External system cannot fulfill the request                              |
 
 ### 28.4 Convert Action Flow
 
@@ -1389,11 +1402,11 @@ External System → POST /api/webhook/document-import (action: "convert")
 
 ### 28.6 Files
 
-| File | Purpose |
-|------|---------|
-| `server/webhookDocumentImport.ts` | Webhook handler implementation |
-| `server/webhookDocumentImport.test.ts` | Unit tests (22 tests) |
-| `server/_core/index.ts` | Route registration |
+| File                                   | Purpose                        |
+| -------------------------------------- | ------------------------------ |
+| `server/webhookDocumentImport.ts`      | Webhook handler implementation |
+| `server/webhookDocumentImport.test.ts` | Unit tests (22 tests)          |
+| `server/_core/index.ts`                | Route registration             |
 
 ---
 
@@ -1405,10 +1418,10 @@ The Service Point Verification feature allows clinical staff (nurses, doctors, h
 
 ### 29.2 Backend Procedures
 
-| Procedure | Type | Description |
-|-----------|------|-------------|
-| `verifier.verifyServicePacket` | mutation | Verify VP by presentationId, return patient info + credentials |
-| `verifier.confirmServiceCheckin` | mutation | Record service check-in audit event |
+| Procedure                        | Type     | Description                                                    |
+| -------------------------------- | -------- | -------------------------------------------------------------- |
+| `verifier.verifyServicePacket`   | mutation | Verify VP by presentationId, return patient info + credentials |
+| `verifier.confirmServiceCheckin` | mutation | Record service check-in audit event                            |
 
 ### 29.3 Verification Flow
 
@@ -1427,39 +1440,39 @@ Staff scans QR → Extract presentationId
 
 ### 29.4 Clinical Priority Order
 
-| Priority | Credential Type | Rationale |
-|----------|----------------|-----------|
-| 1 | allergy_alert | Life-threatening risk |
-| 2 | medication_summary | Drug interaction risk |
-| 3 | patient_summary | Clinical context |
-| 4 | lab_result | Diagnostic data |
-| 5 | diagnostic_report | Imaging/pathology |
-| 6 | discharge_summary | Recent care history |
-| 7 | immunization | Preventive care |
-| 8-19 | Other types | Administrative/financial |
+| Priority | Credential Type    | Rationale                |
+| -------- | ------------------ | ------------------------ |
+| 1        | allergy_alert      | Life-threatening risk    |
+| 2        | medication_summary | Drug interaction risk    |
+| 3        | patient_summary    | Clinical context         |
+| 4        | lab_result         | Diagnostic data          |
+| 5        | diagnostic_report  | Imaging/pathology        |
+| 6        | discharge_summary  | Recent care history      |
+| 7        | immunization       | Preventive care          |
+| 8-19     | Other types        | Administrative/financial |
 
 ### 29.5 Trust Level Badges
 
-| Level | Color | Meaning |
-|-------|-------|---------|
+| Level | Color   | Meaning                                              |
+| ----- | ------- | ---------------------------------------------------- |
 | green | Emerald | VP cryptographically verified, all credentials valid |
-| amber | Amber | Credentials present but VP not fully verified |
-| red | Red | Verification failed or no valid credentials |
+| amber | Amber   | Credentials present but VP not fully verified        |
+| red   | Red     | Verification failed or no valid credentials          |
 
 ### 29.6 Frontend Page
 
 - Route: `/service-verify`
 - Menu: "ตรวจสอบจุดบริการ" (Service Point Verify) in service_readiness group
 - Roles: system_admin, hospital_admin, doctor, nurse
-- Features: Camera QR scanner, auto-verify from URL param, credential preview, confirm check-in
+- Features: Camera QR scanner, manual VP presentation URL/ID verification fallback, auto-verify from URL param, credential preview, service/visit notes, confirm check-in audit event
 
 ### 29.7 Files
 
-| File | Purpose |
-|------|---------|
-| `server/routers.ts` | verifyServicePacket + confirmServiceCheckin procedures |
-| `server/serviceVerification.test.ts` | Unit tests (29 tests) |
-| `client/src/pages/ServiceVerify.tsx` | Staff scanner UI |
-| `shared/menuConfig.ts` | Menu item definition |
+| File                                 | Purpose                                                |
+| ------------------------------------ | ------------------------------------------------------ |
+| `server/routers.ts`                  | verifyServicePacket + confirmServiceCheckin procedures |
+| `server/serviceVerification.test.ts` | Unit tests (29 tests)                                  |
+| `client/src/pages/ServiceVerify.tsx` | Staff scanner UI                                       |
+| `shared/menuConfig.ts`               | Menu item definition                                   |
 
 ---

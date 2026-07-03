@@ -4,12 +4,23 @@ import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { normalizeActiveRole, sanitizeAdditionalRolesForSystemRole } from "@shared/rolePolicy";
+import {
+  normalizeActiveRole,
+  sanitizeAdditionalRolesForSystemRole,
+} from "@shared/rolePolicy";
 
 // ─── Route Access Configuration ────────────────────────────────────────────
 // Maps each protected route to the roles that can access it.
-// This mirrors the allMenuItems in DashboardLayout.tsx.
-type SystemRole = "system_admin" | "hospital_admin" | "maker" | "checker" | "doctor" | "nurse" | "integration_engineer" | "patient";
+// Keep this in sync with App.tsx routes and shared/menuConfig.ts.
+type SystemRole =
+  | "system_admin"
+  | "hospital_admin"
+  | "maker"
+  | "checker"
+  | "doctor"
+  | "nurse"
+  | "integration_engineer"
+  | "patient";
 
 interface RouteAccess {
   path: string;
@@ -20,48 +31,209 @@ interface RouteAccess {
 
 const routeAccessConfig: RouteAccess[] = [
   // Overview
-  { path: "/dashboard", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"] },
+  {
+    path: "/dashboard",
+    roles: [
+      "system_admin",
+      "hospital_admin",
+      "maker",
+      "checker",
+      "doctor",
+      "nurse",
+      "integration_engineer",
+      "patient",
+    ],
+  },
   { path: "/executive", roles: ["system_admin", "hospital_admin"] },
+  {
+    path: "/profile",
+    roles: [
+      "system_admin",
+      "hospital_admin",
+      "maker",
+      "checker",
+      "doctor",
+      "nurse",
+      "integration_engineer",
+      "patient",
+    ],
+  },
   // Patient Services
-  { path: "/prepare-service", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"] },
-  { path: "/wallet", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"] },
-  { path: "/consent", roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"] },
-  { path: "/shl", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer", "patient"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
+  {
+    path: "/prepare-service",
+    roles: [
+      "system_admin",
+      "hospital_admin",
+      "maker",
+      "checker",
+      "doctor",
+      "nurse",
+      "integration_engineer",
+      "patient",
+    ],
+  },
+  {
+    path: "/wallet",
+    roles: [
+      "system_admin",
+      "hospital_admin",
+      "maker",
+      "checker",
+      "doctor",
+      "nurse",
+      "integration_engineer",
+      "patient",
+    ],
+  },
+  {
+    path: "/consent",
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"],
+  },
+  {
+    path: "/shl",
+    roles: [
+      "system_admin",
+      "hospital_admin",
+      "maker",
+      "checker",
+      "doctor",
+      "nurse",
+      "integration_engineer",
+      "patient",
+    ],
+    additionalRolesGrant: ["issuer_maker", "issuer_checker"],
+  },
+  {
+    path: "/service-verify",
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse"],
+  },
   // Clinical Services
-  { path: "/referral", roles: ["system_admin", "hospital_admin", "doctor", "nurse"] },
-  { path: "/cross-border", roles: ["system_admin", "hospital_admin", "doctor"] },
-  { path: "/international", roles: ["system_admin", "hospital_admin", "doctor", "nurse"] },
-  { path: "/partner-portal", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "nurse", "integration_engineer"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
+  {
+    path: "/referral",
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse"],
+  },
+  {
+    path: "/cross-border",
+    roles: ["system_admin", "hospital_admin", "doctor"],
+  },
+  {
+    path: "/international",
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse"],
+  },
+  {
+    path: "/partner-portal",
+    roles: [
+      "system_admin",
+      "hospital_admin",
+      "maker",
+      "checker",
+      "doctor",
+      "nurse",
+      "integration_engineer",
+    ],
+    additionalRolesGrant: ["issuer_maker", "issuer_checker"],
+  },
   // Digital Credentials
-  { path: "/issuer", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
-  { path: "/maker-queue", roles: ["system_admin", "hospital_admin", "maker", "doctor", "nurse"], additionalRolesGrant: ["issuer_maker"] },
-  { path: "/checker-queue", roles: ["system_admin", "hospital_admin", "checker", "doctor"], additionalRolesGrant: ["issuer_checker"] },
-  { path: "/verifier", roles: ["system_admin", "hospital_admin", "checker", "doctor", "nurse"], additionalRolesGrant: ["issuer_maker", "issuer_checker"] },
+  {
+    path: "/issuer",
+    roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor"],
+    additionalRolesGrant: ["issuer_maker", "issuer_checker"],
+  },
+  {
+    path: "/issuer/:id",
+    roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor"],
+    additionalRolesGrant: ["issuer_maker", "issuer_checker"],
+  },
+  {
+    path: "/maker-queue",
+    roles: ["system_admin", "hospital_admin", "maker", "doctor", "nurse"],
+    additionalRolesGrant: ["issuer_maker"],
+  },
+  {
+    path: "/checker-queue",
+    roles: ["system_admin", "hospital_admin", "checker", "doctor"],
+    additionalRolesGrant: ["issuer_checker"],
+  },
+  {
+    path: "/verifier",
+    roles: ["system_admin", "hospital_admin", "checker", "doctor", "nurse"],
+    additionalRolesGrant: ["issuer_maker", "issuer_checker"],
+  },
   { path: "/trust-registry", roles: ["system_admin", "hospital_admin"] },
   // Claims & Finance
-  { path: "/claim-center", roles: ["system_admin", "hospital_admin", "doctor", "nurse"] },
+  {
+    path: "/claim-center",
+    roles: ["system_admin", "hospital_admin", "doctor", "nurse"],
+  },
+  { path: "/claim-analytics", roles: ["system_admin", "hospital_admin"] },
   // Interoperability
-  { path: "/integration", roles: ["system_admin", "hospital_admin", "integration_engineer"] },
-  { path: "/portability", roles: ["system_admin", "hospital_admin", "maker", "checker", "doctor", "integration_engineer"] },
-  { path: "/fhir-mapping", roles: ["system_admin", "hospital_admin", "integration_engineer"] },
-  { path: "/terminology", roles: ["system_admin", "hospital_admin", "integration_engineer"] },
+  {
+    path: "/integration",
+    roles: ["system_admin", "hospital_admin", "integration_engineer"],
+  },
+  {
+    path: "/adapter-sdk",
+    roles: ["system_admin", "hospital_admin", "integration_engineer"],
+  },
+  {
+    path: "/portability",
+    roles: [
+      "system_admin",
+      "hospital_admin",
+      "maker",
+      "checker",
+      "doctor",
+      "integration_engineer",
+    ],
+  },
+  {
+    path: "/fhir-mapping",
+    roles: ["system_admin", "hospital_admin", "integration_engineer"],
+  },
+  {
+    path: "/terminology",
+    roles: ["system_admin", "hospital_admin", "integration_engineer"],
+  },
   // Administration
-  { path: "/patient-identity", roles: ["system_admin", "hospital_admin", "integration_engineer"] },
+  {
+    path: "/patient-identity",
+    roles: ["system_admin", "hospital_admin", "integration_engineer"],
+  },
   { path: "/hospitals", roles: ["system_admin", "hospital_admin"] },
+  { path: "/partner-wizard", roles: ["system_admin", "hospital_admin"] },
   { path: "/audit", roles: ["system_admin", "hospital_admin"] },
   { path: "/users", roles: ["system_admin", "hospital_admin"] },
   { path: "/settings", roles: ["system_admin", "hospital_admin"] },
 ];
+
+function normalizeRoutePath(path: string): string {
+  const clean = path.split("?")[0].split("#")[0].replace(/\/+$/, "");
+  return clean || "/";
+}
+
+function routeMatches(configPath: string, actualPath: string): boolean {
+  const pattern = normalizeRoutePath(configPath);
+  const actual = normalizeRoutePath(actualPath);
+  if (!pattern.includes(":")) return pattern === actual;
+  const patternSegments = pattern.split("/");
+  const actualSegments = actual.split("/");
+  if (patternSegments.length !== actualSegments.length) return false;
+  return patternSegments.every((segment, index) => {
+    if (segment.startsWith(":")) return actualSegments[index].length > 0;
+    return segment === actualSegments[index];
+  });
+}
 
 function hasAccess(
   path: string,
   activeRole: string,
   additionalRoles: string[]
 ): boolean {
-  const config = routeAccessConfig.find(r => r.path === path);
+  const config = routeAccessConfig.find(r => routeMatches(r.path, path));
   // If no config found, allow access (public routes like /, /404)
   if (!config) return true;
-  const effectiveAdditionalRoles = activeRole === "patient" ? [] : additionalRoles;
+  const effectiveAdditionalRoles =
+    activeRole === "patient" ? [] : additionalRoles;
   // Check primary role
   if (config.roles.includes(activeRole as SystemRole)) return true;
   // Check additional roles
@@ -74,7 +246,7 @@ function hasAccess(
 }
 
 // Export for testing
-export { routeAccessConfig, hasAccess };
+export { routeAccessConfig, hasAccess, routeMatches };
 export type { SystemRole, RouteAccess };
 
 // ─── RoleGuard Component ───────────────────────────────────────────────────
@@ -84,9 +256,18 @@ export default function RoleGuard({ children }: { children: React.ReactNode }) {
   const [denied, setDenied] = useState(false);
 
   // Derive activeRole and additionalRoles from user data
-  const systemRole: SystemRole = (user as any)?.systemRole || (user?.role === "admin" ? "system_admin" : "patient");
-  const additionalRoles: string[] = sanitizeAdditionalRolesForSystemRole(systemRole, (user as any)?.additionalRoles || []);
-  const activeRole = normalizeActiveRole(systemRole, (user as any)?.activeRole || systemRole, additionalRoles);
+  const systemRole: SystemRole =
+    (user as any)?.systemRole ||
+    (user?.role === "admin" ? "system_admin" : "patient");
+  const additionalRoles: string[] = sanitizeAdditionalRolesForSystemRole(
+    systemRole,
+    (user as any)?.additionalRoles || []
+  );
+  const activeRole = normalizeActiveRole(
+    systemRole,
+    (user as any)?.activeRole || systemRole,
+    additionalRoles
+  );
 
   useEffect(() => {
     if (loading || !user) return;
@@ -110,18 +291,19 @@ export default function RoleGuard({ children }: { children: React.ReactNode }) {
             <ShieldAlert className="h-10 w-10 text-destructive" />
           </div>
           <div className="space-y-2">
-            <h1 className="text-2xl font-bold text-foreground">ไม่มีสิทธิ์เข้าถึง</h1>
+            <h1 className="text-2xl font-bold text-foreground">
+              ไม่มีสิทธิ์เข้าถึง
+            </h1>
             <p className="text-muted-foreground">
-              บทบาทปัจจุบันของคุณ ({getRoleLabel(activeRole)}) ไม่มีสิทธิ์เข้าถึงหน้านี้
+              บทบาทปัจจุบันของคุณ ({getRoleLabel(activeRole)})
+              ไม่มีสิทธิ์เข้าถึงหน้านี้
             </p>
           </div>
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setLocation("/dashboard")}>
               กลับแดชบอร์ด
             </Button>
-            <Button onClick={() => window.history.back()}>
-              ย้อนกลับ
-            </Button>
+            <Button onClick={() => window.history.back()}>ย้อนกลับ</Button>
           </div>
         </div>
       </div>
