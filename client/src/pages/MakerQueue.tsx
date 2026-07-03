@@ -38,7 +38,7 @@ import {
   Ban,
   AlertTriangle,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const statusConfig: Record<
@@ -101,14 +101,14 @@ export default function MakerQueue() {
     onError: e => toast.error(e.message),
   });
 
-  const draftRequests =
-    requests?.filter((r: any) => r.status === "draft") || [];
-  const pendingRequests =
-    requests?.filter((r: any) => r.status === "pending_review") || [];
-  const completedRequests =
+  const draftRequests = useMemo(() =>
+    requests?.filter((r: any) => r.status === "draft") || [], [requests]);
+  const pendingRequests = useMemo(() =>
+    requests?.filter((r: any) => r.status === "pending_review") || [], [requests]);
+  const completedRequests = useMemo(() =>
     requests?.filter((r: any) =>
       ["approved", "rejected", "issued", "cancelled"].includes(r.status)
-    ) || [];
+    ) || [], [requests]);
 
   return (
     <DashboardLayout>

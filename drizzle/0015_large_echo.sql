@@ -1,0 +1,30 @@
+ALTER TABLE `payer_adapters` MODIFY COLUMN `payerType` enum('nhso','sso','csmbs','private_insurance','corporate','self_pay','travel_insurance') NOT NULL;--> statement-breakpoint
+CREATE INDEX `idx_audit_actor` ON `audit_events` (`actorId`);--> statement-breakpoint
+CREATE INDEX `idx_audit_action` ON `audit_events` (`action`);--> statement-breakpoint
+CREATE INDEX `idx_audit_created` ON `audit_events` (`createdAt`);--> statement-breakpoint
+CREATE INDEX `idx_cir_status` ON `credential_issuance_requests` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_cir_maker` ON `credential_issuance_requests` (`makerId`);--> statement-breakpoint
+CREATE INDEX `idx_cir_checker` ON `credential_issuance_requests` (`checkerId`);--> statement-breakpoint
+CREATE INDEX `idx_cir_subject` ON `credential_issuance_requests` (`subjectId`);--> statement-breakpoint
+CREATE INDEX `idx_cir_hospital` ON `credential_issuance_requests` (`issuerHospitalId`);--> statement-breakpoint
+CREATE INDEX `idx_cr_status` ON `credential_requests` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_cr_maker` ON `credential_requests` (`makerId`);--> statement-breakpoint
+CREATE INDEX `idx_cr_checker` ON `credential_requests` (`checkerId`);--> statement-breakpoint
+CREATE INDEX `idx_cr_patient` ON `credential_requests` (`patientId`);--> statement-breakpoint
+CREATE INDEX `idx_ic_subject` ON `issued_credentials` (`subjectId`);--> statement-breakpoint
+CREATE INDEX `idx_ic_hospital` ON `issued_credentials` (`issuerHospitalId`);--> statement-breakpoint
+CREATE INDEX `idx_ic_status` ON `issued_credentials` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_ic_type` ON `issued_credentials` (`type`);--> statement-breakpoint
+CREATE INDEX `idx_notif_user` ON `notifications` (`userId`);--> statement-breakpoint
+CREATE INDEX `idx_notif_user_read` ON `notifications` (`userId`,`isRead`);--> statement-breakpoint
+CREATE INDEX `idx_ref_patient` ON `referrals` (`patientId`);--> statement-breakpoint
+CREATE INDEX `idx_ref_from_hospital` ON `referrals` (`fromHospitalId`);--> statement-breakpoint
+CREATE INDEX `idx_ref_to_hospital` ON `referrals` (`toHospitalId`);--> statement-breakpoint
+CREATE INDEX `idx_ref_status` ON `referrals` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_shl_patient` ON `smart_health_links` (`patientId`);--> statement-breakpoint
+CREATE INDEX `idx_shl_status` ON `smart_health_links` (`status`);--> statement-breakpoint
+CREATE INDEX `idx_shl_hospital` ON `smart_health_links` (`hospitalId`);--> statement-breakpoint
+CREATE INDEX `idx_users_system_role` ON `users` (`systemRole`);--> statement-breakpoint
+CREATE INDEX `idx_users_hospital_id` ON `users` (`hospitalId`);--> statement-breakpoint
+CREATE INDEX `idx_users_is_active` ON `users` (`isActive`);--> statement-breakpoint
+CREATE INDEX `idx_wc_patient` ON `wallet_cards` (`patientId`);

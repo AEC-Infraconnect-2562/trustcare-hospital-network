@@ -1,4 +1,4 @@
-import { int, bigint, mediumtext, mysqlEnum, mysqlTable, text, timestamp, varchar, json, boolean } from "drizzle-orm/mysql-core";
+import { int, bigint, mediumtext, mysqlEnum, mysqlTable, text, timestamp, varchar, json, boolean, index } from "drizzle-orm/mysql-core";
 
 // ============================================================
 // USER & AUTH
@@ -22,7 +22,11 @@ export const users = mysqlTable("users", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
-});
+}, (table) => ([
+  index("idx_users_system_role").on(table.systemRole),
+  index("idx_users_hospital_id").on(table.hospitalId),
+  index("idx_users_is_active").on(table.isActive),
+]));
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
@@ -112,12 +116,15 @@ export const issuedCredentials = mysqlTable("issued_credentials", {
   revocationReason: text("revocationReason"),
   fhirResourceId: varchar("fhirResourceId", { length: 255 }),
   schemaVersion: varchar("schemaVersion", { length: 20 }).default("1.0.0").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("idx_ic_subject").on(table.subjectId),
+  index("idx_ic_hospital").on(table.issuerHospitalId),
+  index("idx_ic_status").on(table.status),
+  index("idx_ic_type").on(table.type),
+]));
 export type IssuedCredential = typeof issuedCredentials.$inferSelect;
 export type InsertIssuedCredential = typeof issuedCredentials.$inferInsert;
-
 export const credentialIssuanceRequests = mysqlTable("credential_issuance_requests", {
   id: int("id").autoincrement().primaryKey(),
   requestId: varchar("requestId", { length: 255 }).notNull().unique(),
@@ -141,12 +148,16 @@ export const credentialIssuanceRequests = mysqlTable("credential_issuance_reques
   checkedAt: timestamp("checkedAt"),
   issuedAt: timestamp("issuedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  index("idx_cir_status").on(table.status),
+  index("idx_cir_maker").on(table.makerId),
+  index("idx_cir_checker").on(table.checkerId),
+  index("idx_cir_subject").on(table.subjectId),
+  index("idx_cir_hospital").on(table.issuerHospitalId),
+]));
 export type CredentialIssuanceRequest = typeof credentialIssuanceRequests.$inferSelect;
 export type InsertCredentialIssuanceRequest = typeof credentialIssuanceRequests.$inferInsert;
-
 // ============================================================
 // PATIENT WALLET
 // ============================================================
@@ -162,12 +173,12 @@ export const walletCards = mysqlTable("wallet_cards", {
   cardColor: varchar("cardColor", { length: 7 }).default("#2563eb"),
   isPinned: boolean("isPinned").default(false).notNull(),
   lastPresentedAt: timestamp("lastPresentedAt"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("idx_wc_patient").on(table.patientId),
+]));
 export type WalletCard = typeof walletCards.$inferSelect;
 export type InsertWalletCard = typeof walletCards.$inferInsert;
-
 export const presentationHistory = mysqlTable("presentation_history", {
   id: int("id").autoincrement().primaryKey(),
   patientId: int("patientId").notNull(),
@@ -318,12 +329,15 @@ export const referrals = mysqlTable("referrals", {
   rejectedAt: timestamp("rejectedAt"),
   rejectionReason: text("rejectionReason"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  index("idx_ref_patient").on(table.patientId),
+  index("idx_ref_from_hospital").on(table.fromHospitalId),
+  index("idx_ref_to_hospital").on(table.toHospitalId),
+  index("idx_ref_status").on(table.status),
+]));
 export type Referral = typeof referrals.$inferSelect;
 export type InsertReferral = typeof referrals.$inferInsert;
-
 // ============================================================
 // FHIR MAPPING
 // ============================================================
@@ -378,12 +392,14 @@ export const auditEvents = mysqlTable("audit_events", {
   details: json("details"),
   ipAddress: varchar("ipAddress", { length: 45 }),
   isBreakGlass: boolean("isBreakGlass").default(false).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("idx_audit_actor").on(table.actorId),
+  index("idx_audit_action").on(table.action),
+  index("idx_audit_created").on(table.createdAt),
+]));
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type InsertAuditEvent = typeof auditEvents.$inferInsert;
-
 export const vcVpSeedBatches = mysqlTable("vc_vp_seed_batches", {
   id: int("id").autoincrement().primaryKey(),
   batchId: varchar("batchId", { length: 255 }).notNull().unique(),
@@ -411,12 +427,13 @@ export const notifications = mysqlTable("notifications", {
   message: text("message"),
   isRead: boolean("isRead").default(false).notNull(),
   metadata: json("metadata"),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("idx_notif_user").on(table.userId),
+  index("idx_notif_user_read").on(table.userId, table.isRead),
+]));
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
-
 // ============================================================
 // USER ADDITIONAL ROLES (Multi-Role Support)
 // ============================================================
@@ -453,12 +470,15 @@ export const credentialRequests = mysqlTable("credential_requests", {
   reviewedAt: timestamp("reviewedAt"),
   issuedAt: timestamp("issuedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  index("idx_cr_status").on(table.status),
+  index("idx_cr_maker").on(table.makerId),
+  index("idx_cr_checker").on(table.checkerId),
+  index("idx_cr_patient").on(table.patientId),
+]));
 export type CredentialRequest = typeof credentialRequests.$inferSelect;
 export type InsertCredentialRequest = typeof credentialRequests.$inferInsert;
-
 // ============================================================
 // PATIENT IDENTITY LINKS (MPI)
 // ============================================================
@@ -732,9 +752,12 @@ export const smartHealthLinks = mysqlTable("smart_health_links", {
   expiresAt: timestamp("expiresAt"),
   revokedAt: timestamp("revokedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
-
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  index("idx_shl_patient").on(table.patientId),
+  index("idx_shl_status").on(table.status),
+  index("idx_shl_hospital").on(table.hospitalId),
+]));
 export type SmartHealthLink = typeof smartHealthLinks.$inferSelect;
 export type InsertSmartHealthLink = typeof smartHealthLinks.$inferInsert;
 

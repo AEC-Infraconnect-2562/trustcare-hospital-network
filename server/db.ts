@@ -577,25 +577,26 @@ export async function markNotificationRead(id: number) {
 export async function getDashboardStats() {
   const db = await getDb();
   if (!db) return { hospitals: 0, credentials: 0, patients: 0, referrals: 0, claims: 0, tourists: 0, adapters: 0, adaptersOnline: 0 };
-
-  const [hospitalCount] = await db.select({ count: count() }).from(hospitals);
-  const [credentialCount] = await db.select({ count: count() }).from(issuedCredentials);
-  const [patientCount] = await db.select({ count: count() }).from(users).where(eq(users.systemRole, "patient"));
-  const [referralCount] = await db.select({ count: count() }).from(referrals);
-  const [claimCount] = await db.select({ count: count() }).from(claimCases);
-  const [touristCount] = await db.select({ count: count() }).from(internationalCases);
-  const [adapterCount] = await db.select({ count: count() }).from(integrationAdapters);
-  const [adapterOnlineCount] = await db.select({ count: count() }).from(integrationAdapters).where(eq(integrationAdapters.status, "active"));
-
+  // Run all count queries in parallel for better performance
+  const [hospitalCount, credentialCount, patientCount, referralCount, claimCount, touristCount, adapterCount, adapterOnlineCount] = await Promise.all([
+    db.select({ count: count() }).from(hospitals),
+    db.select({ count: count() }).from(issuedCredentials),
+    db.select({ count: count() }).from(users).where(eq(users.systemRole, "patient")),
+    db.select({ count: count() }).from(referrals),
+    db.select({ count: count() }).from(claimCases),
+    db.select({ count: count() }).from(internationalCases),
+    db.select({ count: count() }).from(integrationAdapters),
+    db.select({ count: count() }).from(integrationAdapters).where(eq(integrationAdapters.status, "active")),
+  ]);
   return {
-    hospitals: hospitalCount.count,
-    credentials: credentialCount.count,
-    patients: patientCount.count,
-    referrals: referralCount.count,
-    claims: claimCount.count,
-    tourists: touristCount.count,
-    adapters: adapterCount.count,
-    adaptersOnline: adapterOnlineCount.count,
+    hospitals: hospitalCount[0].count,
+    credentials: credentialCount[0].count,
+    patients: patientCount[0].count,
+    referrals: referralCount[0].count,
+    claims: claimCount[0].count,
+    tourists: touristCount[0].count,
+    adapters: adapterCount[0].count,
+    adaptersOnline: adapterOnlineCount[0].count,
   };
 }
 
@@ -1509,25 +1510,26 @@ export async function getCareTransitionStats() {
 export async function getExecutiveDashboardStats() {
   const db = await getDb();
   if (!db) return { hospitals: 0, credentials: 0, patients: 0, referrals: 0, claims: 0, internationalCases: 0, adapters: 0, shlLinks: 0 };
-
-  const [hospitalCount] = await db.select({ count: count() }).from(hospitals);
-  const [credentialCount] = await db.select({ count: count() }).from(issuedCredentials);
-  const [patientCount] = await db.select({ count: count() }).from(users).where(eq(users.systemRole, "patient"));
-  const [referralCount] = await db.select({ count: count() }).from(referrals);
-  const [claimCount] = await db.select({ count: count() }).from(claimCases);
-  const [intlCount] = await db.select({ count: count() }).from(internationalCases);
-  const [adapterCount] = await db.select({ count: count() }).from(integrationAdapters);
-  const [shlCount] = await db.select({ count: count() }).from(smartHealthLinks);
-
+  // Run all count queries in parallel
+  const [hospitalCount, credentialCount, patientCount, referralCount, claimCount, intlCount, adapterCount, shlCount] = await Promise.all([
+    db.select({ count: count() }).from(hospitals),
+    db.select({ count: count() }).from(issuedCredentials),
+    db.select({ count: count() }).from(users).where(eq(users.systemRole, "patient")),
+    db.select({ count: count() }).from(referrals),
+    db.select({ count: count() }).from(claimCases),
+    db.select({ count: count() }).from(internationalCases),
+    db.select({ count: count() }).from(integrationAdapters),
+    db.select({ count: count() }).from(smartHealthLinks),
+  ]);
   return {
-    hospitals: hospitalCount.count,
-    credentials: credentialCount.count,
-    patients: patientCount.count,
-    referrals: referralCount.count,
-    claims: claimCount.count,
-    internationalCases: intlCount.count,
-    adapters: adapterCount.count,
-    shlLinks: shlCount.count,
+    hospitals: hospitalCount[0].count,
+    credentials: credentialCount[0].count,
+    patients: patientCount[0].count,
+    referrals: referralCount[0].count,
+    claims: claimCount[0].count,
+    internationalCases: intlCount[0].count,
+    adapters: adapterCount[0].count,
+    shlLinks: shlCount[0].count,
   };
 }
 
