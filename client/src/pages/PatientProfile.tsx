@@ -53,16 +53,16 @@ import { Label } from "@/components/ui/label";
 import { PersonPhoto } from "@/components/PersonPhoto";
 import { patientPhotoSources } from "@shared/personImages";
 
-// Role-based identity card type mapping
-const ROLE_IDENTITY_TYPES: Record<string, { cardTypes: string[]; label: string; icon: any }> = {
-  patient: { cardTypes: ["identity"], label: "บัตรประจำตัวผู้ป่วย", icon: BadgeCheck },
-  doctor: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Stethoscope },
-  nurse: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: ShieldCheck },
-  system_admin: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Shield },
-  hospital_admin: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Building2 },
-  maker: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: BadgeCheck },
-  checker: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: BadgeCheck },
-  integration_engineer: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Shield },
+// Role-based identity card type mapping — filters by credentialType (not cardType)
+const ROLE_IDENTITY_TYPES: Record<string, { credentialTypes: string[]; label: string; icon: any }> = {
+  patient: { credentialTypes: ["patient_identity"], label: "บัตรประจำตัวผู้ป่วย", icon: BadgeCheck },
+  doctor: { credentialTypes: ["staff_identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Stethoscope },
+  nurse: { credentialTypes: ["staff_identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: ShieldCheck },
+  system_admin: { credentialTypes: ["staff_identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Shield },
+  hospital_admin: { credentialTypes: ["staff_identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Building2 },
+  maker: { credentialTypes: ["staff_identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: BadgeCheck },
+  checker: { credentialTypes: ["staff_identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: BadgeCheck },
+  integration_engineer: { credentialTypes: ["staff_identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Shield },
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -120,13 +120,13 @@ export default function PatientProfile() {
     onError: (error) => toast.error(error.message),
   });
 
-  // Filter only identity cards based on user's role
+  // Filter only identity cards based on user's role using credentialType
   const identityCards = useMemo(() => {
     if (!grouped) return [];
     const allCards = Object.values(grouped).flat() as any[];
     const systemRole = (user as any)?.systemRole || "patient";
     const roleConfig = ROLE_IDENTITY_TYPES[systemRole] || ROLE_IDENTITY_TYPES.patient;
-    return allCards.filter((card: any) => roleConfig.cardTypes.includes(card.cardType));
+    return allCards.filter((card: any) => roleConfig.credentialTypes.includes(card.credentialType));
   }, [grouped, user]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {

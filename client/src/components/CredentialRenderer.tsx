@@ -341,6 +341,139 @@ function ClinicalSummarySection({ conditions, allergies, medications }: {
   );
 }
 
+// ─── Staff Identity Card Template ────────────────────────────────────────────
+function StaffIdentityCard({ props }: { props: CredentialRendererProps }) {
+  const credData = props.credentialData || {};
+  const subject = credData?.credentialSubject || credData;
+  const renderData = extractRenderData(credData);
+  const humanDoc = credData?.humanDocument || {};
+  const staffRender = humanDoc?.renderData?.staff || {};
+
+  // Extract staff-specific fields
+  const fullNameTh = staffRender.fullNameTh || subject?.fullNameTh || subject?.staffId || "—";
+  const position = staffRender.position || subject?.position || "เจ้าหน้าที่";
+  const positionEn = staffRender.positionEn || subject?.positionEn || "Staff";
+  const licenseNo = staffRender.licenseNo || subject?.licenseNo;
+  const hospitalCode = renderData.hospital.code || subject?.hospitalCode || props.hospitalCode || "";
+  const hospitalNameTh = renderData.hospital.nameTh || subject?.hospitalNameTh || subject?.hospitalName || props.hospitalName || "TrustCare Network";
+  const hospitalNameEn = renderData.hospital.nameEn || subject?.hospitalName || "";
+  const systemRole = subject?.systemRole || "";
+  const employeeId = humanDoc?.renderData?.document?.no || subject?.staffId || "—";
+  const department = subject?.department || "";
+  const email = subject?.email || "";
+  const phone = subject?.phone || "";
+
+  const brand = getHospitalBrand(hospitalCode);
+
+  // Determine gender from name prefix for photo
+  const isFemale = fullNameTh.startsWith("นาง") || fullNameTh.startsWith("พญ.") || fullNameTh.includes("Ms.") || fullNameTh.includes("Mrs.");
+  const photoSources = practitionerPhotoSources({
+    primaryUrl: props.patientPhotoUrl,
+    practitioner: { name: fullNameTh, role: systemRole },
+    role: systemRole,
+    gender: isFemale ? "female" : "male",
+  });
+
+  return (
+    <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
+      {/* Header */}
+      <div className={`bg-gradient-to-r ${brand.gradient} p-6 text-white relative overflow-hidden`}>
+        <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-12 translate-x-12" />
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-6 -translate-x-6" />
+        <div className="relative flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
+              <Shield className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs opacity-70 tracking-wider uppercase">บัตรประจำตัวเจ้าหน้าที่</p>
+              <p className="font-bold text-lg">{hospitalNameTh}</p>
+              {hospitalNameEn && <p className="text-xs opacity-70">{hospitalNameEn}</p>}
+            </div>
+          </div>
+          <StatusBadge status={props.status} />
+        </div>
+      </div>
+
+      {/* Body */}
+      <CardContent className="p-6">
+        <div className="flex gap-5">
+          {/* Photo */}
+          <div className="shrink-0">
+            <div className="h-32 w-24 rounded-xl overflow-hidden border-2 border-gray-200 shadow-lg ring-2 ring-offset-2 ring-gray-100 bg-muted flex items-center justify-center">
+              <PersonPhoto
+                sources={photoSources}
+                alt=""
+                className="h-full w-full object-cover"
+                fallback={<User className="h-8 w-8 text-muted-foreground" />}
+              />
+            </div>
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 space-y-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">ชื่อ-นามสกุล</p>
+              <p className="font-bold text-xl leading-tight">{fullNameTh}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-muted/40 rounded-lg p-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">ตำแหน่ง</p>
+                <p className="text-sm font-bold">{position}</p>
+                {positionEn && <p className="text-[10px] text-muted-foreground">{positionEn}</p>}
+              </div>
+              <div className="bg-muted/40 rounded-lg p-2">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">รหัสพนักงาน</p>
+                <p className="font-mono text-xs font-bold">{employeeId}</p>
+              </div>
+            </div>
+            {licenseNo && (
+              <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-2">
+                <p className="text-[10px] uppercase tracking-wider text-emerald-700">เลขที่ใบอนุญาต</p>
+                <p className="font-mono text-sm font-bold text-emerald-800">{licenseNo}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Additional Info */}
+        {(department || email || phone) && (
+          <>
+            <Separator className="my-4" />
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {department && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">แผนก</p>
+                  <p className="font-medium">{department}</p>
+                </div>
+              )}
+              {email && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">อีเมล</p>
+                  <p className="font-medium text-xs">{email}</p>
+                </div>
+              )}
+              {phone && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">โทรศัพท์</p>
+                  <p className="font-medium">{phone}</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <Separator className="my-4" />
+        <DocumentFooter
+          issuedAt={props.issuedAt}
+          expiresAt={props.expiresAt}
+          documentNo={humanDoc?.renderData?.document?.no || employeeId}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Patient Identity Card Template ───────────────────────────────────────────
 function PatientIdentityCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
@@ -1091,7 +1224,7 @@ export function CredentialRenderer(props: CredentialRendererProps) {
   let content: React.ReactNode;
   switch (type) {
     case "patient_identity": content = <PatientIdentityCard props={props} />; break;
-    case "staff_identity": content = <PatientIdentityCard props={props} />; break;
+    case "staff_identity": content = <StaffIdentityCard props={props} />; break;
     case "medical_certificate": content = <MedicalCertificateCard props={props} />; break;
     case "prescription": content = <PrescriptionCard props={props} />; break;
     case "lab_result": content = <LabResultCard props={props} />; break;

@@ -825,3 +825,29 @@
 - [x] All 332 tests pass, 0 TypeScript errors
 - [x] Update Architecture docs
 - [x] Push to GitHub
+
+## v3.29.0 - Staff Card Fix + Role-Based Card Visibility
+
+- [ ] Fix staff identity card template (currently shows "บัตรประจำตัวผู้ป่วย" instead of "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล")
+- [ ] Ensure all staff users have staff_identity credentials with full data (name, position, hospital)
+- [ ] Fix นพ.สมชาย (system_admin) missing staff card
+- [ ] Fix role-based card visibility: staff role sees only staff cards, patient role sees only patient cards
+- [ ] Staff card must show: ชื่อ-นามสกุล, ตำแหน่ง, สังกัดโรงพยาบาล, employee ID
+- [ ] Patient card must show: ชื่อ-นามสกุล, HN, CarePass ID
+- [ ] Update Architecture docs
+- [ ] Push to GitHub
+
+## v3.30.0 - Staff Test Users + Complete VC/VP for All Hospitals & Partners
+
+- [x] Add staff test users for TCP (Phuket): doctor, nurse, hospital_admin
+- [x] Add staff test users for TCM (Chiang Mai): hospital_admin
+- [x] Add partner staff test users (external hospitals: Siriraj, Bumrungrad)
+- [x] Fix system_admin (นพ.สมชาย) hospitalId=null → assign to TCC as HQ
+- [x] Fix integration_engineer (นายปิยะ) hospitalId=null → assign to TCC as HQ
+- [x] Set avatarUrl for ALL staff users based on role/gender
+- [x] Seed staff_identity credentials for ALL staff with complete credentialData
+- [x] Verify staff sees only their own staff_identity card (not patient cards)
+- [x] Verify patient sees only their own patient_identity card (not staff cards)
+- [x] Verify VP/QR generation works for staff cards
+- [x] Verify StaffIdentityCard template renders correctly (name, position, hospital, license, employee ID)
+- [x] Run tests, push to GitHub

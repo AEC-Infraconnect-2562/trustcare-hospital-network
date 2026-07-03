@@ -8,20 +8,52 @@ import { TRUSTCARE_DEMO_HOSPITALS } from "./portability/seedData";
 // TCC = TrustCare Central (Bangkok), TCP = TrustCare Phuket, TCM = TrustCare Chiang Mai
 // The old codes (TC-BKK, TC-CM, TC-PKT) are DEPRECATED and must not be used.
 
+// ─── Avatar URL Helper ─────────────────────────────────────────────────────────
+// Uses the same /api/storage-proxy/ paths as PERSON_IMAGE_URLS in shared/personImages.ts
+// DO NOT CHANGE these paths — they match the existing photo display logic
+function staffAvatarUrl(systemRole: string, gender: "male" | "female"): string {
+  if (systemRole === "nurse") return "/api/storage-proxy/nurse_female_realistic_opt_d0e35459.jpg";
+  if (systemRole === "doctor" && gender === "female") return "/api/storage-proxy/doctor_female_realistic_opt_56d94f1d.jpg";
+  if (systemRole === "doctor" && gender === "male") return "/api/storage-proxy/doctor_male_realistic_opt_b09f1058.jpg";
+  if (systemRole === "pharmacist") return "/api/storage-proxy/pharmacist_male_realistic_opt_2b3b0f56.jpg";
+  // For admin, engineer, maker, checker — use doctor images based on gender
+  if (gender === "female") return "/api/storage-proxy/doctor_female_realistic_opt_56d94f1d.jpg";
+  return "/api/storage-proxy/doctor_male_realistic_opt_b09f1058.jpg";
+}
+
 // Demo users for each systemRole
 // hospitalId uses code-based lookup at seed time (resolved dynamically)
+// NOTE: system_admin and integration_engineer now assigned to TCC as HQ
 export const DEMO_USERS = [
-  { openId: "demo-sysadmin-001", name: "นพ.สมชาย ระบบดี", email: "somchai@trustcare.th", role: "admin" as const, systemRole: "system_admin" as const, hospitalCode: null, thaiId: "1100100000001", phone: "081-000-0001" },
-  { openId: "demo-hospadmin-001", name: "นางวิภา บริหารเก่ง", email: "wipa@trustcare-central.th", role: "admin" as const, systemRole: "hospital_admin" as const, hospitalCode: "TCC", thaiId: "1100100000002", phone: "081-000-0002" },
-  { openId: "demo-doctor-001", name: "นพ.ธนวัฒน์ รักษาดี", email: "thanawat@trustcare-central.th", role: "user" as const, systemRole: "doctor" as const, hospitalCode: "TCC", thaiId: "1100100000003", phone: "081-000-0003" },
-  { openId: "demo-doctor-002", name: "พญ.สุภาพร ใจดี", email: "supaporn@trustcare-chiangmai.th", role: "user" as const, systemRole: "doctor" as const, hospitalCode: "TCM", thaiId: "1100100000004", phone: "081-000-0004" },
-  { openId: "demo-nurse-001", name: "นางสาวพิมพ์ใจ ดูแลดี", email: "pimjai@trustcare-central.th", role: "user" as const, systemRole: "nurse" as const, hospitalCode: "TCC", thaiId: "1100100000005", phone: "081-000-0005" },
-  { openId: "demo-nurse-002", name: "นายอนุชา ช่วยเหลือ", email: "anucha@trustcare-chiangmai.th", role: "user" as const, systemRole: "nurse" as const, hospitalCode: "TCM", thaiId: "1100100000006", phone: "081-000-0006" },
-  { openId: "demo-engineer-001", name: "นายปิยะ เชื่อมต่อดี", email: "piya@trustcare.th", role: "user" as const, systemRole: "integration_engineer" as const, hospitalCode: null, thaiId: "1100100000007", phone: "081-000-0007" },
-  // Demo patients — MUST match DEMO_PATIENT_MAPPING in portability/seedData.ts (Single Source of Truth)
-  { openId: "demo-patient-001", name: "นายสมชาย ใจดี", email: "somsak@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: "TCC", thaiId: "1100500123456", phone: "089-123-4567" },
-  { openId: "demo-patient-002", name: "นางสาวมาลี วัฒนา", email: "napa@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: "TCC", thaiId: "1100500234567", phone: "089-234-5678" },
-  { openId: "demo-patient-003", name: "Mr. John Williams", email: "wichai@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: "TCP", thaiId: "1100500345678", phone: "089-345-6789" },
+  // ─── TCC (TrustCare Central, Bangkok) ─────────────────────────────────────
+  { openId: "demo-sysadmin-001", name: "นพ.สมชาย ระบบดี", email: "somchai@trustcare.th", role: "admin" as const, systemRole: "system_admin" as const, hospitalCode: "TCC", thaiId: "1100100000001", phone: "081-000-0001", gender: "male" as const },
+  { openId: "demo-hospadmin-001", name: "นางวิภา บริหารเก่ง", email: "wipa@trustcare-central.th", role: "admin" as const, systemRole: "hospital_admin" as const, hospitalCode: "TCC", thaiId: "1100100000002", phone: "081-000-0002", gender: "female" as const },
+  { openId: "demo-doctor-001", name: "นพ.ธนวัฒน์ รักษาดี", email: "thanawat@trustcare-central.th", role: "user" as const, systemRole: "doctor" as const, hospitalCode: "TCC", thaiId: "1100100000003", phone: "081-000-0003", gender: "male" as const },
+  { openId: "demo-nurse-001", name: "นางสาวพิมพ์ใจ ดูแลดี", email: "pimjai@trustcare-central.th", role: "user" as const, systemRole: "nurse" as const, hospitalCode: "TCC", thaiId: "1100100000005", phone: "081-000-0005", gender: "female" as const },
+  { openId: "demo-engineer-001", name: "นายปิยะ เชื่อมต่อดี", email: "piya@trustcare.th", role: "user" as const, systemRole: "integration_engineer" as const, hospitalCode: "TCC", thaiId: "1100100000007", phone: "081-000-0007", gender: "male" as const },
+
+  // ─── TCP (TrustCare Phuket International) ──────────────────────────────────
+  { openId: "demo-hospadmin-002", name: "นายวีระ ภูเก็ตดี", email: "weera@trustcare-phuket.th", role: "admin" as const, systemRole: "hospital_admin" as const, hospitalCode: "TCP", thaiId: "1830100000001", phone: "076-000-0001", gender: "male" as const },
+  { openId: "demo-doctor-003", name: "นพ.ภาณุ ทะเลใส", email: "panu@trustcare-phuket.th", role: "user" as const, systemRole: "doctor" as const, hospitalCode: "TCP", thaiId: "1830100000002", phone: "076-000-0002", gender: "male" as const },
+  { openId: "demo-doctor-004", name: "พญ.นภา อันดามัน", email: "napa@trustcare-phuket.th", role: "user" as const, systemRole: "doctor" as const, hospitalCode: "TCP", thaiId: "1830100000003", phone: "076-000-0003", gender: "female" as const },
+  { openId: "demo-nurse-003", name: "นางสาวจันทร์ ดูแลใจ", email: "jan@trustcare-phuket.th", role: "user" as const, systemRole: "nurse" as const, hospitalCode: "TCP", thaiId: "1830100000004", phone: "076-000-0004", gender: "female" as const },
+
+  // ─── TCM (TrustCare Chiang Mai Cross-Border) ───────────────────────────────
+  { openId: "demo-hospadmin-003", name: "นางสาวดาว เชียงใหม่ดี", email: "dao@trustcare-chiangmai.th", role: "admin" as const, systemRole: "hospital_admin" as const, hospitalCode: "TCM", thaiId: "1500100000001", phone: "053-000-0001", gender: "female" as const },
+  { openId: "demo-doctor-002", name: "พญ.สุภาพร ใจดี", email: "supaporn@trustcare-chiangmai.th", role: "user" as const, systemRole: "doctor" as const, hospitalCode: "TCM", thaiId: "1100100000004", phone: "081-000-0004", gender: "female" as const },
+  { openId: "demo-doctor-005", name: "นพ.เกรียงไกร ล้านนา", email: "kriangkrai@trustcare-chiangmai.th", role: "user" as const, systemRole: "doctor" as const, hospitalCode: "TCM", thaiId: "1500100000002", phone: "053-000-0002", gender: "male" as const },
+  { openId: "demo-nurse-002", name: "นายอนุชา ช่วยเหลือ", email: "anucha@trustcare-chiangmai.th", role: "user" as const, systemRole: "nurse" as const, hospitalCode: "TCM", thaiId: "1100100000006", phone: "081-000-0006", gender: "male" as const },
+  { openId: "demo-nurse-004", name: "นางสาวแพร ดอยสุเทพ", email: "prae@trustcare-chiangmai.th", role: "user" as const, systemRole: "nurse" as const, hospitalCode: "TCM", thaiId: "1500100000003", phone: "053-000-0003", gender: "female" as const },
+
+  // ─── Partner Staff (External Hospitals — for cross-verification testing) ────
+  // These use TCC as their hospitalCode for credential issuance but represent partner orgs
+  { openId: "demo-partner-siriraj-001", name: "นพ.ประสิทธิ์ ศิริราชดี", email: "prasit@siriraj.or.th", role: "user" as const, systemRole: "doctor" as const, hospitalCode: "TCC", thaiId: "1100200000001", phone: "02-419-0001", gender: "male" as const },
+  { openId: "demo-partner-bumrungrad-001", name: "Dr. Sarah Chen", email: "sarah.chen@bumrungrad.com", role: "user" as const, systemRole: "doctor" as const, hospitalCode: "TCC", thaiId: "1100200000002", phone: "02-066-0001", gender: "female" as const },
+
+  // ─── Demo Patients — MUST match DEMO_PATIENT_MAPPING in portability/seedData.ts ─
+  { openId: "demo-patient-001", name: "นายสมชาย ใจดี", email: "somsak@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: "TCC", thaiId: "1100500123456", phone: "089-123-4567", gender: "male" as const },
+  { openId: "demo-patient-002", name: "นางสาวมาลี วัฒนา", email: "napa@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: "TCC", thaiId: "1100500234567", phone: "089-234-5678", gender: "female" as const },
+  { openId: "demo-patient-003", name: "Mr. John Williams", email: "wichai@gmail.com", role: "user" as const, systemRole: "patient" as const, hospitalCode: "TCP", thaiId: "1100500345678", phone: "089-345-6789", gender: "male" as const },
 ];
 
 function demoCredentialEntitlements(openId: string, systemRole: string) {
@@ -33,7 +65,7 @@ function demoCredentialEntitlements(openId: string, systemRole: string) {
       checkerTypes: [],
     };
   }
-  if (openId.includes("doctor")) {
+  if (openId.includes("doctor") || openId.includes("partner")) {
     return {
       makerTypes: ["patient_summary", "medical_certificate", "prescription", "referral_vc", "shl_manifest"],
       checkerTypes: ["patient_summary", "medical_certificate", "prescription", "referral_vc", "discharge_summary", "lab_result", "diagnostic_report", "shl_manifest"],
@@ -50,10 +82,13 @@ const DEMO_DEPARTMENTS = [
   { hospitalCode: "TCC", name: "อายุรกรรม", code: "MED" },
   { hospitalCode: "TCC", name: "ศัลยกรรม", code: "SUR" },
   { hospitalCode: "TCC", name: "กุมารเวชกรรม", code: "PED" },
+  { hospitalCode: "TCC", name: "ระบบสารสนเทศ", code: "IT" },
   { hospitalCode: "TCM", name: "อายุรกรรม", code: "MED" },
   { hospitalCode: "TCM", name: "สูตินรีเวชกรรม", code: "OBG" },
+  { hospitalCode: "TCM", name: "ศูนย์ข้ามแดน", code: "XBR" },
   { hospitalCode: "TCP", name: "เวชศาสตร์ฉุกเฉิน", code: "ER" },
   { hospitalCode: "TCP", name: "อายุรกรรม", code: "MED" },
+  { hospitalCode: "TCP", name: "ศูนย์ผู้ป่วยต่างชาติ", code: "INTL" },
 ];
 
 // TAO Trust Registry seed — external trusted issuers/verifiers (NOT TrustCare's own hospitals)
@@ -200,9 +235,13 @@ export async function seedDatabase() {
   }
   console.log("[Seed] Departments seeded");
 
-  // ─── 3. Seed Users ──────────────────────────────────────────────────────────
+  // ─── 3. Seed Users (with avatarUrl) ─────────────────────────────────────────
   for (const u of DEMO_USERS) {
     const hospitalId = u.hospitalCode ? (hospitalIdMap.get(u.hospitalCode) ?? null) : null;
+    const avatar = u.systemRole === "patient"
+      ? (u.gender === "female" ? "/api/storage-proxy/patient_female_realistic_opt_d0edb245.jpg" : "/api/storage-proxy/patient_male_realistic_opt_e9b1630b.jpg")
+      : staffAvatarUrl(u.systemRole, u.gender);
+
     await db.insert(users).values({
       openId: u.openId,
       name: u.name,
@@ -212,6 +251,7 @@ export async function seedDatabase() {
       hospitalId,
       thaiId: u.thaiId,
       phone: u.phone,
+      avatarUrl: avatar,
       credentialEntitlements: demoCredentialEntitlements(u.openId, u.systemRole),
       loginMethod: "demo",
       isActive: true,
@@ -225,22 +265,32 @@ export async function seedDatabase() {
         hospitalId,
         thaiId: u.thaiId,
         phone: u.phone,
+        avatarUrl: avatar,
         credentialEntitlements: demoCredentialEntitlements(u.openId, u.systemRole),
         isActive: true,
       },
     });
   }
-  console.log("[Seed] Users seeded");
+  console.log("[Seed] Users seeded (all hospitals + partners)");
 
   // ─── 4. Assign additional roles (Maker/Checker) ─────────────────────────────
   const tccId = hospitalIdMap.get("TCC");
   const tcmId = hospitalIdMap.get("TCM");
+  const tcpId = hospitalIdMap.get("TCP");
 
   const additionalRoleAssignments = [
+    // TCC
     { openId: "demo-nurse-001", role: "issuer_maker", scope: tccId ? `hospital:${tccId}` : "hospital:TCC" },
     { openId: "demo-doctor-001", role: "issuer_checker", scope: tccId ? `hospital:${tccId}` : "hospital:TCC" },
+    // TCM
     { openId: "demo-nurse-002", role: "issuer_maker", scope: tcmId ? `hospital:${tcmId}` : "hospital:TCM" },
+    { openId: "demo-nurse-004", role: "issuer_maker", scope: tcmId ? `hospital:${tcmId}` : "hospital:TCM" },
     { openId: "demo-doctor-002", role: "issuer_checker", scope: tcmId ? `hospital:${tcmId}` : "hospital:TCM" },
+    { openId: "demo-doctor-005", role: "issuer_checker", scope: tcmId ? `hospital:${tcmId}` : "hospital:TCM" },
+    // TCP
+    { openId: "demo-nurse-003", role: "issuer_maker", scope: tcpId ? `hospital:${tcpId}` : "hospital:TCP" },
+    { openId: "demo-doctor-003", role: "issuer_checker", scope: tcpId ? `hospital:${tcpId}` : "hospital:TCP" },
+    { openId: "demo-doctor-004", role: "issuer_checker", scope: tcpId ? `hospital:${tcpId}` : "hospital:TCP" },
   ];
 
   for (const assignment of additionalRoleAssignments) {
@@ -258,7 +308,7 @@ export async function seedDatabase() {
       isActive: true,
     });
   }
-  console.log("[Seed] Additional roles (Maker/Checker) assigned");
+  console.log("[Seed] Additional roles (Maker/Checker) assigned for all hospitals");
 
   // ─── 5. Seed TAO Trust Registry (External Trusted Issuers/Verifiers) ────────
   for (const issuer of TAO_TRUSTED_ISSUERS_SEED) {
