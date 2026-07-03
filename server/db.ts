@@ -39,6 +39,7 @@ import {
   claimPayments, InsertClaimPayment,
   payerRulesets, InsertPayerRuleset,
   patientUploadedDocuments, InsertPatientUploadedDocument,
+  shlManifestDocuments, InsertShlManifestDocument,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isIssuerPrivilegeRole, isPatientRole } from "@shared/rolePolicy";
@@ -1071,6 +1072,49 @@ export async function listShlAccessLogs(shlId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(shlAccessLogs).where(eq(shlAccessLogs.shlId, shlId)).orderBy(desc(shlAccessLogs.accessedAt));
+}
+
+// ============================================================
+// SHL MANIFEST DOCUMENTS
+// ============================================================
+export async function listShlManifestDocuments(shlId: number, manifestVersion?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(shlManifestDocuments.shlId, shlId)];
+  if (manifestVersion) conditions.push(eq(shlManifestDocuments.manifestVersion, manifestVersion));
+  return db.select().from(shlManifestDocuments).where(and(...conditions)).orderBy(shlManifestDocuments.sequence);
+}
+
+export async function upsertShlManifestDocument(data: InsertShlManifestDocument) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(shlManifestDocuments)
+    .where(and(
+      eq(shlManifestDocuments.shlId, data.shlId),
+      eq(shlManifestDocuments.manifestVersion, data.manifestVersion ?? 1),
+      eq(shlManifestDocuments.documentId, data.documentId),
+    )).limit(1);
+  if (existing.length > 0) {
+    await db.update(shlManifestDocuments).set(data as any).where(eq(shlManifestDocuments.id, existing[0].id));
+    return existing[0].id;
+  }
+  const result = await db.insert(shlManifestDocuments).values(data);
+  return result[0].insertId;
+}
+
+export async function bulkInsertShlManifestDocuments(docs: InsertShlManifestDocument[]) {
+  const db = await getDb();
+  if (!db) return;
+  if (docs.length === 0) return;
+  await db.insert(shlManifestDocuments).values(docs);
+}
+
+export async function deleteShlManifestDocuments(shlId: number, manifestVersion?: number) {
+  const db = await getDb();
+  if (!db) return;
+  const conditions = [eq(shlManifestDocuments.shlId, shlId)];
+  if (manifestVersion) conditions.push(eq(shlManifestDocuments.manifestVersion, manifestVersion));
+  await db.delete(shlManifestDocuments).where(and(...conditions));
 }
 
 // ============================================================

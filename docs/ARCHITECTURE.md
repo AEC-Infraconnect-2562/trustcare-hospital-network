@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.8 (Storage Proxy, Duplicate Card Revocation, OAuth Removal)
+**Version:** 5.9 (SHL Manifest Document Bundle — DB Persistence)
 **Last updated:** 2026-07-03
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -54,7 +54,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        DATABASE (MySQL/TiDB)                         │
-│  53 tables · migrations through 0013 + document_bundles/files       │
+│  60 tables · migrations through 0019 + shl_manifest_documents       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v3.28.0 | 2026-07-03 | PR #15 SHL Manifest Document Bundle — shl_manifest_documents table, DB-persisted document bundles with vcBinding/accessBinding/objectLinks, seed 55+ docs for 12 active SHLs, getManifestDocument endpoint |
 | v3.27.0 | 2026-07-03 | Storage proxy (/api/storage-proxy/) for production photo fix, duplicate card revocation rule, second patient card details fix, Manus OAuth removed (test users only) |
 | v3.26.0 | 2026-07-03 | Patient access denied fix (role-aware post-login redirect), permanent profile photo fix (PersonPhoto everywhere, no raw AvatarImage), SW v6 |
 | v3.25.0 | 2026-07-03 | Staff credential restructure (single staff_identity type with position), profile photo fix for Chrome production (SW cross-origin redirect), seed staff identity VCs for all staff users |
@@ -2230,3 +2231,90 @@ Removed Manus OAuth from the active login flow. The system now uses only demo/te
 - `client/src/const.ts`: `getLoginUrl()` retained as dead code for future External IAM integration
 
 **Future Plan**: An external IAM system will be plugged in later to replace both OAuth and demo login.
+
+---
+
+## 45. SHL Manifest Document Bundle — DB Persistence (v3.28.0 — 2026-07-03)
+
+### 45.1 Overview
+
+PR #15 introduced a new `shl_manifest_documents` table that persists the full document manifest for each Smart Health Link (SHL). Previously, the document bundle was derived at runtime from the SHL's FHIR bundle and manifest metadata. Now, the system prefers persisted data from the DB, falling back to the derived approach only when no persisted documents exist.
+
+### 45.2 New Table: `shl_manifest_documents`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | int (PK, auto) | Primary key |
+| shlId | int (FK → smart_health_links.id) | Parent SHL |
+| documentId | varchar(255) | Unique document identifier within the SHL |
+| documentType | varchar(100) | Document type (patient_identity, allergy_alert, etc.) |
+| title | varchar(255) | Human-readable title |
+| category | varchar(100) | Document category (identity, clinical_safety, etc.) |
+| sequence | int | Display order within the manifest |
+| status | varchar(50) | available_in_manifest / linked_to_inactive_shl |
+| sourceRole | varchar(100) | System that produced the document (patient_wallet, his_emr, etc.) |
+| fhirResource | varchar(100) | FHIR resource type (Patient, AllergyIntolerance, etc.) |
+| shlFileId | varchar(255) | Reference to shl_files entry |
+| manifestVersion | int | Manifest version this document belongs to |
+| contentHash | varchar(255) | SHA-256 hash of encrypted content |
+| plaintextHash | varchar(255) | SHA-256 hash of plaintext content |
+| sourceBundleHash | varchar(255) | Hash of the source FHIR bundle |
+| objectLinksJson | JSON | Links to manifest, shlFile, fhirDocumentReference, fhirBundle, etc. |
+| vcBindingJson | JSON | VC binding info (recommendedCredentialType, manifestCredentialId, presentationId) |
+| accessBindingJson | JSON | Access control (passcodeRequired, expiresAt, currentAccessCount, maxAccessCount) |
+| createdAt | timestamp | Creation timestamp |
+| updatedAt | timestamp | Last update timestamp |
+
+**Unique constraint:** `(shlId, documentId)` — one document per ID per SHL.
+
+### 45.3 API Changes
+
+**`shl.getById`** — Updated to prefer persisted documents:
+1. Query `shl_manifest_documents` for the given SHL ID
+2. If documents found → return with `source: "persisted_shl_manifest_documents"`
+3. If no documents → fallback to `buildShlDocumentBundle()` with `source: "derived_from_shl_manifest_and_fhir_bundle"`
+
+**`shl.getManifestDocument`** (NEW) — Get a single document by SHL ID + document type:
+- Returns the persisted document with full vcBinding, accessBinding, objectLinks
+- Falls back to derived if not persisted
+- Response includes `source: "persisted" | "derived"`
+
+### 45.4 Seed Data
+
+All 12 active SHLs have been seeded with manifest documents covering 7 contexts:
+
+| Context | SHL IDs | Documents per SHL |
+|---------|---------|-------------------|
+| self_share | 60001 | 5 |
+| cross_branch_referral | 60002, 60034 | 5 |
+| cross_border | 60003 | 4 |
+| e_claim | 60004, 60035 | 5 |
+| medical_tourist | 60005, 60036 | 5 |
+| treatment | 60006, 60031, 60033 | 4 |
+| emergency | 60032 | 4 |
+
+Total: 55+ manifest documents seeded with full metadata.
+
+### 45.5 Document Categories
+
+| Category | Document Types | Source Role |
+|----------|---------------|-------------|
+| identity | patient_identity, travel_document | patient_wallet, international_desk |
+| clinical_summary | patient_summary | his_emr, referring_clinician |
+| clinical_safety | allergy_alert | his_emr |
+| medication | medication_summary | pharmacy_system |
+| diagnostics | lab_result, diagnostic_report | lis, ris_pacs |
+| consent | consent_receipt | patient_wallet |
+| care_transition | referral_vc | referring_hospital, referring_partner |
+| claims_finance | insurance_eligibility, claim_package, invoice, claim_receipt, medical_certificate | payer_adapter, claim_center, hospital_finance, doctor |
+| medical_tourism | quotation, guarantee_letter, visa_support_letter | international_desk, payer_or_facilitator |
+
+### 45.6 Statistics Update
+
+| Metric | Previous | Current |
+|--------|----------|---------|
+| Database tables | 59 | 60 |
+| Migrations | 0018 | 0019 |
+| Tests passing | 331 | 332 |
+| SHL manifest documents | 0 (derived only) | 55+ (persisted) |
+| TypeScript errors | 0 | 0 |

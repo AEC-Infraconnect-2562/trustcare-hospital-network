@@ -1121,6 +1121,7 @@ function ManifestDocumentBundle({ bundle, compact = false }: { bundle?: any; com
       </div>
     );
   }
+  const isPersisted = bundle.source === "persisted_shl_manifest_documents";
   return (
     <div className={compact ? "space-y-2" : "mt-4 rounded-md border bg-muted/30 p-3"}>
       {!compact && (
@@ -1131,7 +1132,12 @@ function ManifestDocumentBundle({ bundle, compact = false }: { bundle?: any; com
               Documents associated with this SHL manifest, including FHIR object links and VC/VP trust bindings.
             </p>
           </div>
-          <Badge variant="outline">{documents.length} documents</Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={isPersisted ? "default" : "secondary"}>
+              {isPersisted ? "DB-Persisted" : "Derived"}
+            </Badge>
+            <Badge variant="outline">{documents.length} documents</Badge>
+          </div>
         </div>
       )}
       <div className="grid gap-2">
@@ -1175,6 +1181,25 @@ function ManifestDocumentBundle({ bundle, compact = false }: { bundle?: any; com
               <ShlFieldLine label="Plaintext hash" value={shortHash(doc.hash?.plaintextHash)} />
               <ShlFieldLine label="Source bundle hash" value={shortHash(doc.hash?.sourceBundleHash)} />
             </div>
+            {doc.vcBinding && (
+              <div className="mt-3 grid gap-2 text-xs md:grid-cols-2">
+                <ShlFieldLine label="VC Issuer" value={doc.vcBinding.issuer || "pending"} />
+                <ShlFieldLine label="Proof type" value={doc.vcBinding.proofType || "pending"} />
+                {doc.vcBinding.manifestCredentialId && (
+                  <ShlFieldLine label="Manifest VC ID" value={shortHash(doc.vcBinding.manifestCredentialId)} />
+                )}
+                {doc.vcBinding.presentationId && (
+                  <ShlFieldLine label="VP ID" value={shortHash(doc.vcBinding.presentationId)} />
+                )}
+              </div>
+            )}
+            {doc.accessBinding && (
+              <div className="mt-2 grid gap-2 text-xs md:grid-cols-3">
+                <ShlFieldLine label="Access policy" value={doc.accessBinding.accessPolicy || "open_link"} />
+                <ShlFieldLine label="Passcode" value={doc.accessBinding.requiresPasscode ? "Required" : "None"} />
+                <ShlFieldLine label="Audit log" value={doc.accessBinding.auditLogEnabled ? "Enabled" : "Disabled"} />
+              </div>
+            )}
             <div className="mt-3 rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
               Associated trust: Manifest VC proves the manifest and hashes; Holder VP proves patient/holder consent around this SHL; access policy applies passcode, expiry, access count, and revocation.
             </div>

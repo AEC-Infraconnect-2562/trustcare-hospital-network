@@ -134,6 +134,13 @@
       "when": 1783083449233,
       "tag": "0018_unusual_black_widow",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1783093281360,
+      "tag": "0019_youthful_vanisher",
+      "breakpoints": true
     }
   ]
 }

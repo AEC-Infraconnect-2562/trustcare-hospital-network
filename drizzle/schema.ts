@@ -1,4 +1,4 @@
-import { int, bigint, mediumtext, mysqlEnum, mysqlTable, text, timestamp, varchar, json, boolean, index } from "drizzle-orm/mysql-core";
+import { int, bigint, mediumtext, mysqlEnum, mysqlTable, text, timestamp, varchar, json, boolean, index, uniqueIndex } from "drizzle-orm/mysql-core";
 
 // ============================================================
 // USER & AUTH
@@ -1476,3 +1476,38 @@ export const patientUploadedDocuments = mysqlTable("patient_uploaded_documents",
 ]));
 export type PatientUploadedDocument = typeof patientUploadedDocuments.$inferSelect;
 export type InsertPatientUploadedDocument = typeof patientUploadedDocuments.$inferInsert;
+
+
+// ============================================================
+// SHL MANIFEST DOCUMENTS (PR #15 - Persistent Document Bundle)
+// ============================================================
+export const shlManifestDocuments = mysqlTable("shl_manifest_documents", {
+  id: int("id").autoincrement().primaryKey(),
+  shlId: int("shlId").notNull(),
+  manifestVersion: int("manifestVersion").default(1).notNull(),
+  documentId: varchar("documentId", { length: 128 }).notNull(),
+  sequence: int("sequence").notNull(),
+  documentType: varchar("documentType", { length: 128 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  category: varchar("category", { length: 128 }).notNull(),
+  status: varchar("status", { length: 64 }).notNull(),
+  sourceRole: varchar("sourceRole", { length: 128 }).notNull(),
+  fhirResource: varchar("fhirResource", { length: 64 }).notNull(),
+  fhirDocumentReferenceId: varchar("fhirDocumentReferenceId", { length: 255 }),
+  shlFileId: varchar("shlFileId", { length: 128 }),
+  contentHash: varchar("contentHash", { length: 128 }),
+  plaintextHash: varchar("plaintextHash", { length: 128 }),
+  sourceBundleHash: varchar("sourceBundleHash", { length: 255 }),
+  manifestCredentialId: varchar("manifestCredentialId", { length: 255 }),
+  presentationId: varchar("presentationId", { length: 255 }),
+  objectLinksJson: json("objectLinksJson").notNull(),
+  vcBindingJson: json("vcBindingJson").notNull(),
+  accessBindingJson: json("accessBindingJson").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  uniqueIndex("uq_shl_manifest_doc").on(table.shlId, table.manifestVersion, table.documentId),
+  index("idx_smd_shl").on(table.shlId),
+  index("idx_smd_type").on(table.documentType),
+]));
+export type ShlManifestDocument = typeof shlManifestDocuments.$inferSelect;
+export type InsertShlManifestDocument = typeof shlManifestDocuments.$inferInsert;

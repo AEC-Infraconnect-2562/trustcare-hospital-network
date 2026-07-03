@@ -811,3 +811,17 @@
 - [x] Remove Manus OAuth from login flow (useAuth redirects to / instead of OAuth URL)
 - [x] Update Architecture Documents
 - [x] Run tests (331 pass, 0 TS errors), save checkpoint, push to GitHub
+
+## v3.28.0 - PR #15 SHL Manifest Document Bundle (DB + Seed + Production Validation)
+
+- [x] Merge PR #15 branch (feature/shl-manifest-document-bundle) into main
+- [x] Create shl_manifest_documents table (schema + migration 0019 + SQL applied)
+- [x] Add DB helpers: createShlManifestDocument, listShlManifestDocuments, deleteShlManifestDocuments
+- [x] Update shl.getById router to prefer persisted docs from DB, fallback to derived
+- [x] Add shl.getManifestDocument endpoint for individual document access
+- [x] Seed all 12 active SHLs with full manifest documents (55+ documents total)
+- [x] Validate API returns persisted_shl_manifest_documents source for all seeded SHLs
+- [x] Validate vcBinding, accessBinding, objectLinks, hash present in all documents
+- [x] All 332 tests pass, 0 TypeScript errors
+- [x] Update Architecture docs
+- [x] Push to GitHub

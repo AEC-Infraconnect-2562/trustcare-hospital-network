@@ -2479,13 +2479,102 @@ export const appRouter = router({
       const shl = await db.getShlById(input.id);
       if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
       await assertCanViewShl(ctx, shl);
-      const [files, versions, accessLogs] = await Promise.all([
+      const [files, versions, accessLogs, persistedDocs] = await Promise.all([
         db.listShlFiles(shl.id, shl.currentManifestVersion ?? 1),
         db.listShlManifestVersions(shl.id),
         db.listShlAccessLogs(shl.id),
+        db.listShlManifestDocuments(shl.id, shl.currentManifestVersion ?? 1),
       ]);
-      const documentBundle = buildShlDocumentBundle(shl, files);
+      // Prefer persisted manifest documents from DB; fallback to derived if none exist
+      let documentBundle;
+      if (persistedDocs.length > 0) {
+        const manifestVersion = shl.currentManifestVersion ?? 1;
+        documentBundle = {
+          bundleId: `shl-bundle-${shl.id}-v${manifestVersion}`,
+          manifestVersion,
+          source: "persisted_shl_manifest_documents",
+          bindingModel: "SHL manifest file -> FHIR Bundle/DocumentReference -> VC/VP trust links",
+          standards: ["SMART Health Links files[]", "HL7 FHIR Bundle", "HL7 FHIR DocumentReference", "W3C VC/VP"],
+          status: shl.status,
+          documents: persistedDocs.map((d) => ({
+            id: d.documentId,
+            sequence: d.sequence,
+            title: d.title,
+            documentType: d.documentType,
+            category: d.category,
+            status: d.status,
+            sourceRole: d.sourceRole,
+            fhirResource: d.fhirResource,
+            contentType: "application/fhir+json",
+            manifestFileId: d.shlFileId,
+            manifestVersion: d.manifestVersion,
+            hash: {
+              contentHash: d.contentHash,
+              plaintextHash: d.plaintextHash,
+              sourceBundleHash: d.sourceBundleHash,
+            },
+            objectLinks: d.objectLinksJson as any,
+            vcBinding: d.vcBindingJson as any,
+            accessBinding: d.accessBindingJson as any,
+          })),
+          files: files.map((file) => ({
+            id: file.id,
+            fileId: file.fileId,
+            contentType: file.contentType,
+            manifestVersion: file.manifestVersion,
+            contentHash: file.contentHash,
+            plaintextHash: file.plaintextHash,
+            location: file.location,
+            embedded: Boolean(file.embeddedJwe),
+            metadata: file.metadata,
+            objectLinks: {
+              shlFile: `shl://${shl.id}/versions/${file.manifestVersion ?? manifestVersion}/files/${file.fileId}`,
+              manifest: shl.manifestUrl,
+              sourceBundle: shl.sourceBundleHash ? `Bundle/${shl.sourceBundleHash}` : undefined,
+            },
+          })),
+        };
+      } else {
+        documentBundle = buildShlDocumentBundle(shl, files);
+      }
       return { ...shl, files, versions, accessLogs, documentBundle };
+    }),
+    getManifestDocument: protectedProcedure.input(z.object({
+      shlId: z.number(),
+      documentType: z.string(),
+      manifestVersion: z.number().optional(),
+    })).query(async ({ ctx, input }) => {
+      const shl = await db.getShlById(input.shlId);
+      if (!shl) throw new TRPCError({ code: "NOT_FOUND", message: "SHL not found" });
+      await assertCanViewShl(ctx, shl);
+      const version = input.manifestVersion ?? shl.currentManifestVersion ?? 1;
+      const docs = await db.listShlManifestDocuments(shl.id, version);
+      const doc = docs.find((d) => d.documentType === input.documentType);
+      if (!doc) {
+        // Fallback: derive from buildShlDocumentBundle
+        const files = await db.listShlFiles(shl.id, version);
+        const bundle = buildShlDocumentBundle(shl, files);
+        const derived = bundle.documents.find((d) => d.documentType === input.documentType);
+        if (!derived) throw new TRPCError({ code: "NOT_FOUND", message: "Document type not found in manifest" });
+        return { ...derived, source: "derived" };
+      }
+      return {
+        id: doc.documentId,
+        sequence: doc.sequence,
+        title: doc.title,
+        documentType: doc.documentType,
+        category: doc.category,
+        status: doc.status,
+        sourceRole: doc.sourceRole,
+        fhirResource: doc.fhirResource,
+        shlFileId: doc.shlFileId,
+        manifestVersion: doc.manifestVersion,
+        hash: { contentHash: doc.contentHash, plaintextHash: doc.plaintextHash, sourceBundleHash: doc.sourceBundleHash },
+        objectLinks: doc.objectLinksJson,
+        vcBinding: doc.vcBindingJson,
+        accessBinding: doc.accessBindingJson,
+        source: "persisted",
+      };
     }),
     create: protectedProcedure.input(z.object({
       patientId: z.number().optional(),
