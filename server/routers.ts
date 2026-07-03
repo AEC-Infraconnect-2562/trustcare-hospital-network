@@ -560,10 +560,12 @@ export const appRouter = router({
       const cards = await db.listWalletCards(ctx.user.id);
       const allCreds = await db.listIssuedCredentials({ subjectId: ctx.user.id });
       const credMap = new Map(allCreds.map((c: any) => [c.id, c]));
+      const patientAvatarUrl = (ctx.user as any)?.avatarUrl ?? null;
       const enriched = cards.map((card: any) => {
         const cred = credMap.get(card.credentialId);
         return {
           ...card,
+          patientAvatarUrl,
           credentialStatus: cred?.status || 'active',
           expiresAt: cred?.expiresAt || null,
           credentialData: cred?.credentialData || null,
@@ -4951,11 +4953,14 @@ function resolveWalletPatientId(ctx: any, requestedPatientId?: number) {
 async function enrichedWalletCards(patientId: number) {
   const cards = await db.listWalletCards(patientId);
   const allCreds = await db.listIssuedCredentials({ subjectId: patientId });
+  const patient = await db.getUserById(patientId);
+  const patientAvatarUrl = patient?.avatarUrl ?? null;
   const credMap = new Map(allCreds.map((credential: any) => [credential.id, credential]));
   return cards.map((card: any) => {
     const cred = credMap.get(card.credentialId);
     return {
       ...card,
+      patientAvatarUrl,
       credentialStatus: cred?.status || "active",
       expiresAt: cred?.expiresAt || null,
       credentialData: cred?.credentialData || null,

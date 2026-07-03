@@ -60,16 +60,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Switch } from "@/components/ui/switch";
 import { Wifi, WifiOff, CloudDownload, Download } from "lucide-react";
 import { exportWalletCardPdf } from "@/lib/pdfExport";
-
-// Avatar URLs for wallet card thumbnails (AI-generated realistic photos)
-const AVATAR_URLS = {
-  male: "/manus-storage/patient_male_realistic_opt_e9b1630b.jpg",
-  female: "/manus-storage/patient_female_realistic_opt_d0edb245.jpg",
-  nurse: "/manus-storage/nurse_female_realistic_opt_d0e35459.jpg",
-  pharmacist: "/manus-storage/pharmacist_male_realistic_opt_2b3b0f56.jpg",
-  radiologist: "/manus-storage/radiologist_realistic_bd97425d.jpg",
-  medTech: "/manus-storage/med_tech_realistic_78575c20.jpg",
-};
+import { PersonPhoto } from "@/components/PersonPhoto";
+import { patientPhotoSources } from "@shared/personImages";
 
 const PHOTO_TYPES = ["patient_identity", "identity", "medical_certificate"];
 
@@ -564,47 +556,18 @@ export default function Wallet() {
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex items-center gap-3 min-w-0">
                                 {showPhoto ? (
-                                  <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-white/30 shadow-sm shrink-0 bg-white/10">
-                                    <img
-                                      src={(() => {
-                                        // Prefer user's actual avatar from auth (uploaded or DB-stored)
-                                        if ((auth as any)?.avatarUrl)
-                                          return (auth as any).avatarUrl;
-                                        const subject =
-                                          card.credentialData
-                                            ?.credentialSubject ||
-                                          card.credentialData;
-                                        const patient = subject?.patient || {};
-                                        if (
-                                          patient.gender === "female" ||
-                                          patient.sex === "F"
-                                        )
-                                          return AVATAR_URLS.female;
-                                        const name =
-                                          patient.nameTh ||
-                                          patient.fullNameTh ||
-                                          patient.nameEn ||
-                                          card.displayName ||
-                                          "";
-                                        if (
-                                          name.startsWith("นาง") ||
-                                          name.startsWith("Ms.") ||
-                                          name.startsWith("Mrs.")
-                                        )
-                                          return AVATAR_URLS.female;
-                                        return AVATAR_URLS.male;
-                                      })()}
+                                  <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-white/30 shadow-sm shrink-0 bg-white/10 flex items-center justify-center">
+                                    <PersonPhoto
+                                      sources={patientPhotoSources({
+                                        primaryUrl: card.patientAvatarUrl || (auth as any)?.avatarUrl,
+                                        credentialData: card.credentialData,
+                                      })}
                                       alt=""
                                       className="h-full w-full object-cover"
                                       width={40}
                                       height={48}
                                       loading="eager"
-                                     
-                                      onError={e => {
-                                        (
-                                          e.target as HTMLImageElement
-                                        ).style.display = "none";
-                                      }}
+                                      fallback={<User className="h-5 w-5 text-white/80" />}
                                     />
                                   </div>
                                 ) : (
@@ -866,7 +829,7 @@ export default function Wallet() {
                     issuedAt={selectedCard.issuedAt || selectedCard.createdAt}
                     expiresAt={selectedCard.expiresAt}
                     hospitalName={selectedCard.issuerHospitalName}
-                    patientPhotoUrl={(auth as any)?.avatarUrl}
+                    patientPhotoUrl={selectedCard.patientAvatarUrl || (auth as any)?.avatarUrl}
                   />
                 ) : (
                   <div
