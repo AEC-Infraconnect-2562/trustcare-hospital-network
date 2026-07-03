@@ -742,3 +742,15 @@
 - [x] Add VC/VP expandable section with full credential details and QR code (role-based)
 - [x] Avatar display works correctly (fallback letter when no photo, image loads when uploaded)
 - [x] Push to GitHub
+
+## v3.21.0 - SHL + VC/VP Packet Trust Layer (PR #13 merge + validation)
+- [x] Merge PR #13 and resolve any conflicts
+- [x] Run pnpm check (0 TS errors), pnpm test (324 tests pass), pnpm build (success)
+- [x] Validate wallet_cards binding: 22 cards for patient id=414, all with matching issued_credentials + HAS_VC
+- [x] Validate single-document VC/VP path: wallet.present procedure ready, VPs created on-demand
+- [x] Validate SHL packages: 12 active (exceeds required 6), all with manifestUrl/Hash/srcBundleHash/credId/presId
+- [x] Validate prepareWorkbench: 10 service_readiness_contracts, contract_artifacts table ready
+- [x] Validate /contract-admin authorization: admin roles can access, patient roles forbidden
+- [x] Validate SHL passcode behavior: 5 packages with passcode, maxAttempts=5, failedAttempts=0
+- [x] Trust layer code verified: shared/trustLayer.ts with 7 exports, server/trustLayer.test.ts present
+- [x] Save checkpoint and push to GitHub
