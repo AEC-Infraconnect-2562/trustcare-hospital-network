@@ -41,6 +41,7 @@ const PartnerPortal = lazy(() => import("./pages/PartnerPortal"));
 const PatientProfile = lazy(() => import("./pages/PatientProfile"));
 const PrepareForService = lazy(() => import("./pages/PrepareForService"));
 const ServiceVerify = lazy(() => import("./pages/ServiceVerify"));
+const PatientNotifications = lazy(() => import("./pages/PatientNotifications"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 function PageLoader() {
@@ -68,6 +69,7 @@ function Router() {
         <Route path="/checker-queue" component={CheckerQueue} />
         <Route path="/verifier" component={Verifier} />
         <Route path="/consent" component={Consent} />
+        <Route path="/notifications" component={PatientNotifications} />
         <Route path="/referral" component={Referral} />
         <Route path="/cross-border" component={CrossBorder} />
         <Route path="/international" component={International} />

@@ -89,6 +89,19 @@ const routeAccessConfig: RouteAccess[] = [
     roles: ["system_admin", "hospital_admin", "doctor", "nurse", "patient"],
   },
   {
+    path: "/notifications",
+    roles: [
+      "system_admin",
+      "hospital_admin",
+      "maker",
+      "checker",
+      "doctor",
+      "nurse",
+      "integration_engineer",
+      "patient",
+    ],
+  },
+  {
     path: "/shl",
     roles: [
       "system_admin",

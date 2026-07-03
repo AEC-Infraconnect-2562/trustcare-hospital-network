@@ -700,3 +700,13 @@
 - [x] Change patient landing page after login to Patient Profile instead of Dashboard (Home.tsx redirects patient to /profile)
 - [x] Test all patient accounts see correct menu and landing page (307 tests passing)
 - [x] Save checkpoint and push to GitHub
+
+## v3.18.0 - Patient Notification Center & Consent Management
+- [x] Create patient notifications tRPC procedures (list, markRead, markAllRead, unreadCount)
+- [x] Create PatientNotifications.tsx page with notification list, read/unread status, and category filters (vc/consent/system)
+- [x] Consent management already existed (Consent.tsx) - enabled for patient role
+- [x] Consent page has: list records, revoke consent, view policies, view history, expiry alerts
+- [x] Add menu items for both pages in DashboardLayout (service_readiness group, patient role)
+- [x] Add routes in App.tsx and RoleGuard config for /notifications and /consent
+- [x] Run tests - 307 tests passing
+- [x] Push to GitHub
