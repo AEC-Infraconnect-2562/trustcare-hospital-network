@@ -27,6 +27,7 @@ import {
   Eye,
   FileBadge,
   FileCheck2,
+  FileSearch,
   FileText,
   Fingerprint,
   Globe2,
@@ -48,6 +49,8 @@ import {
   Wallet as WalletIcon,
   X,
   HeartPulse,
+  KeyRound,
+  LockKeyhole,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -204,6 +207,7 @@ export default function Wallet() {
     trpc.wallet.superseded.useQuery();
   const { data: history, isLoading: histLoading } =
     trpc.wallet.history.useQuery();
+  const { data: shlLinks, isLoading: shlLoading } = trpc.shl.list.useQuery({});
   const webAuthn = useWebAuthn();
   const { user: auth } = useAuth();
   const offlineWallet = useOfflineWallet();
@@ -229,6 +233,17 @@ export default function Wallet() {
   const [qrMode, setQrMode] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [presentation, setPresentation] = useState<any>(null);
+  const [selectedShlId, setSelectedShlId] = useState<number | null>(null);
+  const selectedShlQuery = trpc.shl.getById.useQuery(
+    { id: selectedShlId! },
+    { enabled: Boolean(selectedShlId) }
+  );
+
+  useEffect(() => {
+    if (!selectedShlId && (shlLinks ?? []).length > 0) {
+      setSelectedShlId((shlLinks as any[])[0].id);
+    }
+  }, [selectedShlId, shlLinks]);
 
   const presentMutation = trpc.wallet.present.useMutation({
     onSuccess: async data => {
@@ -460,10 +475,11 @@ export default function Wallet() {
         </div>
 
         <Tabs defaultValue="cards" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="cards">Health Cards</TabsTrigger>
-            <TabsTrigger value="superseded">ประวัติ (Superseded)</TabsTrigger>
-            <TabsTrigger value="history">การแสดงข้อมูล</TabsTrigger>
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
+            <TabsTrigger value="cards" className="whitespace-normal text-xs sm:text-sm">Health Cards</TabsTrigger>
+            <TabsTrigger value="shl" className="whitespace-normal text-xs sm:text-sm">SHL Packages</TabsTrigger>
+            <TabsTrigger value="superseded" className="whitespace-normal text-xs sm:text-sm">ประวัติ (Superseded)</TabsTrigger>
+            <TabsTrigger value="history" className="whitespace-normal text-xs sm:text-sm">การแสดงข้อมูล</TabsTrigger>
           </TabsList>
 
           <TabsContent value="cards" className="mt-4">
@@ -673,6 +689,17 @@ export default function Wallet() {
                 </div>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="shl" className="mt-4">
+            <WalletShlPackages
+              links={shlLinks as any[] | undefined}
+              isLoading={shlLoading}
+              selectedId={selectedShlId}
+              setSelectedId={setSelectedShlId}
+              selected={selectedShlQuery.data as any}
+              selectedLoading={selectedShlQuery.isLoading}
+            />
           </TabsContent>
 
           <TabsContent value="superseded" className="mt-4">
@@ -1117,3 +1144,552 @@ export default function Wallet() {
     </DashboardLayout>
   );
 }
+
+function WalletShlPackages({
+  links,
+  isLoading,
+  selectedId,
+  setSelectedId,
+  selected,
+  selectedLoading,
+}: {
+  links?: any[];
+  isLoading: boolean;
+  selectedId: number | null;
+  setSelectedId: (id: number) => void;
+  selected?: any;
+  selectedLoading: boolean;
+}) {
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const files = selected?.files ?? [];
+  const documentBundle = selected?.documentBundle ?? buildWalletFallbackDocumentBundle(selected, files);
+
+  useEffect(() => {
+    const value = selected?.viewerUrl ?? selected?.qrPayload ?? "";
+    if (!value) {
+      setQrDataUrl("");
+      return;
+    }
+    let cancelled = false;
+    QRCode.toDataURL(value, { margin: 1, width: 220 })
+      .then((url) => {
+        if (!cancelled) setQrDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setQrDataUrl("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.viewerUrl, selected?.qrPayload]);
+
+  if (isLoading) {
+    return (
+      <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+        <Skeleton className="h-72" />
+        <Skeleton className="h-72" />
+      </div>
+    );
+  }
+
+  if (!links?.length) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center gap-3 py-14 text-center">
+          <QrCode className="h-10 w-10 text-muted-foreground/40" />
+          <div>
+            <p className="font-semibold">No Smart Health Links in this wallet yet.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Create a service packet from Prepare for Service or Smart Health Links to see QR, manifest documents, and VC/VP bindings here.
+            </p>
+          </div>
+          <Button className="gap-2" onClick={() => { window.location.href = "/prepare-service"; }}>
+            <HeartPulse className="h-4 w-4" />
+            Prepare service packet
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[380px_1fr]">
+      <div className="space-y-3">
+        {links.map((link) => {
+          const active = selectedId === link.id;
+          return (
+            <div key={link.id} className="space-y-3">
+              <button
+                type="button"
+                onClick={() => setSelectedId(link.id)}
+                className={`w-full rounded-lg border bg-card p-4 text-left transition hover:border-primary ${active ? "border-primary shadow-sm ring-1 ring-primary/20" : ""}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <LockKeyhole className="h-4 w-4 text-primary" />
+                      <p className="truncate text-sm font-semibold">
+                        {link.label ?? link.purpose ?? "Smart Health Link"}
+                      </p>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {link.context ?? link.purpose} - opened {link.currentAccessCount ?? 0}
+                      {link.maxAccessCount ? ` of ${link.maxAccessCount}` : ""}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {link.manifestCredentialId && <Badge variant="outline">Manifest VC</Badge>}
+                      {link.presentationId && <Badge variant="outline">Holder VP</Badge>}
+                      {link.passcodeRequired && <Badge variant="secondary">Passcode</Badge>}
+                    </div>
+                  </div>
+                  <Badge variant={link.status === "active" ? "secondary" : "outline"}>
+                    {link.status}
+                  </Badge>
+                </div>
+              </button>
+              {active && (
+                <div className="xl:hidden">
+                  <WalletShlSelectedInline
+                    selected={selected}
+                    selectedLoading={selectedLoading}
+                    qrDataUrl={qrDataUrl}
+                    documentBundle={documentBundle}
+                    files={files}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <Card className="hidden xl:block">
+        <CardContent className="space-y-4 p-4">
+          {selectedLoading ? (
+            <Skeleton className="h-72" />
+          ) : !selected ? (
+            <div className="flex min-h-72 items-center justify-center text-sm text-muted-foreground">
+              Select an SHL package.
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Link2 className="h-5 w-5 text-primary" />
+                    <h2 className="text-lg font-semibold">{selected.label ?? selected.purpose}</h2>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    QR opens an SHL manifest. Trust is provided by the associated Manifest VC and Holder VP.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge variant={selected.status === "active" ? "secondary" : "outline"}>{selected.status}</Badge>
+                    <Badge variant="outline">{selected.context}</Badge>
+                    <Badge variant="outline">{documentBundle?.documents?.length ?? 0} manifest documents</Badge>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyWalletText(selected.viewerUrl ?? selected.qrPayload)}
+                  >
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Copy link
+                  </Button>
+                  {selected.presentationId && (
+                    <Button
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => { window.location.href = `/verifier?vp=${encodeURIComponent(selected.presentationId)}`; }}
+                    >
+                      <Shield className="h-4 w-4" />
+                      Verify VP
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[240px_1fr]">
+                <div className="rounded-lg border bg-white p-3">
+                  {qrDataUrl ? (
+                    <img src={qrDataUrl} alt="SHL QR" className="mx-auto h-52 w-52" />
+                  ) : (
+                    <div className="flex h-52 items-center justify-center text-xs text-muted-foreground">
+                      QR unavailable
+                    </div>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <WalletMetric icon={FileText} label="Manifest" value={walletShortHash(selected.manifestHash)} />
+                  <WalletMetric icon={PackageCheck} label="FHIR bundle" value={walletShortHash(selected.sourceBundleHash)} />
+                  <WalletMetric icon={Eye} label="Access used" value={walletFormatAccess(selected)} />
+                  <WalletMetric
+                    icon={CalendarDays}
+                    label="Expires"
+                    value={selected.expiresAt ? new Date(selected.expiresAt).toLocaleString("th-TH") : "No expiry"}
+                  />
+                </div>
+              </div>
+
+              <WalletManifestTrustPanel selected={selected} />
+
+              <Tabs defaultValue="documents">
+                <TabsList className="h-auto flex-wrap">
+                  <TabsTrigger value="documents">Manifest Documents</TabsTrigger>
+                  <TabsTrigger value="files">Manifest Files</TabsTrigger>
+                  <TabsTrigger value="technical">Object Links</TabsTrigger>
+                </TabsList>
+                <TabsContent value="documents" className="space-y-2">
+                  <WalletManifestDocuments bundle={documentBundle} />
+                </TabsContent>
+                <TabsContent value="files" className="space-y-2">
+                  {files.length ? files.map((file: any) => (
+                    <div key={file.id ?? file.fileId} className="rounded-md border p-3 text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{file.contentType}</p>
+                          <p className="truncate text-xs text-muted-foreground">{file.fileId}</p>
+                        </div>
+                        <Badge variant="outline">{walletShortHash(file.contentHash)}</Badge>
+                      </div>
+                    </div>
+                  )) : (
+                    <p className="rounded-md border p-4 text-sm text-muted-foreground">No manifest files loaded yet.</p>
+                  )}
+                </TabsContent>
+                <TabsContent value="technical">
+                  <div className="grid gap-2 text-xs">
+                    <WalletObjectLink label="Manifest URL" value={selected.manifestUrl} />
+                    <WalletObjectLink label="Viewer URL" value={selected.viewerUrl} />
+                    <WalletObjectLink label="SHLink payload" value={selected.qrPayload} />
+                    <WalletObjectLink label="Manifest Credential ID" value={selected.manifestCredentialId} />
+                    <WalletObjectLink label="Holder Presentation ID" value={selected.presentationId} />
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function WalletShlSelectedInline({
+  selected,
+  selectedLoading,
+  qrDataUrl,
+  documentBundle,
+  files,
+}: {
+  selected?: any;
+  selectedLoading: boolean;
+  qrDataUrl: string;
+  documentBundle?: any;
+  files: any[];
+}) {
+  if (selectedLoading) {
+    return (
+      <Card>
+        <CardContent className="p-4">
+          <Skeleton className="h-72" />
+        </CardContent>
+      </Card>
+    );
+  }
+  if (!selected) {
+    return (
+      <Card>
+        <CardContent className="flex min-h-32 items-center justify-center p-4 text-sm text-muted-foreground">
+          Loading selected SHL package...
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <CardContent className="space-y-4 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">{selected.label ?? selected.purpose}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              QR opens the SHL manifest; Manifest VC and Holder VP verify trust around the packet.
+            </p>
+          </div>
+          <Badge variant="outline">{documentBundle?.documents?.length ?? 0} documents</Badge>
+        </div>
+        <div className="rounded-lg border bg-white p-3">
+          {qrDataUrl ? (
+            <img src={qrDataUrl} alt="SHL QR" className="mx-auto h-52 w-52" />
+          ) : (
+            <div className="flex h-52 items-center justify-center text-xs text-muted-foreground">
+              QR unavailable
+            </div>
+          )}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <WalletMetric icon={Eye} label="Access used" value={walletFormatAccess(selected)} />
+          <WalletMetric
+            icon={CalendarDays}
+            label="Expires"
+            value={selected.expiresAt ? new Date(selected.expiresAt).toLocaleString("th-TH") : "No expiry"}
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => copyWalletText(selected.viewerUrl ?? selected.qrPayload)}
+          >
+            <Share2 className="mr-2 h-4 w-4" />
+            Copy link
+          </Button>
+          {selected.presentationId && (
+            <Button
+              size="sm"
+              className="gap-2"
+              onClick={() => { window.location.href = `/verifier?vp=${encodeURIComponent(selected.presentationId)}`; }}
+            >
+              <Shield className="h-4 w-4" />
+              Verify VP
+            </Button>
+          )}
+        </div>
+        <WalletManifestTrustPanel selected={selected} />
+        <Tabs defaultValue="documents">
+          <TabsList className="h-auto flex-wrap">
+            <TabsTrigger value="documents">Documents</TabsTrigger>
+            <TabsTrigger value="files">Files</TabsTrigger>
+            <TabsTrigger value="links">Links</TabsTrigger>
+          </TabsList>
+          <TabsContent value="documents" className="space-y-2">
+            <WalletManifestDocuments bundle={documentBundle} />
+          </TabsContent>
+          <TabsContent value="files" className="space-y-2">
+            {files.length ? files.map((file: any) => (
+              <div key={file.id ?? file.fileId} className="rounded-md border p-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{file.contentType}</p>
+                    <p className="truncate text-xs text-muted-foreground">{file.fileId}</p>
+                  </div>
+                  <Badge variant="outline">{walletShortHash(file.contentHash)}</Badge>
+                </div>
+              </div>
+            )) : (
+              <p className="rounded-md border p-4 text-sm text-muted-foreground">No manifest files loaded yet.</p>
+            )}
+          </TabsContent>
+          <TabsContent value="links" className="grid gap-2 text-xs">
+            <WalletObjectLink label="Manifest URL" value={selected.manifestUrl} />
+            <WalletObjectLink label="Viewer URL" value={selected.viewerUrl} />
+            <WalletObjectLink label="Manifest Credential ID" value={selected.manifestCredentialId} />
+            <WalletObjectLink label="Holder Presentation ID" value={selected.presentationId} />
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WalletManifestTrustPanel({ selected }: { selected: any }) {
+  const rows = [
+    {
+      label: "Manifest VC",
+      value: selected.manifestCredentialId,
+      detail: "Issuer signs manifest hash, source bundle hash, purpose, expiry, and SHL access policy.",
+    },
+    {
+      label: "Holder VP",
+      value: selected.presentationId,
+      detail: "Patient holder presentation binds consent/holder DID to the manifest packet.",
+    },
+    {
+      label: "Hash integrity",
+      value: selected.manifestHash && selected.sourceBundleHash ? "ready" : "",
+      detail: "Verifier compares manifest file hashes and source bundle hash before relying on documents.",
+    },
+    {
+      label: "Access policy",
+      value: selected.passcodeRequired || selected.expiresAt || selected.maxAccessCount ? "ready" : "",
+      detail: "Passcode, expiry, max access, revocation, and logs protect the shared packet.",
+    },
+  ];
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold">Verify VC/VP associated with this manifest</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Verifiers should validate the Holder VP, then inspect the Manifest VC and hash bindings around the SHL files.
+          </p>
+        </div>
+        <Badge variant="outline">{rows.filter((row) => row.value).length} of {rows.length} ready</Badge>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.label} className="rounded-md border bg-background p-3 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-medium">{row.label}</p>
+              <Badge variant={row.value ? "secondary" : "destructive"}>{row.value ? "bound" : "missing"}</Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{row.detail}</p>
+            {row.value && row.value !== "ready" && (
+              <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">{row.value}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function WalletManifestDocuments({ bundle }: { bundle?: any }) {
+  const documents = bundle?.documents ?? [];
+  if (!documents.length) {
+    return <p className="rounded-md border p-4 text-sm text-muted-foreground">No manifest documents loaded.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      {documents.map((doc: any) => (
+        <details key={doc.id ?? doc.documentType} className="rounded-md border p-3" open={Number(doc.sequence ?? 1) === 1}>
+          <summary className="cursor-pointer list-none">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <FileSearch className="h-4 w-4 text-primary" />
+                  <p className="truncate text-sm font-semibold">{doc.title}</p>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {doc.documentType} - {doc.category} - {doc.sourceRole}
+                </p>
+              </div>
+              <Badge variant={doc.status === "available_in_manifest" ? "secondary" : "outline"}>{doc.status}</Badge>
+            </div>
+          </summary>
+          <div className="mt-3 grid gap-2 text-xs md:grid-cols-2 xl:grid-cols-3">
+            <WalletObjectLink label="FHIR DocumentReference" value={doc.objectLinks?.fhirDocumentReference} />
+            <WalletObjectLink label="SHL file object" value={doc.objectLinks?.shlFile ?? doc.manifestFileId} />
+            <WalletObjectLink label="FHIR bundle" value={doc.objectLinks?.fhirBundle} />
+            <WalletObjectLink label="Manifest VC" value={doc.objectLinks?.manifestCredential} />
+            <WalletObjectLink label="Holder VP" value={doc.objectLinks?.holderPresentation} />
+            <WalletObjectLink label="Future object API" value={doc.objectLinks?.futureApi} />
+          </div>
+          <div className="mt-3 rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+            This document is disclosed through the SHL manifest file, and trust is checked through Manifest VC + Holder VP + file hashes.
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function WalletMetric({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
+  return (
+    <div className="rounded-md border p-3 text-sm">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <Icon className="h-4 w-4" />
+        <span>{label}</span>
+      </div>
+      <p className="mt-1 break-words font-medium">{value}</p>
+    </div>
+  );
+}
+
+function WalletObjectLink({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="min-w-0 rounded-md border p-2">
+      <p className="text-muted-foreground">{label}</p>
+      <p className="mt-1 truncate font-mono text-[11px]">{value || "pending"}</p>
+    </div>
+  );
+}
+
+function walletShortHash(value?: string | null) {
+  if (!value) return "pending";
+  return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-6)}` : value;
+}
+
+function walletFormatAccess(shl: any) {
+  const current = Number(shl?.currentAccessCount ?? 0);
+  const max = shl?.maxAccessCount ? Number(shl.maxAccessCount) : null;
+  return max ? `${current} opens of ${max}` : `${current} opens`;
+}
+
+function copyWalletText(value?: string | null) {
+  if (!value) return;
+  void navigator.clipboard.writeText(value);
+  toast.success("Copied");
+}
+
+function buildWalletFallbackDocumentBundle(shl: any, files: any[]) {
+  if (!shl) return undefined;
+  const context = String(shl.context ?? shl.purpose ?? "patient_summary");
+  const templates = walletManifestTemplates[context] ?? walletManifestTemplates[String(shl.purpose ?? "")] ?? walletManifestTemplates.treatment;
+  const file = files.find((row) => row.contentType === "application/fhir+json") ?? files[0] ?? {};
+  const manifestVersion = Number(shl.currentManifestVersion ?? file.manifestVersion ?? 1);
+  return {
+    bundleId: `wallet-shl-bundle-${shl.id}-v${manifestVersion}`,
+    documents: templates.map((template, index) => ({
+      ...template,
+      id: `wallet-${shl.id}-${template.documentType}`,
+      sequence: index + 1,
+      status: shl.status === "active" ? "available_in_manifest" : "linked_to_inactive_shl",
+      manifestFileId: file.fileId,
+      objectLinks: {
+        fhirDocumentReference: `DocumentReference/shl-${shl.id}-${manifestVersion}-${template.documentType}`,
+        shlFile: file.fileId ? `shl://${shl.id}/versions/${manifestVersion}/files/${file.fileId}` : undefined,
+        fhirBundle: shl.sourceBundleHash ? `Bundle/${shl.sourceBundleHash}` : undefined,
+        manifestCredential: shl.manifestCredentialId ? `Credential/${shl.manifestCredentialId}` : undefined,
+        holderPresentation: shl.presentationId ? `Presentation/${shl.presentationId}` : undefined,
+        futureApi: `/api/shl/${shl.id}/manifest-documents/${template.documentType}`,
+      },
+    })),
+  };
+}
+
+const walletManifestTemplates: Record<string, Array<{ documentType: string; title: string; category: string; sourceRole: string }>> = {
+  medical_tourist: [
+    { documentType: "travel_document", title: "Passport / travel identity", category: "identity_and_access", sourceRole: "International desk" },
+    { documentType: "patient_summary", title: "Clinical summary for pre-review", category: "clinical_summary", sourceRole: "Referring clinician" },
+    { documentType: "quotation", title: "Treatment quotation / estimate", category: "medical_tourism", sourceRole: "International desk" },
+    { documentType: "guarantee_letter", title: "Guarantee letter or payer support", category: "medical_tourism", sourceRole: "Payer or facilitator" },
+  ],
+  e_claim: [
+    { documentType: "insurance_eligibility", title: "Coverage eligibility", category: "claims_and_finance", sourceRole: "Payer adapter" },
+    { documentType: "claim_package", title: "Verified claim package", category: "claims_and_finance", sourceRole: "Claim center" },
+    { documentType: "invoice", title: "Invoice / charge summary", category: "claims_and_finance", sourceRole: "Hospital finance" },
+    { documentType: "claim_receipt", title: "Receipt / payment evidence", category: "claims_and_finance", sourceRole: "Hospital finance" },
+  ],
+  insurance: [
+    { documentType: "insurance_eligibility", title: "Coverage eligibility", category: "claims_and_finance", sourceRole: "Payer adapter" },
+    { documentType: "claim_package", title: "Verified claim package", category: "claims_and_finance", sourceRole: "Claim center" },
+    { documentType: "invoice", title: "Invoice / charge summary", category: "claims_and_finance", sourceRole: "Hospital finance" },
+    { documentType: "claim_receipt", title: "Receipt / payment evidence", category: "claims_and_finance", sourceRole: "Hospital finance" },
+  ],
+  referral: [
+    { documentType: "referral_vc", title: "Referral document", category: "care_transition", sourceRole: "Referring hospital" },
+    { documentType: "patient_summary", title: "Patient summary", category: "clinical_summary", sourceRole: "Referring clinician" },
+    { documentType: "lab_result", title: "Relevant laboratory results", category: "diagnostics_and_results", sourceRole: "LIS" },
+    { documentType: "consent_receipt", title: "Referral consent receipt", category: "identity_and_access", sourceRole: "Patient wallet" },
+  ],
+  cross_branch_referral: [
+    { documentType: "referral_vc", title: "Referral document", category: "care_transition", sourceRole: "Referring hospital" },
+    { documentType: "patient_summary", title: "Patient summary", category: "clinical_summary", sourceRole: "Referring clinician" },
+    { documentType: "lab_result", title: "Relevant laboratory results", category: "diagnostics_and_results", sourceRole: "LIS" },
+    { documentType: "consent_receipt", title: "Referral consent receipt", category: "identity_and_access", sourceRole: "Patient wallet" },
+  ],
+  emergency: [
+    { documentType: "patient_identity", title: "Patient identity", category: "identity_and_access", sourceRole: "Patient wallet" },
+    { documentType: "allergy_alert", title: "Allergy alerts", category: "clinical_summary", sourceRole: "HIS/EMR" },
+    { documentType: "medication_summary", title: "Current medications", category: "medication_and_pharmacy", sourceRole: "Pharmacy" },
+    { documentType: "patient_summary", title: "Critical conditions summary", category: "clinical_summary", sourceRole: "HIS/EMR" },
+  ],
+  treatment: [
+    { documentType: "patient_identity", title: "Patient identity", category: "identity_and_access", sourceRole: "Patient wallet" },
+    { documentType: "patient_summary", title: "Recent patient summary", category: "clinical_summary", sourceRole: "HIS/EMR" },
+    { documentType: "medication_summary", title: "Current medications", category: "medication_and_pharmacy", sourceRole: "Pharmacy" },
+    { documentType: "allergy_alert", title: "Allergy alerts", category: "clinical_summary", sourceRole: "HIS/EMR" },
+  ],
+};

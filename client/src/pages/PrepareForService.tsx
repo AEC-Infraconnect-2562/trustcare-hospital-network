@@ -38,7 +38,7 @@ import {
   WalletCards,
   Wrench,
 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { QRCodeCanvas } from "qrcode.react";
 import { toast } from "sonner";
@@ -64,6 +64,106 @@ const contextLabels: Record<ReadinessContext, { th: string; en: string }> = {
   pharmacy_dispense: { th: "จ่ายยา", en: "Pharmacy Dispense" },
 };
 
+const hospitalUseCaseUx: Record<
+  string,
+  {
+    primaryAction: string;
+    operatorGoal: string;
+    intake: string[];
+    outputs: string[];
+    nextSteps: string[];
+    handoff: string;
+  }
+> = {
+  HospitalOPDIntakeBundle: {
+    primaryAction: "Verify OPD packet",
+    operatorGoal: "Confirm the patient wallet packet is enough to open or update the encounter without asking the same history again.",
+    intake: ["Patient identity", "Allergy and medication summary", "Patient-provided upload or SHL", "Coverage if available"],
+    outputs: ["Encounter-ready FHIR Bundle", "DocumentReference review tasks", "Optional check-in SHL/VP"],
+    nextSteps: ["Verify VP or SHL", "Repair missing mapping fields", "Create encounter draft in HIS", "Queue missing VC requests"],
+    handoff: "Front desk and OPD nurse can start service once identity and critical clinical data are trusted.",
+  },
+  EmergencyIntakeBundle: {
+    primaryAction: "Start break-glass review",
+    operatorGoal: "Make critical allergy, medication, condition, and identity data visible fast while preserving break-glass audit.",
+    intake: ["Emergency wallet card", "Critical allergy alerts", "Medication list", "Break-glass reason"],
+    outputs: ["Short-lived emergency VP/SHL", "Break-glass audit event", "Triage-ready clinical summary"],
+    nextSteps: ["Record emergency reason", "Verify holder or proxy", "Expose minimum critical data", "Expire access after emergency window"],
+    handoff: "Emergency users see only life-critical data first; detailed documents remain governed by policy.",
+  },
+  ReferralHandoffBundle: {
+    primaryAction: "Review referral handoff",
+    operatorGoal: "Send or receive a referral packet with enough clinical context, consent, and version history for the receiving team.",
+    intake: ["Referral VC or legacy referral letter", "Patient summary", "Relevant labs/images reports", "Consent receipt"],
+    outputs: ["Referral handoff bundle", "Receiving task list", "SHL packet for large files"],
+    nextSteps: ["Validate sender trust", "Check required referral documents", "Request missing diagnostics", "Generate receiver-facing SHL/VP"],
+    handoff: "Referral coordinators can track accepted, missing, superseded, and revoked packets without losing audit history.",
+  },
+  CrossBorderReferralBundle: {
+    primaryAction: "Prepare partner packet",
+    operatorGoal: "Build a partner-verifiable packet for cross-network or cross-border care with language, consent, and trust constraints.",
+    intake: ["Referral/summary", "Translation or bilingual summary", "Partner trust record", "Consent scoped to destination"],
+    outputs: ["Cross-border SHL packet", "Partner portal submission", "Manifest VC and holder VP"],
+    nextSteps: ["Confirm destination organization", "Validate consent scope", "Attach translated summary", "Issue or rotate SHL packet"],
+    handoff: "Use named recipient, passcode, short expiry, and manifest history for cross-border workflows.",
+  },
+  InboundMedicalTouristBundle: {
+    primaryAction: "Open international intake",
+    operatorGoal: "Let the international desk collect medical history, travel identity, estimate, guarantee, and appointment readiness before arrival.",
+    intake: ["Passport/travel document", "Clinical summary", "Guarantee letter or payer details", "Preferred service request"],
+    outputs: ["Pre-review case", "Financial estimate task", "Appointment/onboarding bundle", "Wallet invitation if needed"],
+    nextSteps: ["Verify identity and facilitator", "Clinical pre-review", "Create estimate", "Bind or invite target wallet"],
+    handoff: "This is hospital-facing inbound work; patient-facing wording should be Prepare care abroad.",
+  },
+  VerifiedClaimPackageBundle: {
+    primaryAction: "Verify claim package",
+    operatorGoal: "Assemble payer-ready evidence from wallet, SHL, HIS, invoice, and receipt data before claim submission.",
+    intake: ["Coverage eligibility", "Clinical summary or certificate", "Invoice and receipt", "Payer adapter policy"],
+    outputs: ["Verified claim package", "Payer response tracker", "Claim audit receipt"],
+    nextSteps: ["Check eligibility", "Validate invoice/receipt", "Attach clinical evidence", "Submit to payer adapter"],
+    handoff: "Claim staff should see what is missing before submission and what payer response is expected next.",
+  },
+  PharmacyDispenseBundle: {
+    primaryAction: "Verify dispense readiness",
+    operatorGoal: "Confirm prescription, allergy, medication history, and patient identity before dispensing or refill.",
+    intake: ["Prescription VC", "Patient identity", "Allergy alerts", "Current medication list"],
+    outputs: ["Dispense-ready verification", "Medication safety warnings", "Dispense receipt VC"],
+    nextSteps: ["Verify prescription issuer", "Check allergy/duplicate therapy", "Confirm patient identity", "Issue dispense receipt"],
+    handoff: "Pharmacy users need a fast safety-first packet, not a full referral bundle.",
+  },
+  WalkInWalletOnboardingBundle: {
+    primaryAction: "Connect walk-in wallet",
+    operatorGoal: "Bind a new or external wallet to a patient record before issuing encounter documents into it.",
+    intake: ["Identity evidence", "Phone/email invitation channel", "Holder DID QR", "Contextual consent"],
+    outputs: ["Wallet binding record", "HN-to-DID mapping", "Starter identity/appointment VC"],
+    nextSteps: ["Verify identity", "Scan or invite wallet", "Capture consent", "Sync HN mapping back to HIS"],
+    handoff: "Walk-in onboarding must be auditable because the hospital is linking a holder DID to an HN.",
+  },
+  PartnerIntakeSubmissionBundle: {
+    primaryAction: "Review partner submission",
+    operatorGoal: "Accept partner-uploaded legacy files, FHIR, SHL, VC, or VP into a controlled verification queue before hospital use.",
+    intake: ["Partner identity/API key", "Submitted documents", "FHIR/SHL/VC/VP evidence", "Source attestation"],
+    outputs: ["Partner intake task", "DocumentReference set", "Trust validation report"],
+    nextSteps: ["Validate partner trust", "Map files to DocumentReference", "Run DQI checks", "Route to Maker/Checker if issuing VC"],
+    handoff: "Partner Portal is an intake channel, not a shortcut around consent, validation, and audit.",
+  },
+  WalletDeploymentBundle: {
+    primaryAction: "Deploy documents to wallet",
+    operatorGoal: "Issue hospital-created documents into a target patient wallet after mapping, Maker/Checker, and consent rules pass.",
+    intake: ["Target wallet/HN", "Documents ready for issuance", "Maker/Checker policy", "Consent or treatment basis"],
+    outputs: ["Issued VC records", "Wallet delivery receipt", "HIS sync-back receipt"],
+    nextSteps: ["Select target wallet", "Confirm document types", "Route Checker approval", "Deliver VC and write sync receipt"],
+    handoff: "This flow creates wallet-held outputs; patients should not be Maker/Checker for these documents.",
+  },
+};
+
+const nextActionLabels: Record<string, string> = {
+  verify_vp_or_shl: "Verify incoming VP or SHL packet",
+  capture_consent_and_bind_wallet: "Capture consent and bind wallet DID",
+  approve_and_issue_vc: "Approve and issue VC through Maker/Checker",
+  clinical_pre_review_and_financial_estimate: "Clinical pre-review and financial estimate",
+};
+
 type Mode = "patient" | "hospital" | "contracts" | "mapping" | "api";
 
 export default function PrepareForService() {
@@ -74,6 +174,7 @@ export default function PrepareForService() {
 
   const [context, setContext] = useState<ReadinessContext>("opd_visit");
   const [mode, setMode] = useState<Mode>(isPatient ? "patient" : "hospital");
+  const [selectedHospitalUseCaseId, setSelectedHospitalUseCaseId] = useState<string | null>(null);
   const [targetName, setTargetName] = useState("");
   const [importNotes, setImportNotes] = useState("");
 
@@ -100,6 +201,14 @@ export default function PrepareForService() {
   const readiness = workbench?.patient?.readiness;
   const patientUseCases = workbench?.patient?.visibleUseCases ?? [];
   const hospitalUseCases = workbench?.hospital?.visibleUseCases ?? [];
+
+  useEffect(() => {
+    if (!hospitalUseCases.length) return;
+    const stillExists = hospitalUseCases.some((item: any) => item.id === selectedHospitalUseCaseId);
+    if (!stillExists) {
+      setSelectedHospitalUseCaseId(hospitalUseCases[0].id);
+    }
+  }, [hospitalUseCases, selectedHospitalUseCaseId]);
 
   const contextCards = useMemo(() => {
     const seen = new Set<ReadinessContext>();
@@ -183,6 +292,8 @@ export default function PrepareForService() {
               <HospitalWorkbench
                 context={context}
                 setContext={setContext}
+                selectedHospitalUseCaseId={selectedHospitalUseCaseId}
+                setSelectedHospitalUseCaseId={setSelectedHospitalUseCaseId}
                 hospitalUseCases={hospitalUseCases}
                 workbench={workbench}
                 targetName={targetName}
@@ -468,6 +579,8 @@ function PatientView({
 function HospitalWorkbench({
   context,
   setContext,
+  selectedHospitalUseCaseId,
+  setSelectedHospitalUseCaseId,
   hospitalUseCases,
   workbench,
   targetName,
@@ -481,6 +594,12 @@ function HospitalWorkbench({
   if (workbenchQuery.isError) {
     return <ErrorCard label="Hospital workbench could not be loaded." error={workbenchQuery.error?.message} />;
   }
+  const selectedUseCase =
+    hospitalUseCases.find((item: any) => item.id === selectedHospitalUseCaseId) ??
+    hospitalUseCases[0];
+  const selectedUx =
+    hospitalUseCaseUx[selectedUseCase?.bundleType] ??
+    hospitalUseCaseUx.WalletDeploymentBundle;
 
   return (
     <div className="space-y-5">
@@ -503,24 +622,42 @@ function HospitalWorkbench({
                 <div className="grid gap-3 md:grid-cols-2">
                   {hospitalUseCases.map((item: any) => {
                     const Icon = contextIcons[item.context as ReadinessContext] ?? Building2;
+                    const selected = selectedUseCase?.id === item.id;
+                    const ux = hospitalUseCaseUx[item.bundleType] ?? hospitalUseCaseUx.WalletDeploymentBundle;
                     return (
-                      <button
-                        key={item.id}
-                        onClick={() => setContext(item.context)}
-                        className={`rounded-lg border p-3 text-left transition hover:bg-accent ${context === item.context ? "border-primary bg-primary/5" : ""}`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <Icon className="mt-0.5 h-5 w-5 text-primary" />
-                          <div>
-                            <p className="text-sm font-semibold">{item.label}</p>
-                            <p className="text-xs text-muted-foreground">{item.labelEn}</p>
-                            <Badge variant="outline" className="mt-2">{item.bundleType}</Badge>
+                      <div key={item.id} className="space-y-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedHospitalUseCaseId(item.id);
+                            setContext(item.context);
+                          }}
+                          className={`w-full rounded-lg border p-3 text-left transition hover:bg-accent ${selected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : ""}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <Icon className="mt-0.5 h-5 w-5 text-primary" />
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold">{item.label}</p>
+                              <p className="text-xs text-muted-foreground">{item.labelEn}</p>
+                              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{ux.operatorGoal}</p>
+                              <Badge variant="outline" className="mt-2">{item.bundleType}</Badge>
+                            </div>
                           </div>
-                        </div>
-                      </button>
+                        </button>
+                        {selected && (
+                          <div className="md:col-span-2 xl:hidden">
+                            <HospitalUseCaseDetail item={item} ux={ux} compact />
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
+                {selectedUseCase && (
+                  <div className="hidden xl:block">
+                    <HospitalUseCaseDetail item={selectedUseCase} ux={selectedUx} />
+                  </div>
+                )}
                 <Separator />
                 <div className="grid gap-3 md:grid-cols-3">
                   {(workbench?.hospital?.workQueue ?? []).map((queue: any) => (
@@ -529,7 +666,9 @@ function HospitalWorkbench({
                         <p className="text-sm font-semibold">{queue.label}</p>
                         <Badge>{queue.count}</Badge>
                       </div>
-                      <p className="mt-2 text-xs text-muted-foreground">Next: {queue.nextAction}</p>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Next: {nextActionLabels[queue.nextAction] ?? queue.nextAction}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -538,9 +677,21 @@ function HospitalWorkbench({
 
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Deploy to target wallet</CardTitle>
+                <CardTitle className="text-base">{selectedUx.primaryAction}</CardTitle>
+                <p className="text-xs leading-5 text-muted-foreground">{selectedUx.handoff}</p>
               </CardHeader>
               <CardContent className="space-y-4">
+                {selectedUseCase && (
+                  <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium">{selectedUseCase.label}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{selectedUseCase.bundleType}</p>
+                      </div>
+                      <Badge variant="outline">{selectedUseCase.context}</Badge>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label>Target patient or wallet</Label>
                   <Input value={targetName} onChange={event => setTargetName(event.target.value)} placeholder="ชื่อผู้ป่วยหรือ HN" />
@@ -552,7 +703,7 @@ function HospitalWorkbench({
                 <div className="grid gap-2">
                   <Button
                     className="gap-2"
-                    onClick={() => deployMutation.mutate({ context, targetWalletMode: "single", targetPatientIds: [1] })}
+                    onClick={() => deployMutation.mutate({ context: selectedUseCase?.context ?? context, targetWalletMode: "single", targetPatientIds: [1] })}
                     disabled={deployMutation.isPending}
                   >
                     <Send className="h-4 w-4" />
@@ -600,6 +751,59 @@ function HospitalWorkbench({
           </Card>
         </>
       )}
+    </div>
+  );
+}
+
+function HospitalUseCaseDetail({ item, ux, compact = false }: { item: any; ux: any; compact?: boolean }) {
+  return (
+    <div className={`rounded-lg border bg-muted/30 p-4 ${compact ? "" : "mt-2"}`}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold">{ux.primaryAction}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{ux.operatorGoal}</p>
+        </div>
+        <Badge variant="outline">{item.bundleType}</Badge>
+      </div>
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <HospitalUseCaseColumn
+          icon={FileInput}
+          title="Intake evidence"
+          items={ux.intake}
+        />
+        <HospitalUseCaseColumn
+          icon={PackageCheck}
+          title="Bundle outputs"
+          items={ux.outputs}
+        />
+        <HospitalUseCaseColumn
+          icon={CheckCircle2}
+          title="Next actions"
+          items={ux.nextSteps}
+        />
+      </div>
+      <div className="mt-3 rounded-md border bg-background p-3 text-xs leading-5 text-muted-foreground">
+        {ux.handoff}
+      </div>
+    </div>
+  );
+}
+
+function HospitalUseCaseColumn({ icon: Icon, title, items }: { icon: any; title: string; items: string[] }) {
+  return (
+    <div className="rounded-md border bg-background p-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Icon className="h-4 w-4 text-primary" />
+        {title}
+      </div>
+      <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+        {items.map((item) => (
+          <li key={item} className="flex gap-2">
+            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -64,6 +64,7 @@ import {
 } from "./portability";
 import { sha256 } from "./portability/utils";
 import { resolveShlManifestAccessPacket, ShlAccessError } from "./shlAccess";
+import { buildShlDocumentBundle } from "./shlDocumentManifest";
 import { storagePut } from "./storage";
 import {
   buildClaimPackageCredential,
@@ -2483,7 +2484,8 @@ export const appRouter = router({
         db.listShlManifestVersions(shl.id),
         db.listShlAccessLogs(shl.id),
       ]);
-      return { ...shl, files, versions, accessLogs };
+      const documentBundle = buildShlDocumentBundle(shl, files);
+      return { ...shl, files, versions, accessLogs, documentBundle };
     }),
     create: protectedProcedure.input(z.object({
       patientId: z.number().optional(),
