@@ -1321,3 +1321,121 @@ export const payerRulesets = mysqlTable("payer_rulesets", {
 
 export type PayerRuleset = typeof payerRulesets.$inferSelect;
 export type InsertPayerRuleset = typeof payerRulesets.$inferInsert;
+
+
+// ============================================================
+// Prepare for Service v2 - Contract Hub, Bundles, Import Jobs
+// ============================================================
+
+export const serviceReadinessContracts = mysqlTable("service_readiness_contracts", {
+  id: int("id").autoincrement().primaryKey(),
+  contractId: varchar("contractId", { length: 255 }).notNull().unique(),
+  context: mysqlEnum("context", ["opd_visit", "emergency", "referral", "cross_border", "medical_tourist", "insurance_claim", "pharmacy_dispense"]).notNull(),
+  version: varchar("version", { length: 64 }).notNull(),
+  status: mysqlEnum("status", ["active", "draft", "deprecated"]).default("active").notNull(),
+  patientLabel: varchar("patientLabel", { length: 255 }).notNull(),
+  patientLabelEn: varchar("patientLabelEn", { length: 255 }).notNull(),
+  hospitalLabel: varchar("hospitalLabel", { length: 255 }).notNull(),
+  hospitalLabelEn: varchar("hospitalLabelEn", { length: 255 }).notNull(),
+  patientVisible: boolean("patientVisible").default(true).notNull(),
+  hospitalVisible: boolean("hospitalVisible").default(true).notNull(),
+  patientBundleType: varchar("patientBundleType", { length: 128 }).notNull(),
+  hospitalBundleType: varchar("hospitalBundleType", { length: 128 }).notNull(),
+  requirementsJson: json("requirementsJson"),
+  questionnaireJson: json("questionnaireJson"),
+  consentPolicyJson: json("consentPolicyJson"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ServiceReadinessContract = typeof serviceReadinessContracts.$inferSelect;
+export type InsertServiceReadinessContract = typeof serviceReadinessContracts.$inferInsert;
+
+export const serviceBundleTemplates = mysqlTable("service_bundle_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  templateId: varchar("templateId", { length: 255 }).notNull().unique(),
+  contractId: varchar("contractId", { length: 255 }).notNull(),
+  audience: mysqlEnum("audience", ["patient", "hospital"]).notNull(),
+  bundleType: varchar("bundleType", { length: 128 }).notNull(),
+  direction: mysqlEnum("direction", ["inbound", "outbound", "bidirectional"]).default("inbound").notNull(),
+  transportPolicyJson: json("transportPolicyJson"),
+  itemsJson: json("itemsJson"),
+  status: mysqlEnum("status", ["active", "draft", "deprecated"]).default("active").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ServiceBundleTemplate = typeof serviceBundleTemplates.$inferSelect;
+export type InsertServiceBundleTemplate = typeof serviceBundleTemplates.$inferInsert;
+
+export const serviceBundleInstances = mysqlTable("service_bundle_instances", {
+  id: int("id").autoincrement().primaryKey(),
+  bundleId: varchar("bundleId", { length: 255 }).notNull().unique(),
+  templateId: varchar("templateId", { length: 255 }).notNull(),
+  patientId: int("patientId").notNull(),
+  holderDid: varchar("holderDid", { length: 255 }),
+  context: mysqlEnum("context", ["opd_visit", "emergency", "referral", "cross_border", "medical_tourist", "insurance_claim", "pharmacy_dispense"]).notNull(),
+  audience: mysqlEnum("audience", ["patient", "hospital"]).notNull(),
+  direction: mysqlEnum("direction", ["inbound", "outbound", "bidirectional"]).default("inbound").notNull(),
+  status: mysqlEnum("status", ["draft", "building", "ready", "shared", "deployed", "expired", "cancelled"]).default("draft").notNull(),
+  readinessScore: int("readinessScore").default(0).notNull(),
+  requiredMissingJson: json("requiredMissingJson"),
+  fhirBundleJson: json("fhirBundleJson"),
+  trustLayerJson: json("trustLayerJson"),
+  presentationId: varchar("presentationId", { length: 255 }),
+  shlId: varchar("shlId", { length: 255 }),
+  consentCredentialId: varchar("consentCredentialId", { length: 255 }),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  expiresAt: timestamp("expiresAt"),
+});
+export type ServiceBundleInstance = typeof serviceBundleInstances.$inferSelect;
+export type InsertServiceBundleInstance = typeof serviceBundleInstances.$inferInsert;
+
+export const walletImportJobs = mysqlTable("wallet_import_jobs", {
+  id: int("id").autoincrement().primaryKey(),
+  importId: varchar("importId", { length: 255 }).notNull().unique(),
+  patientId: int("patientId").notNull(),
+  context: mysqlEnum("context", ["opd_visit", "emergency", "referral", "cross_border", "medical_tourist", "insurance_claim", "pharmacy_dispense"]).notNull(),
+  sourceType: mysqlEnum("sourceType", ["patient_upload", "fhir_native", "vc_vp", "shl_manifest", "partner_portal", "his_pull", "lis_pull", "ris_pull"]).notNull(),
+  documentType: varchar("documentType", { length: 128 }).notNull(),
+  consentRef: varchar("consentRef", { length: 255 }),
+  status: mysqlEnum("status", ["queued", "processing", "needs_review", "ready", "rejected", "cancelled"]).default("queued").notNull(),
+  dqiScore: int("dqiScore"),
+  documentReferenceJson: json("documentReferenceJson"),
+  hash: varchar("hash", { length: 128 }),
+  reviewPolicy: varchar("reviewPolicy", { length: 128 }),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type WalletImportJob = typeof walletImportJobs.$inferSelect;
+export type InsertWalletImportJob = typeof walletImportJobs.$inferInsert;
+
+export const walkInWalletConnections = mysqlTable("walk_in_wallet_connections", {
+  id: int("id").autoincrement().primaryKey(),
+  connectionId: varchar("connectionId", { length: 255 }).notNull().unique(),
+  patientId: int("patientId"),
+  patientName: varchar("patientName", { length: 255 }),
+  holderDid: varchar("holderDid", { length: 255 }).notNull(),
+  walletStatus: mysqlEnum("walletStatus", ["invitation_sent", "pending_verification", "active", "suspended", "revoked"]).default("invitation_sent").notNull(),
+  identityConfidence: mysqlEnum("identityConfidence", ["low", "medium", "high", "verified"]).default("low"),
+  consentRef: varchar("consentRef", { length: 255 }),
+  hnMappingJson: json("hnMappingJson"),
+  connectedBy: int("connectedBy"),
+  connectedAt: timestamp("connectedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type WalkInWalletConnection = typeof walkInWalletConnections.$inferSelect;
+export type InsertWalkInWalletConnection = typeof walkInWalletConnections.$inferInsert;
+
+export const contractArtifacts = mysqlTable("contract_artifacts", {
+  id: int("id").autoincrement().primaryKey(),
+  artifactId: varchar("artifactId", { length: 255 }).notNull().unique(),
+  contractId: varchar("contractId", { length: 255 }).notNull(),
+  artifactType: mysqlEnum("artifactType", ["questionnaire", "questionnaire_response", "document_reference_profile", "vc_schema", "shl_manifest_schema", "openapi_doc", "trust_policy", "consent_template"]).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  titleEn: varchar("titleEn", { length: 255 }),
+  version: varchar("version", { length: 64 }).notNull(),
+  contentJson: json("contentJson"),
+  status: mysqlEnum("status", ["active", "draft", "deprecated"]).default("active").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ContractArtifact = typeof contractArtifacts.$inferSelect;
+export type InsertContractArtifact = typeof contractArtifacts.$inferInsert;

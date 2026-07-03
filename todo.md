@@ -710,3 +710,19 @@
 - [x] Add routes in App.tsx and RoleGuard config for /notifications and /consent
 - [x] Run tests - 307 tests passing
 - [x] Push to GitHub
+
+## v3.19.0 - Prepare for Service v2 (Core Function Upgrade)
+- [x] Deep research mature healthcare systems for best practices (WHO GDHCN, EUDI, NHS, Epic MyChart, IHE MHD, SMART Health Links)
+- [x] Merge PR #12 from GitHub (prepareService.ts, ServiceReadinessPanel, wallet router)
+- [x] Add Contract Hub tables and seed data (6 new tables: service_readiness_contracts, contract_requirements, contract_questionnaires, service_bundle_instances, wallet_import_jobs, walk_in_wallet_connections)
+- [x] Add Service Bundle and Import Job tables (with DB persistence)
+- [x] Write idempotent seed script (seedPrepareServiceContracts) for 7 contract types
+- [x] Connect tRPC wallet procedures to DB (buildServiceBundle, deployBundleToWallet, connectWalkInWallet, importForService)
+- [x] Implement Patient Prepare for Service v2 (role-based patient view with 3-step wizard: choose context → check readiness → take action)
+- [x] Implement Hospital Service Readiness Workbench (role-based hospital view with deploy, walk-in, work queues)
+- [x] Implement Contract Hub UI and Public API endpoints (catalog view with requirement details)
+- [x] Implement Data Mapping v2 contract-driven binding (profile viewer)
+- [x] Add Walk-in Wallet connection flow (tRPC mutation + DB persistence)
+- [x] Patient sees only patient view, hospital sees all tabs (patient/hospital/contracts/mapping/api)
+- [x] Run tests - 314 tests passing, 0 TS errors
+- [x] Save checkpoint and push to GitHub

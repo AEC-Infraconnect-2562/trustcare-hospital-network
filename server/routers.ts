@@ -207,7 +207,10 @@ export const appRouter = router({
         patientsPerHospital: 12,
         resetExistingSeed: true,
       });
-      return { success: true, vcVpSeed: result };
+      // Seed Prepare for Service contracts, templates, and artifacts
+      const { seedPrepareServiceContracts } = await import("./seedPrepareService");
+      const prepareServiceResult = await seedPrepareServiceContracts();
+      return { success: true, vcVpSeed: result, prepareServiceSeed: prepareServiceResult };
     }),
   }),
   // ============================================================
@@ -620,13 +623,40 @@ export const appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       const patientId = resolveWalletPatientId(ctx, input.patientId);
       const cards = await enrichedWalletCards(patientId);
-      return buildServiceBundleEnvelope({
+      const envelope = buildServiceBundleEnvelope({
         context: input.context,
         audience: input.audience,
         patientId,
         cards,
         receiver: input.receiver,
       });
+      // Persist bundle instance to DB
+      const dir = (envelope.direction === "patient_outbound" || envelope.direction === "hospital_outbound") ? "outbound" as const
+        : (envelope.direction === "shared" || envelope.direction === "post_service") ? "bidirectional" as const
+        : "inbound" as const;
+      await db.createServiceBundleInstance({
+        bundleId: envelope.bundleId,
+        templateId: envelope.templateId,
+        patientId,
+        context: input.context,
+        audience: input.audience === "hospital" ? "hospital" : "patient",
+        direction: dir,
+        status: envelope.status === "ready" ? "ready" : "building",
+        readinessScore: envelope.readinessScore ?? 0,
+        requiredMissingJson: envelope.requiredMissing ?? null,
+        fhirBundleJson: envelope.fhirBundle ?? null,
+        trustLayerJson: envelope.trustLayer ?? null,
+        createdBy: ctx.user.id,
+      });
+      await db.createAuditEvent({
+        actorId: ctx.user.id,
+        actorRole: (ctx.user as any).systemRole,
+        action: "wallet.prepare_service.bundle_created",
+        resourceType: "service_bundle",
+        resourceId: envelope.bundleId,
+        details: { context: input.context, audience: input.audience, readinessScore: envelope.readinessScore },
+      });
+      return envelope;
     }),
     deployBundleToWallet: protectedProcedure.input(z.object({
       context: z.enum(readinessContextValues),
@@ -653,10 +683,21 @@ export const appRouter = router({
       consentAttested: z.boolean().default(false),
     })).mutation(async ({ ctx, input }) => {
       const connection = buildWalkInWalletConnection(input);
+      // Persist walk-in wallet connection to DB
+      await db.createWalkInWalletConnection({
+        connectionId: connection.connectionId,
+        patientName: input.patientName ?? null,
+        holderDid: connection.holderDid,
+        walletStatus: "invitation_sent",
+        identityConfidence: connection.patientIdentityConfidence as any ?? "low",
+        consentRef: null,
+        connectedBy: ctx.user.id,
+        connectedAt: new Date(),
+      });
       await db.createAuditEvent({
         actorId: ctx.user.id,
         actorRole: (ctx.user as any).systemRole,
-        action: "wallet.prepare_service.walkin_wallet_simulated",
+        action: "wallet.prepare_service.walkin_wallet_connected",
         resourceType: "wallet_connection",
         resourceId: connection.connectionId,
         details: { status: connection.status, patientIdentityConfidence: connection.patientIdentityConfidence },
@@ -672,10 +713,24 @@ export const appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       const patientId = resolveWalletPatientId(ctx, input.patientId);
       const result = simulatePrepareServiceImport({ ...input, patientId });
+      // Persist import job to DB
+      await db.createWalletImportJob({
+        importId: result.importId,
+        patientId,
+        context: input.context,
+        sourceType: (input.sourceType ?? "patient_upload") as any,
+        documentType: result.documentType ?? "unknown",
+        consentRef: input.consentRef ?? null,
+        status: "queued",
+        dqiScore: result.dqiScore ?? null,
+        hash: result.hash ?? null,
+        reviewPolicy: null,
+        createdBy: ctx.user.id,
+      });
       await db.createAuditEvent({
         actorId: ctx.user.id,
         actorRole: (ctx.user as any).systemRole,
-        action: "wallet.prepare_service.import_simulated",
+        action: "wallet.prepare_service.import_created",
         resourceType: "wallet_import_job",
         resourceId: result.importId,
         details: { context: input.context, documentType: result.documentType, sourceType: input.sourceType, dqiScore: result.dqiScore },

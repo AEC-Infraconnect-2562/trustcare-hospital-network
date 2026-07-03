@@ -2161,3 +2161,81 @@ export async function getClaimCenterStats() {
     totalDocuments: docs?.count ?? 0,
   };
 }
+
+// ============================================================
+// PREPARE FOR SERVICE v2 - DB HELPERS
+// ============================================================
+import {
+  serviceBundleInstances, InsertServiceBundleInstance,
+  walletImportJobs, InsertWalletImportJob,
+  walkInWalletConnections, InsertWalkInWalletConnection,
+  serviceReadinessContracts,
+  serviceBundleTemplates,
+  contractArtifacts,
+} from "../drizzle/schema";
+
+export async function createServiceBundleInstance(data: Omit<InsertServiceBundleInstance, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(serviceBundleInstances).values(data).$returningId();
+  return result?.id ?? null;
+}
+
+export async function listServiceBundleInstances(patientId?: number, context?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (patientId) conditions.push(eq(serviceBundleInstances.patientId, patientId));
+  if (context) conditions.push(eq(serviceBundleInstances.context, context as any));
+  if (conditions.length === 0) {
+    return db.select().from(serviceBundleInstances).orderBy(desc(serviceBundleInstances.createdAt)).limit(50);
+  }
+  return db.select().from(serviceBundleInstances).where(and(...conditions)).orderBy(desc(serviceBundleInstances.createdAt)).limit(50);
+}
+
+export async function createWalletImportJob(data: Omit<InsertWalletImportJob, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(walletImportJobs).values(data).$returningId();
+  return result?.id ?? null;
+}
+
+export async function listWalletImportJobs(patientId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  if (patientId) {
+    return db.select().from(walletImportJobs).where(eq(walletImportJobs.patientId, patientId)).orderBy(desc(walletImportJobs.createdAt)).limit(50);
+  }
+  return db.select().from(walletImportJobs).orderBy(desc(walletImportJobs.createdAt)).limit(50);
+}
+
+export async function createWalkInWalletConnection(data: Omit<InsertWalkInWalletConnection, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(walkInWalletConnections).values(data).$returningId();
+  return result?.id ?? null;
+}
+
+export async function listWalkInWalletConnections(connectedBy?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  if (connectedBy) {
+    return db.select().from(walkInWalletConnections).where(eq(walkInWalletConnections.connectedBy, connectedBy)).orderBy(desc(walkInWalletConnections.createdAt)).limit(50);
+  }
+  return db.select().from(walkInWalletConnections).orderBy(desc(walkInWalletConnections.createdAt)).limit(50);
+}
+
+export async function listServiceReadinessContracts() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(serviceReadinessContracts).where(eq(serviceReadinessContracts.status, "active"));
+}
+
+export async function listContractArtifacts(contractId?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  if (contractId) {
+    return db.select().from(contractArtifacts).where(eq(contractArtifacts.contractId, contractId));
+  }
+  return db.select().from(contractArtifacts).where(eq(contractArtifacts.status, "active"));
+}
