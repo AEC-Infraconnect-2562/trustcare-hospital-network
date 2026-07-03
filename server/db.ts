@@ -1104,10 +1104,40 @@ export async function listClaimCases(filter?: { hospitalId?: number; status?: st
   if (filter?.hospitalId) conditions.push(eq(claimCases.hospitalId, filter.hospitalId));
   if (filter?.status) conditions.push(eq(claimCases.status, filter.status as any));
   if (filter?.patientId) conditions.push(eq(claimCases.patientId, filter.patientId));
+  const baseQuery = db.select({
+    id: claimCases.id,
+    patientId: claimCases.patientId,
+    hospitalId: claimCases.hospitalId,
+    payerAdapterId: claimCases.payerAdapterId,
+    encounterRef: claimCases.encounterRef,
+    claimType: claimCases.claimType,
+    status: claimCases.status,
+    totalAmount: claimCases.totalAmount,
+    approvedAmount: claimCases.approvedAmount,
+    diagnosisCodes: claimCases.diagnosisCodes,
+    procedureCodes: claimCases.procedureCodes,
+    serviceItems: claimCases.serviceItems,
+    validationIssues: claimCases.validationIssues,
+    payerClaimId: claimCases.payerClaimId,
+    submittedAt: claimCases.submittedAt,
+    respondedAt: claimCases.respondedAt,
+    paidAt: claimCases.paidAt,
+    rejectionReason: claimCases.rejectionReason,
+    resubmissionCount: claimCases.resubmissionCount,
+    claimReceiptVcId: claimCases.claimReceiptVcId,
+    createdAt: claimCases.createdAt,
+    updatedAt: claimCases.updatedAt,
+    patientName: users.name,
+    patientAvatarUrl: users.avatarUrl,
+    hospitalName: hospitals.name,
+    hospitalCode: hospitals.code,
+  }).from(claimCases)
+    .leftJoin(users, eq(claimCases.patientId, users.id))
+    .leftJoin(hospitals, eq(claimCases.hospitalId, hospitals.id));
   if (conditions.length > 0) {
-    return db.select().from(claimCases).where(and(...conditions)).orderBy(desc(claimCases.createdAt)).limit(100);
+    return baseQuery.where(and(...conditions)).orderBy(desc(claimCases.createdAt)).limit(100);
   }
-  return db.select().from(claimCases).orderBy(desc(claimCases.createdAt)).limit(100);
+  return baseQuery.orderBy(desc(claimCases.createdAt)).limit(100);
 }
 
 export async function createClaimCase(data: InsertClaimCase) {
@@ -1126,7 +1156,37 @@ export async function updateClaimCase(id: number, data: Partial<InsertClaimCase>
 export async function getClaimCaseById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.select().from(claimCases).where(eq(claimCases.id, id)).limit(1);
+  const result = await db.select({
+    id: claimCases.id,
+    patientId: claimCases.patientId,
+    hospitalId: claimCases.hospitalId,
+    payerAdapterId: claimCases.payerAdapterId,
+    encounterRef: claimCases.encounterRef,
+    claimType: claimCases.claimType,
+    status: claimCases.status,
+    totalAmount: claimCases.totalAmount,
+    approvedAmount: claimCases.approvedAmount,
+    diagnosisCodes: claimCases.diagnosisCodes,
+    procedureCodes: claimCases.procedureCodes,
+    serviceItems: claimCases.serviceItems,
+    validationIssues: claimCases.validationIssues,
+    payerClaimId: claimCases.payerClaimId,
+    submittedAt: claimCases.submittedAt,
+    respondedAt: claimCases.respondedAt,
+    paidAt: claimCases.paidAt,
+    rejectionReason: claimCases.rejectionReason,
+    resubmissionCount: claimCases.resubmissionCount,
+    claimReceiptVcId: claimCases.claimReceiptVcId,
+    createdAt: claimCases.createdAt,
+    updatedAt: claimCases.updatedAt,
+    patientName: users.name,
+    patientAvatarUrl: users.avatarUrl,
+    hospitalName: hospitals.name,
+    hospitalCode: hospitals.code,
+  }).from(claimCases)
+    .leftJoin(users, eq(claimCases.patientId, users.id))
+    .leftJoin(hospitals, eq(claimCases.hospitalId, hospitals.id))
+    .where(eq(claimCases.id, id)).limit(1);
   return result[0];
 }
 

@@ -159,6 +159,10 @@ type DbClaimCase = {
   claimReceiptVcId?: string | null;
   createdAt?: Date | string | null;
   updatedAt?: Date | string | null;
+  patientName?: string | null;
+  patientAvatarUrl?: string | null;
+  hospitalName?: string | null;
+  hospitalCode?: string | null;
 };
 
 type DbPayerAdapter = {
@@ -610,11 +614,11 @@ function mapDbClaimToWorkbenchCase(claim: DbClaimCase, payers: ReturnType<typeof
     claimCaseId: claim.id,
     caseRef: `CLM-${String(claim.id).padStart(6, "0")}`,
     patientId: claim.patientId,
-    patientName: `Patient #${claim.patientId}`,
+    patientName: claim.patientName ?? `Patient #${claim.patientId}`,
     hn: `HN-${claim.patientId}`,
     hospitalId: claim.hospitalId,
-    hospitalName: `Hospital #${claim.hospitalId}`,
-    hospitalCode: `H${claim.hospitalId}`,
+    hospitalName: claim.hospitalName ?? `Hospital #${claim.hospitalId}`,
+    hospitalCode: claim.hospitalCode ?? `H${claim.hospitalId}`,
     payer,
     claimType: claim.claimType,
     status: claim.status,

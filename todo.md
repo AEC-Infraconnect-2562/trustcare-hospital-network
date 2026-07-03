@@ -656,3 +656,17 @@
 - [x] Simulated data clearly labeled with simulationFlag in DB and UI
 - [x] Run full test suite (307 tests passing)
 - [x] Save checkpoint and push to GitHub
+
+## v3.14.0 - Claim Center Real DB Binding + Detail Page
+
+- [x] Refactor buildClaimWorkbench to query from claim_cases + claim_packages + claim_payments tables
+- [x] Remove simulated data from claimCenter.ts, use real DB queries
+- [x] Join users table to show patient full names in Claim Worklist (not "Patient #743")
+- [x] Create Claim Detail page (/claim-center/:id) with:
+  - [x] Timeline showing all state changes (intake → packaged → submitted → adjudicated → paid)
+  - [x] Documents tab listing all claim_documents with download links
+  - [x] FHIR Payload tab showing ClaimPackageCredential JSON
+  - [x] Payer Response tab showing adjudication result and payment info
+- [x] Add route in App.tsx for /claim-center/:id
+- [x] Run full test suite (307 tests passing)
+- [x] Save checkpoint and push to GitHub

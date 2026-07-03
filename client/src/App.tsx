@@ -22,6 +22,7 @@ const Users = lazy(() => import("./pages/Users"));
 const Settings = lazy(() => import("./pages/Settings"));
 const ClaimCenter = lazy(() => import("./pages/ClaimCenter"));
 const ClaimAnalytics = lazy(() => import("./pages/ClaimAnalytics"));
+const ClaimDetail = lazy(() => import("./pages/ClaimDetail"));
 const International = lazy(() => import("./pages/International"));
 const CrossBorder = lazy(() => import("./pages/CrossBorder"));
 const Integration = lazy(() => import("./pages/Integration"));
@@ -71,6 +72,7 @@ function Router() {
         <Route path="/cross-border" component={CrossBorder} />
         <Route path="/international" component={International} />
         <Route path="/claim-center" component={ClaimCenter} />
+        <Route path="/claim-center/:id" component={ClaimDetail} />
         <Route path="/claim-analytics" component={ClaimAnalytics} />
         <Route path="/integration" component={Integration} />
         <Route path="/adapter-sdk" component={AdapterSdk} />

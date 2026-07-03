@@ -2001,6 +2001,27 @@ export const appRouter = router({
     getCase: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
       return db.getClaimCaseById(input.id);
     }),
+    getClaimDetail: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      const [claimCase, documents, packages, submissions, payments, payerAdapters] = await Promise.all([
+        db.getClaimCaseById(input.id),
+        db.listClaimDocuments(input.id),
+        db.listClaimPackages(input.id),
+        db.listClaimSubmissionEvents(input.id),
+        db.listClaimPayments(input.id),
+        db.listPayerAdapters(),
+      ]);
+      if (!claimCase) return null;
+      const payer = (payerAdapters as any[]).find((p: any) => p.id === claimCase.payerAdapterId);
+      return {
+        ...claimCase,
+        payerName: payer?.name ?? null,
+        payerType: payer?.payerType ?? null,
+        documents,
+        packages,
+        submissions,
+        payments,
+      };
+    }),
     createCase: protectedProcedure.input(z.object({
       patientId: z.number(),
       hospitalId: z.number(),

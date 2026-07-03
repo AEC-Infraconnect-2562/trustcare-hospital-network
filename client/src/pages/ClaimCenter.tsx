@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
+import { Link } from "wouter";
 import {
   AlertTriangle,
   ArrowRight,
@@ -413,6 +414,13 @@ export default function ClaimCenter() {
                       <p className="mt-1 text-sm text-muted-foreground">
                         {selected.payer.name} / {selected.claimType.toUpperCase()} / {money(selected.totalAmount, selected.currency)}
                       </p>
+                      {selected.claimCaseId && (
+                        <Link href={`/claim-center/${selected.claimCaseId}`}>
+                          <Button variant="outline" size="sm" className="mt-2 gap-1">
+                            <FileText className="h-3.5 w-3.5" /> ดูรายละเอียดเต็ม
+                          </Button>
+                        </Link>
+                      )}
                     </div>
                     <div className="min-w-[220px]">
                       <div className="mb-2 flex items-center justify-between text-sm">
