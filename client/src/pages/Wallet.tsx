@@ -63,7 +63,7 @@ import { exportWalletCardPdf } from "@/lib/pdfExport";
 import { PersonPhoto } from "@/components/PersonPhoto";
 import { patientPhotoSources } from "@shared/personImages";
 
-const PHOTO_TYPES = ["patient_identity", "identity", "medical_certificate"];
+const PHOTO_TYPES = ["patient_identity", "staff_identity", "identity", "medical_certificate"];
 
 const categoryIconMap: Record<string, any> = {
   User,
@@ -104,7 +104,7 @@ const cardTypeConfig: Record<
   identity: {
     icon: User,
     bgGradient: "from-slate-600 to-slate-800",
-    label: "บัตรประจำตัวผู้ป่วย",
+    label: "บัตรประจำตัว",
   },
   immunization: {
     icon: Syringe,
@@ -261,7 +261,7 @@ export default function Wallet() {
 
   // Identity-first sort: patient_identity and identity cards always appear at the top
   const sortIdentityFirst = (cards: any[]) => {
-    const identityTypes = ["patient_identity", "identity"];
+    const identityTypes = ["patient_identity", "staff_identity", "identity"];
     const identity = cards.filter(c => identityTypes.includes(c.cardType));
     const rest = cards.filter(c => !identityTypes.includes(c.cardType));
     return [...identity, ...rest];

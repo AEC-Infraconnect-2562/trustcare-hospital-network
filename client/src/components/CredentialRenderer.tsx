@@ -1091,6 +1091,7 @@ export function CredentialRenderer(props: CredentialRendererProps) {
   let content: React.ReactNode;
   switch (type) {
     case "patient_identity": content = <PatientIdentityCard props={props} />; break;
+    case "staff_identity": content = <PatientIdentityCard props={props} />; break;
     case "medical_certificate": content = <MedicalCertificateCard props={props} />; break;
     case "prescription": content = <PrescriptionCard props={props} />; break;
     case "lab_result": content = <LabResultCard props={props} />; break;
@@ -1122,7 +1123,7 @@ export function CredentialCompactCard({ props }: { props: CredentialRendererProp
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
   const gender = extractPatientGender(props.credentialData);
-  const needsPhoto = ["patient_identity", "medical_certificate"].includes(props.type);
+  const needsPhoto = ["patient_identity", "staff_identity", "medical_certificate"].includes(props.type);
   const photoSources = patientPhotoSources({
     primaryUrl: props.patientPhotoUrl,
     credentialData: props.credentialData,
@@ -1131,6 +1132,7 @@ export function CredentialCompactCard({ props }: { props: CredentialRendererProp
 
   const typeLabels: Record<string, string> = {
     patient_identity: "บัตรประจำตัวผู้ป่วย",
+    staff_identity: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล",
     medical_certificate: "ใบรับรองแพทย์",
     prescription: "ใบสั่งยา",
     patient_summary: "สรุปข้อมูลผู้ป่วย",

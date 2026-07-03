@@ -72,6 +72,7 @@ export const DOCUMENT_CATEGORY_LABELS: Record<string, JsonRecord> = {
 
 const DOCUMENT_STORAGE_MAP: Record<string, JsonRecord> = {
   patient_identity: { category: "identity_and_access", subcategory: "identity", fhirClassCode: "51851-4", fhirClassDisplay: "Administrative note" },
+  staff_identity: { category: "identity_and_access", subcategory: "identity", fhirClassCode: "51851-4", fhirClassDisplay: "Administrative note" },
   consent_receipt: { category: "identity_and_access", subcategory: "consent", fhirClassCode: "59284-0", fhirClassDisplay: "Patient Consent" },
   mpi_link_certificate: { category: "identity_and_access", subcategory: "mpi", fhirClassCode: "51851-4", fhirClassDisplay: "Administrative note" },
   patient_summary: { category: "clinical_summary", subcategory: "summary", fhirClassCode: "34133-9", fhirClassDisplay: "Summarization of episode note" },
@@ -99,6 +100,7 @@ const DOCUMENT_STORAGE_MAP: Record<string, JsonRecord> = {
 
 export const DOCUMENT_TYPE_LABELS: Record<string, JsonRecord> = {
   patient_identity: { th: "บัตรประจำตัวผู้ป่วย", en: "Patient Identity", icon: "BadgeCheck", vcType: "PatientIdentityCredential" },
+  staff_identity: { th: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", en: "Hospital Staff Identity", icon: "IdCard", vcType: "HospitalStaffIdentityCredential" },
   consent_receipt: { th: "ใบรับรองความยินยอม", en: "Consent Receipt", icon: "ClipboardCheck", vcType: "ConsentReceiptCredential" },
   patient_summary: { th: "สรุปข้อมูลผู้ป่วยพกพา", en: "Portable Patient Summary", icon: "FileHeart", vcType: "PatientSummaryCredential" },
   allergy_alert: { th: "บัตรแจ้งเตือนการแพ้ยา", en: "Allergy Alert", icon: "TriangleAlert", vcType: "AllergyAlertCredential" },

@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v3.25.0 | 2026-07-03 | Staff credential restructure (single staff_identity type with position), profile photo fix for Chrome production (SW cross-origin redirect), seed staff identity VCs for all staff users |
 | v3.24.0 | 2026-07-03 | Merged PR #14: Mobile credential person images fix — shared resolver, PersonPhoto component, wallet API avatarUrl binding, SW network-first |
 | v3.23.0 | 2026-07-03 | Trust Layer Auto-Remediation UI with 10 remediation actions mapped to system pages |
 | v3.22.0 | 2026-07-03 | Trust Layer Checklist UI in prepareWorkbench, Single-Document VP Flow verified, SHL Passcode Lock-out UI with auto-disable |
@@ -1814,17 +1815,18 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 | Metric | Value |
 |--------|-------|
 | Database tables | 67 (in schema.ts) |
-| Migration batches | 18 |
+| Migration batches | 19 |
 | tRPC routers | 31 (added contractAdmin) |
 | Frontend pages | 37 |
 | Reusable components | 25 (added PersonPhoto, TrustLayerRemediationPanel, UploadDocButton, CheckinQRPanel) |
 | Test files | 27 |
-| Test cases | 328 (all passing) |
+| Test cases | 331 (all passing) |
 | TypeScript errors | 0 |
 | Demo users | 16 (all with unique avatars) |
 | Claim scenarios | 6 (fully seeded with FHIR data) |
 | Payer adapters | 6 (all payer types covered) |
 | Credential requests | 10 (all statuses represented) |
+| Staff identity VCs | 5 (all staff with hospitalId) |
 | Trust layer checklist items | 10 (5 base + 5 SHL-specific) |
 | Remediation actions | 10 (mapped to system pages) |
 | SHL packages | 12 active (5 with passcode) |
@@ -2075,3 +2077,56 @@ The shared photo rules live in `shared/personImages.ts`; UI rendering is central
 Service worker behavior was also updated: `/manus-storage/*` is network-first and only successful `image/*` responses are cached. This avoids stale mobile caches keeping broken avatar responses after production storage fixes.
 
 Operational DB and Manus reseed instructions are documented in `docs/MOBILE_CREDENTIAL_PERSON_IMAGE_HANDOFF.md`.
+
+---
+
+## 42. Staff Credential Restructure & Profile Photo Fix (v3.25.0 — 2026-07-03)
+
+### 42.1 Single Staff Identity Credential Type
+
+Previously the system had separate credential types per staff role (doctor_identity, nurse_identity, admin_identity). This was architecturally incorrect — all hospital staff share a single credential type `staff_identity` differentiated by the `position` field within the VC payload.
+
+**Schema changes (migration 0018):**
+- Added `staff_identity` to `issuedCredentials.type`, `credentialIssuanceRequests.credentialType`, and `walletCards.credentialType` enums
+
+**Affected files:**
+- `drizzle/schema.ts` — enum additions
+- `server/portability/labels.ts` — `DOCUMENT_TYPE_LABELS["staff_identity"]`, `DOCUMENT_STORAGE_MAP["staff_identity"]`
+- `server/portability/types.ts` — `HospitalStaffIdentityCredential` added to union
+- `server/portability/presentation.ts` — normalization mapping
+- `server/portability/reseed.ts` — `cardTypeForDocument`, `primaryFhirResource`, `isPinned`, `seedStaffIdentityCredentials()`
+- `server/routers.ts` — `cardTypeForCredential`, `credentialTypeForCardType`, `credentialTypeValues`
+- `client/src/pages/PatientProfile.tsx` — `ROLE_IDENTITY_TYPES` uses single "identity" cardType for all staff
+- `client/src/pages/Wallet.tsx` — `sortIdentityFirst`, `PHOTO_TYPES`
+- `client/src/components/CredentialRenderer.tsx` — switch case, `needsPhoto`, `typeLabels`
+- `client/src/pages/CredentialDetail.tsx` — `typeLabels`
+
+### 42.2 Staff Identity VC Seeding
+
+The `seedStaffIdentityCredentials()` function in `reseed.ts` automatically issues a `HospitalStaffIdentityCredential` VC for every user where `systemRole != 'patient'` and `hospitalId IS NOT NULL`. The VC payload includes:
+
+| Field | Source |
+|-------|--------|
+| position / positionEn | STAFF_POSITION_LABELS[systemRole] |
+| licenseNo | Auto-generated with role prefix (e.g., "MD-000409") |
+| hospitalCode | From hospitals table |
+| fullNameTh | users.name |
+| thaiId | users.thaiId |
+
+Staff users without a `hospitalId` (e.g., system_admin, integration_engineer) do not receive a staff identity VC — the profile page shows an appropriate empty state message.
+
+### 42.3 Profile Photo Fix for Chrome Production
+
+**Root cause:** In production, `/manus-storage/*` requests return a `307 Temporary Redirect` to a CloudFront presigned URL (cross-origin). The service worker's `fetch()` follows this redirect, but the resulting response has `type: "opaqueredirect"` or `type: "cors"` depending on browser behavior. On Chrome, the response was not being properly handled.
+
+**Fix:** Updated `client/public/sw.js` to:
+1. Use `redirect: "follow"` explicitly in fetch options
+2. Accept any response with `status < 400` (not just `response.ok`) for cross-origin redirected responses
+3. Only cache responses where `Content-Type` starts with `image/`
+4. Removed cache-busting `?tc_img=` query parameter from `shared/personImages.ts` that was interfering with the platform's presign handler
+
+### 42.4 Profile Page Empty State
+
+The profile page now shows role-appropriate empty state messages:
+- **Patient:** "บัตรจะถูกออกให้เมื่อลงทะเบียนเข้ารับบริการ"
+- **Staff:** "บัตรจะถูกออกให้โดยผู้ดูแลระบบของโรงพยาบาล"

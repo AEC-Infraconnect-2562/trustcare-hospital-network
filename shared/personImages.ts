@@ -29,7 +29,7 @@ const PHOTO_KEYS = [
 
 export function normalizePersonImageUrl(
   value: unknown,
-  cacheVersion = PERSON_IMAGE_CACHE_VERSION,
+  _cacheVersion = PERSON_IMAGE_CACHE_VERSION,
 ): string | undefined {
   if (typeof value !== "string") return undefined;
   const raw = value.trim();
@@ -37,10 +37,10 @@ export function normalizePersonImageUrl(
   if (raw.startsWith("data:") || raw.startsWith("blob:")) return raw;
 
   const normalized = raw.startsWith("manus-storage/") ? `/${raw}` : raw;
-  if (!normalized.includes("/manus-storage/")) return normalized;
-  if (/[?&]tc_img=/.test(normalized)) return normalized;
-
-  return `${normalized}${normalized.includes("?") ? "&" : "?"}tc_img=${cacheVersion}`;
+  // Do NOT append cache-busting query params to /manus-storage/ URLs.
+  // In production, the platform's presign handler returns 307 redirects
+  // and extra query params can interfere with CloudFront signed URLs.
+  return normalized;
 }
 
 export function uniquePersonImageSources(sources: unknown[]): string[] {

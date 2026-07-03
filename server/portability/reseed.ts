@@ -206,6 +206,9 @@ export async function reseedTrustcareVcVpDatabase(input: {
     presentations.push({ id: presentation.id, holderDid: presentation.holderDid, credentialCount: selected.length, scenario: scenario.id });
   }
 
+  // ─── Seed Staff Identity Credentials ──────────────────────────────────────
+  await seedStaffIdentityCredentials({ hospitalRows, issuerRows, templateRows, batchId });
+
   const shlPackages = await seedSmartHealthLinkPackages({
     seed,
     batchId,
@@ -1258,7 +1261,7 @@ async function upsertWalletCard(input: { patientId: number; credentialRowId: num
     issuerHospitalName: String(input.document.humanDocument?.renderData?.hospital?.nameEn ?? input.document.hospitalCode),
     documentCategory: storage.category,
     cardColor: hospitalColor(String(input.document.hospitalCode)),
-    isPinned: ["patient_identity", "patient_summary", "allergy_alert"].includes(String(input.document.credentialType)),
+    isPinned: ["patient_identity", "staff_identity", "patient_summary", "allergy_alert"].includes(String(input.document.credentialType)),
   };
   if (existing[0]) await db.update(walletCards).set(values as any).where(eq(walletCards.id, existing[0].id));
   else await db.insert(walletCards).values(values as any);
@@ -1390,6 +1393,7 @@ function consentPurposeForDocument(type: string): ConsentPurpose {
 function primaryFhirResource(type: string): string {
   const map: Record<string, string> = {
     patient_identity: "Patient",
+    staff_identity: "Practitioner",
     consent_receipt: "Consent",
     patient_summary: "Bundle",
     allergy_alert: "AllergyIntolerance",
@@ -1427,6 +1431,7 @@ function validityDays(type: string): number {
 function cardTypeForDocument(type: string): string {
   const map: Record<string, string> = {
     patient_identity: "identity",
+    staff_identity: "identity",
     consent_receipt: "consent",
     patient_summary: "patient_summary",
     allergy_alert: "allergy",
@@ -1496,4 +1501,174 @@ function hasIssuerEntitlements(value: unknown): boolean {
   const entitlements = value as { makerTypes?: unknown; checkerTypes?: unknown };
   return (Array.isArray(entitlements.makerTypes) && entitlements.makerTypes.length > 0)
     || (Array.isArray(entitlements.checkerTypes) && entitlements.checkerTypes.length > 0);
+}
+
+
+// ─── Staff Identity Credential Seeding ──────────────────────────────────────
+const STAFF_POSITION_LABELS: Record<string, { th: string; en: string; licensePrefix?: string }> = {
+  doctor: { th: "แพทย์", en: "Physician", licensePrefix: "MD" },
+  nurse: { th: "พยาบาลวิชาชีพ", en: "Registered Nurse", licensePrefix: "RN" },
+  hospital_admin: { th: "ผู้ดูแลโรงพยาบาล", en: "Hospital Administrator" },
+  system_admin: { th: "ผู้ดูแลระบบ", en: "System Administrator" },
+  integration_engineer: { th: "วิศวกรระบบเชื่อมต่อ", en: "Integration Engineer" },
+  maker: { th: "เจ้าหน้าที่ออกเอกสาร", en: "Document Maker" },
+  checker: { th: "เจ้าหน้าที่ตรวจสอบ", en: "Document Checker" },
+};
+
+async function seedStaffIdentityCredentials(input: {
+  hospitalRows: Map<string, number>;
+  issuerRows: Map<string, number>;
+  templateRows: Map<string, number>;
+  batchId: string;
+}): Promise<void> {
+  const db = (await getDb())!;
+  // Find all staff users (non-patient, with a hospitalId)
+  const staffUsers = await db.select().from(users).where(
+    and(
+      sql`${users.systemRole} != 'patient'`,
+      sql`${users.hospitalId} IS NOT NULL`,
+    )
+  );
+
+  for (const staffUser of staffUsers) {
+    if (!staffUser.hospitalId) continue;
+    // Check if this user already has a staff_identity credential
+    const [existing] = await db.select().from(issuedCredentials)
+      .where(and(
+        eq(issuedCredentials.subjectId, staffUser.id),
+        eq(issuedCredentials.type, "staff_identity" as any),
+        eq(issuedCredentials.status, "active"),
+      ))
+      .limit(1);
+    if (existing) continue;
+
+    // Find hospital code from hospitalId
+    const [hospital] = await db.select().from(hospitals).where(eq(hospitals.id, staffUser.hospitalId)).limit(1);
+    if (!hospital) continue;
+
+    const hospitalCode = hospital.code || "TCC";
+    const hospitalNameTh = hospital.name || hospitalCode;
+    const hospitalNameEn = hospital.nameEn || hospitalCode;
+    const hospitalHcode = hospital.code; // use code as hcode fallback
+    const issuerId = input.issuerRows.get(hospitalCode);
+    const templateId = input.templateRows.get(`${hospitalCode}:staff_identity`);
+    if (!issuerId || !templateId) continue;
+
+    const positionLabel = STAFF_POSITION_LABELS[staffUser.systemRole] ?? { th: "เจ้าหน้าที่", en: "Staff" };
+    const licenseNo = positionLabel.licensePrefix
+      ? `${positionLabel.licensePrefix}-${String(staffUser.id).padStart(6, "0")}`
+      : undefined;
+
+    const credentialId = `${SEED_PREFIX}:vc:staff:${hospitalCode.toLowerCase()}:${staffUser.openId}`;
+    const holderDid = patientDidKey(`${hospitalCode}:STAFF:${staffUser.openId}`);
+    const issuerDid = hospitalDidWeb(hospitalCode);
+
+    const issuer: IssuerProfile = {
+      id: String(staffUser.hospitalId),
+      name: hospital.nameEn || `TrustCare ${hospitalCode}`,
+      did: issuerDid,
+      country: "TH",
+      trustDomain: "trustcare-network",
+    };
+
+    const claims: JsonRecord = {
+      documentType: "staff_identity",
+      staffId: staffUser.openId,
+      position: positionLabel.th,
+      positionEn: positionLabel.en,
+      systemRole: staffUser.systemRole,
+      hospitalCode,
+      hospitalName: hospitalNameEn,
+      hospitalNameTh: hospitalNameTh,
+      fullNameTh: staffUser.name,
+      fullNameEn: staffUser.name,
+      email: staffUser.email,
+      phone: staffUser.phone,
+      thaiId: staffUser.thaiId,
+      ...(licenseNo ? { licenseNo } : {}),
+      brand: "TrustCare",
+      label: "TrustCare Hospital Staff Identity",
+      fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
+    };
+
+    const vc = await issueCredential({
+      type: "HospitalStaffIdentityCredential",
+      issuer,
+      subjectId: String(staffUser.id),
+      subjectDid: holderDid,
+      claims,
+      evidence: [{ type: "StaffRegistry", digest: sha256(claims), sourceSystem: `${hospitalCode}-HRM` }],
+      validDays: 365,
+      audience: DEFAULT_AUDIENCE,
+      credentialId,
+      now: SEED_ISSUED_AT,
+    });
+
+    const document: JsonRecord = {
+      credentialType: "staff_identity",
+      hospitalCode,
+      id: `doc-staff-${hospitalCode.toLowerCase()}-${staffUser.openId}`,
+      holderDid,
+      issuerDid,
+      humanDocument: {
+        brand: "TrustCare",
+        label: "TrustCare Hospital Staff Identity",
+        templateId: "staff_identity_v1",
+        renderData: {
+          hospital: { code: hospitalCode, nameTh: hospitalNameTh, nameEn: hospitalNameEn, hcode: hospitalHcode },
+          staff: { fullNameTh: staffUser.name, position: positionLabel.th, positionEn: positionLabel.en, licenseNo },
+          document: { no: `STAFF-${hospitalCode}-${String(staffUser.id).padStart(6, "0")}`, hashShort: sha256(credentialId).slice(0, 12), qrLabel: "Scan to verify" },
+          issuer: { did: issuerDid },
+        },
+      },
+    };
+
+    const storage = documentStorageMetadata({ documentType: "staff_identity", hospitalCode, patientKey: String(staffUser.id) });
+
+    await db.insert(issuedCredentials).values({
+      credentialId: vc.id,
+      templateId,
+      issuerId,
+      issuerHospitalId: staffUser.hospitalId,
+      subjectId: staffUser.id,
+      type: "staff_identity" as any,
+      status: "active",
+      credentialData: {
+        ...vc.credential,
+        trustcareSeed: {
+          batchId: input.batchId,
+          sourceKit: "trustcare-portable-vc-vp-seed-kit.zip",
+          documentSeedId: document.id,
+          holderDid,
+          standardLabel: DOCUMENT_TYPE_LABELS["staff_identity"],
+          fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
+        },
+        humanDocument: document.humanDocument,
+      },
+      sdJwtVc: vc.jwt,
+      documentCategory: storage.category,
+      documentSubcategory: storage.subcategory,
+      storageKey: storage.storagePath,
+      searchTags: storage.indexTags,
+      issuedAt: SEED_ISSUED_AT,
+      expiresAt: vc.expiresAt ? new Date(vc.expiresAt) : undefined,
+      fhirResourceId: "Practitioner",
+      schemaVersion: "1.0.0",
+    } as any).onDuplicateKeyUpdate({
+      set: {
+        subjectId: staffUser.id,
+        type: "staff_identity" as any,
+        status: "active",
+      } as any,
+    });
+
+    const [credRow] = await db.select().from(issuedCredentials).where(eq(issuedCredentials.credentialId, vc.id)).limit(1);
+    if (!credRow) continue;
+
+    await upsertWalletCard({
+      patientId: staffUser.id,
+      credentialRowId: credRow.id,
+      document,
+    });
+  }
 }

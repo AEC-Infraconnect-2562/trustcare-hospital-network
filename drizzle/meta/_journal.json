@@ -127,6 +127,13 @@
       "when": 1783062292453,
       "tag": "0017_famous_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1783083449233,
+      "tag": "0018_unusual_black_widow",
+      "breakpoints": true
     }
   ]
 }

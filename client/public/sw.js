@@ -1,7 +1,7 @@
 /// Service Worker — Trustcare Hospital Network
-/// Cache-first for immutable static assets, network-first for person images
+/// Network-first for person images, cache-first for immutable static assets
 
-const CACHE_NAME = "trustcare-sw-v4-person-images";
+const CACHE_NAME = "trustcare-sw-v5-person-images";
 
 // Patterns to cache with cache-first strategy
 const CACHE_FIRST_PATTERNS = [
@@ -9,9 +9,11 @@ const CACHE_FIRST_PATTERNS = [
   /\.woff2?$/,               // Web fonts
 ];
 
-// Uploaded photos can change independently from the app build and must not keep
-// stale 404/error bodies on mobile browsers.
-const IMAGE_NETWORK_FIRST_PATTERNS = [
+// Uploaded photos: network-first with redirect handling.
+// In production the platform returns 307 → CloudFront (cross-origin).
+// We must NOT intercept these — let the browser handle the redirect natively
+// so that <img> tags follow the 307 transparently.
+const IMAGE_BYPASS_PATTERNS = [
   /\/manus-storage\//,
 ];
 
@@ -29,7 +31,7 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  // Claim all clients immediately
+  // Claim all clients immediately and purge old caches
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -52,29 +54,14 @@ self.addEventListener("fetch", (event) => {
   // Skip non-cacheable patterns
   if (NO_CACHE_PATTERNS.some((p) => p.test(url.pathname))) return;
 
-  // Network-first for Manus storage images. If the network is unavailable,
-  // fall back to the last known good image response.
-  if (IMAGE_NETWORK_FIRST_PATTERNS.some((p) => p.test(url.pathname))) {
-    event.respondWith(
-      caches.open(CACHE_NAME).then(async (cache) => {
-        try {
-          const response = await fetch(request, { cache: "no-store" });
-          const contentType = response.headers.get("content-type") || "";
-          if (response.ok && contentType.startsWith("image/")) {
-            await cache.put(request, response.clone());
-          }
-          return response;
-        } catch (error) {
-          const cached = await cache.match(request);
-          if (cached) return cached;
-          throw error;
-        }
-      })
-    );
-    return;
-  }
+  // DO NOT intercept manus-storage requests.
+  // In production, these return 307 redirects to CloudFront signed URLs.
+  // If the service worker intercepts them, the cross-origin redirect produces
+  // an opaque response that breaks <img> rendering in Chrome.
+  // Let the browser handle these natively — it follows 307 correctly.
+  if (IMAGE_BYPASS_PATTERNS.some((p) => p.test(url.pathname))) return;
 
-  // Cache-first for matching patterns
+  // Cache-first for matching patterns (vendor chunks, fonts)
   if (CACHE_FIRST_PATTERNS.some((p) => p.test(url.pathname))) {
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) =>

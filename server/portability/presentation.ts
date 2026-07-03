@@ -71,6 +71,7 @@ function normalizeCredentialType(type: string): string {
     .replace(/-/g, "_")
     .toLowerCase()
     .replace(/^patient_identity$/, "patient_identity")
+    .replace(/^hospital_staff_identity$/, "staff_identity")
     .replace(/^consent_receipt$/, "consent_receipt")
     .replace(/^coverage_eligibility$/, "insurance_eligibility");
 }

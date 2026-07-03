@@ -103,7 +103,7 @@ import {
 } from "./careTransition";
 
 const credentialTypeValues = [
-  "patient_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization",
+  "patient_identity", "staff_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization",
   "medical_certificate", "prescription", "lab_result", "diagnostic_report", "discharge_summary", "insurance_eligibility",
   "claim_package", "claim_receipt", "travel_document_verification", "shl_manifest", "pharmacy_dispense", "appointment",
   "visa_support_letter", "quotation", "guarantee_letter", "mpi_link_certificate", "sync_receipt",
@@ -4823,6 +4823,7 @@ async function resolveTemplateForRequest(request: any): Promise<number> {
 function trustcareVcTypeForDbType(type: string): any {
   const map: Record<string, string> = {
     patient_identity: "PatientIdentityCredential",
+    staff_identity: "HospitalStaffIdentityCredential",
     consent_receipt: "ConsentReceiptCredential",
     patient_summary: "PatientSummaryCredential",
     allergy_alert: "AllergyAlertCredential",
@@ -4885,6 +4886,7 @@ function getCardDisplayName(type: string): string {
   if (extendedNames[type]) return extendedNames[type];
   const map: Record<string, string> = {
     patient_identity: "บัตรประจำตัวผู้ป่วย",
+    staff_identity: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล",
     consent_receipt: "ใบรับรองความยินยอม",
     patient_summary: "สรุปข้อมูลผู้ป่วย",
     allergy_alert: "แจ้งเตือนการแพ้",
@@ -4898,6 +4900,7 @@ function getCardDisplayName(type: string): string {
 function cardTypeForCredential(type: string): string {
   const map: Record<string, string> = {
     patient_identity: "identity",
+    staff_identity: "identity",
     consent_receipt: "consent",
     patient_summary: "patient_summary",
     allergy_alert: "allergy",

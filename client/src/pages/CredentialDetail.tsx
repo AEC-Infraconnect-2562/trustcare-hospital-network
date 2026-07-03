@@ -22,6 +22,7 @@ import { toast } from "sonner";
 
 const typeLabels: Record<string, string> = {
   patient_identity: "บัตรประจำตัวผู้ป่วย",
+  staff_identity: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล",
   consent_receipt: "ใบรับรองความยินยอม",
   patient_summary: "สรุปข้อมูลผู้ป่วย",
   allergy_alert: "แจ้งเตือนการแพ้",

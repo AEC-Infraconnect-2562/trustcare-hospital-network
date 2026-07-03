@@ -56,13 +56,13 @@ import { patientPhotoSources } from "@shared/personImages";
 // Role-based identity card type mapping
 const ROLE_IDENTITY_TYPES: Record<string, { cardTypes: string[]; label: string; icon: any }> = {
   patient: { cardTypes: ["identity"], label: "บัตรประจำตัวผู้ป่วย", icon: BadgeCheck },
-  doctor: { cardTypes: ["identity"], label: "บัตรประจำตัวแพทย์", icon: Stethoscope },
-  nurse: { cardTypes: ["identity"], label: "บัตรประจำตัวพยาบาล", icon: ShieldCheck },
-  system_admin: { cardTypes: ["identity"], label: "บัตรประจำตัวผู้ดูแลระบบ", icon: Shield },
-  hospital_admin: { cardTypes: ["identity"], label: "บัตรประจำตัวผู้ดูแลโรงพยาบาล", icon: Building2 },
-  maker: { cardTypes: ["identity"], label: "บัตรประจำตัว Maker", icon: BadgeCheck },
-  checker: { cardTypes: ["identity"], label: "บัตรประจำตัว Checker", icon: BadgeCheck },
-  integration_engineer: { cardTypes: ["identity"], label: "บัตรประจำตัววิศวกรระบบ", icon: Shield },
+  doctor: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Stethoscope },
+  nurse: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: ShieldCheck },
+  system_admin: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Shield },
+  hospital_admin: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Building2 },
+  maker: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: BadgeCheck },
+  checker: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: BadgeCheck },
+  integration_engineer: { cardTypes: ["identity"], label: "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล", icon: Shield },
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -337,7 +337,11 @@ export default function PatientProfile() {
                   <div className="text-center py-8 text-muted-foreground">
                     <BadgeCheck className="h-12 w-12 mx-auto mb-3 opacity-30" />
                     <p className="text-sm">ยังไม่มีบัตรประจำตัวในระบบ</p>
-                    <p className="text-xs mt-1">บัตรจะถูกออกให้เมื่อลงทะเบียนเข้ารับบริการ</p>
+                    <p className="text-xs mt-1">
+                      {systemRole === "patient"
+                        ? "บัตรจะถูกออกให้เมื่อลงทะเบียนเข้ารับบริการ"
+                        : "บัตรจะถูกออกให้โดยผู้ดูแลระบบของโรงพยาบาล"}
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-4">

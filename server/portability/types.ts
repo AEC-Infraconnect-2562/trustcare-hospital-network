@@ -31,6 +31,7 @@ export type ConsentPurpose =
 
 export type TrustcareCredentialType =
   | "PatientIdentityCredential"
+  | "HospitalStaffIdentityCredential"
   | "ConsentReceiptCredential"
   | "PatientSummaryCredential"
   | "AllergyAlertCredential"

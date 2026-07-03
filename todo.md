@@ -781,3 +781,14 @@
 - [x] Run tests (328 pass, 0 TS errors)
 - [x] Update Architecture Documents
 - [x] Save checkpoint, push to GitHub
+
+## v3.25.0 - Profile Photo Fix, Staff Credential Restructure
+- [x] Fix profile photo not displaying in Chrome production (works in Manus Preview)
+- [x] Restructure hospital staff credential: single type "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล" with position field (แพทย์, พยาบาล, เทคนิคการแพทย์, ผู้บริหาร, รปภ. etc.)
+- [x] Remove separate credential types for doctor/nurse/admin cards
+- [x] Update seed data, credential issuance, and all dependencies
+- [x] Seed staff identity VC for ALL staff users who don't have one yet (doctor, nurse, admin, etc.)
+- [x] Fix VC/VP display on profile page for users without cards (show appropriate empty state)
+- [x] Fix profile photo not loading in Chrome production
+- [x] Update Architecture Documents (section 42, version history, statistics)
+- [x] Run tests (331 pass, 0 TS errors), save checkpoint, push to GitHub
