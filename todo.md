@@ -583,26 +583,37 @@
 ## v3.10.0 - Realistic Portrait Photos for All Demo Users
 
 ### Portrait Generation (16 unique AI-generated portraits)
-- [ ] demo-sysadmin-001 (นพ.สมชาย ระบบดี) - Thai male doctor, 50s, authoritative
-- [ ] demo-hospadmin-001 (นางวิภา บริหารเก่ง) - Thai female admin, 45-50
-- [ ] demo-doctor-001 (นพ.ธนวัฒน์ รักษาดี) - Thai male doctor, 35-40
-- [ ] demo-doctor-002 (พญ.สุภาพร ใจดี) - Thai female doctor, 30-35
-- [ ] demo-nurse-001 (นางสาวพิมพ์ใจ ดูแลดี) - Thai female nurse, 28-32
-- [ ] demo-nurse-002 (นายอนุชา ช่วยเหลือ) - Thai male nurse, 30-35
-- [ ] demo-engineer-001 (นายปิยะ เชื่อมต่อดี) - Thai male IT engineer, 30-35
-- [ ] demo-patient-001 (นายสมชาย ใจดี) - Thai male, 45-50
-- [ ] demo-patient-002 (นางสาวมาลี วัฒนา) - Thai female, 35-40
-- [ ] demo-patient-003 (Mr. John Williams) - Caucasian male, 55-60
-- [ ] demo-patient-004 (นางสาวฮารุกะ ทานากะ) - Japanese female, 30-35
-- [ ] demo-patient-005 (นายวิชัย สุขสบาย) - Thai male elderly, 60-65
-- [ ] demo-patient-006 (นางพรทิพย์ มั่งมี) - Thai female, 50-55
-- [ ] demo-patient-007 (นายอภิชาติ รักสุขภาพ) - Thai male, 40-45
-- [ ] demo-patient-008 (Mr. David Chen) - Chinese-American male, 45-50
-- [ ] demo-patient-009 (นางสาวสุดา ใจเย็น) - Thai female young, 25-28
+- [x] demo-sysadmin-001 (นพ.สมชาย ระบบดี) - Thai male doctor, 50s, authoritative
+- [x] demo-hospadmin-001 (นางวิภา บริหารเก่ง) - Thai female admin, 45-50
+- [x] demo-doctor-001 (นพ.ธนวัฒน์ รักษาดี) - Thai male doctor, 35-40
+- [x] demo-doctor-002 (พญ.สุภาพร ใจดี) - Thai female doctor, 30-35
+- [x] demo-nurse-001 (นางสาวพิมพ์ใจ ดูแลดี) - Thai female nurse, 28-32
+- [x] demo-nurse-002 (นายอนุชา ช่วยเหลือ) - Thai male nurse, 30-35
+- [x] demo-engineer-001 (นายปิยะ เชื่อมต่อดี) - Thai male IT engineer, 30-35
+- [x] demo-patient-001 (นายสมชาย ใจดี) - Thai male, 45-50
+- [x] demo-patient-002 (นางสาวมาลี วัฒนา) - Thai female, 35-40
+- [x] demo-patient-003 (Mr. John Williams) - Caucasian male, 55-60
+- [x] demo-patient-004 (นางสาวฮารุกะ ทานากะ) - Japanese female, 30-35
+- [x] demo-patient-005 (นายวิชัย สุขสบาย) - Thai male elderly, 60-65
+- [x] demo-patient-006 (นางพรทิพย์ มั่งมี) - Thai female, 50-55
+- [x] demo-patient-007 (นายอภิชาติ รักสุขภาพ) - Thai male, 40-45
+- [x] demo-patient-008 (Mr. David Chen) - Chinese-American male, 45-50
+- [x] demo-patient-009 (นางสาวสุดา ใจเย็น) - Thai female young, 25-28
 
 ### Upload and Seed
-- [ ] Upload all portraits via manus-upload-file --webdev
-- [ ] Update user avatarUrl in database for all 16 demo users
-- [ ] Verify portraits display correctly in UI
-- [ ] Run full test suite
-- [ ] Save checkpoint and push to GitHub
+- [x] Upload all portraits via manus-upload-file --webdev
+- [x] Update user avatarUrl in database for all 16 demo users
+- [x] Verify portraits display correctly in UI
+- [x] Run full test suite (302 tests passing)
+- [x] Save checkpoint and push to GitHub
+
+## v3.11.0 - Mobile UI Fixes
+
+### Bug Fixes
+- [x] Profile page: avatar photo not displaying (shows fallback initial instead of uploaded photo)
+- [x] Maker VC Dialog: duplicate template items in dropdown (same template listed 3 times)
+- [x] Wallet page: header title/buttons/tabs overlapping on mobile viewport
+- [x] Cross-border Referral: action buttons overlapping card content on mobile
+- [x] Medical Tourist page: title text cut off and header layout broken on mobile
+- [x] Run full test suite (302 tests passing)
+- [x] Save checkpoint and push to GitHub

@@ -26,7 +26,6 @@ function AvatarImage({
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
-      crossOrigin="anonymous"
       className={cn("aspect-square size-full", className)}
       {...props}
     />

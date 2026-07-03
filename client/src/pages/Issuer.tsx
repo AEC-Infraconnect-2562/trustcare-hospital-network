@@ -479,7 +479,7 @@ function IssueCredentialForm({
           </SelectTrigger>
           <SelectContent>
             {templates
-              .filter((template: any) => template.type === form.type)
+              .filter((template: any) => template.type === form.type && (!form.issuerHospitalId || !template.hospitalId || String(template.hospitalId) === form.issuerHospitalId))
               .map((template: any) => (
                 <SelectItem key={template.id} value={String(template.id)}>
                   {template.name} v{template.version}

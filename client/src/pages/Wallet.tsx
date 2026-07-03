@@ -383,7 +383,7 @@ export default function Wallet() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           กลับ
         </Button>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <WalletIcon className="h-6 w-6 text-primary" />
@@ -394,7 +394,7 @@ export default function Wallet() {
               {Object.keys(categoryCounts).length} หมวดหมู่
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* Offline status indicator */}
             <div
               className={`flex items-center gap-1.5 border rounded-lg px-2.5 py-1.5 text-xs font-medium ${offlineWallet.isOnline ? "border-emerald-200 text-emerald-700 bg-emerald-50" : "border-amber-200 text-amber-700 bg-amber-50"}`}
@@ -412,7 +412,7 @@ export default function Wallet() {
               )}
             </div>
             {webAuthn.isSupported && (
-              <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5">
+              <div className="hidden sm:flex items-center gap-2 border rounded-lg px-3 py-1.5">
                 <Fingerprint
                   className={`h-4 w-4 ${webAuthn.isRegistered ? "text-emerald-600" : "text-muted-foreground"}`}
                 />
@@ -453,7 +453,7 @@ export default function Wallet() {
               <HeartPulse className="h-4 w-4" />
               เตรียมเข้ารับบริการ
             </Button>
-            <Badge variant="outline" className="text-xs">
+            <Badge variant="outline" className="text-xs hidden sm:flex">
               <CreditCard className="h-3 w-3 mr-1" />
               {totalCards} Cards
             </Badge>
@@ -592,7 +592,7 @@ export default function Wallet() {
                                       width={40}
                                       height={48}
                                       loading="eager"
-                                      crossOrigin="anonymous"
+                                     
                                       onError={e => {
                                         (
                                           e.target as HTMLImageElement

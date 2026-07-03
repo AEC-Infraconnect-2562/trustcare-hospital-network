@@ -63,17 +63,17 @@ export default function CrossBorder() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Globe className="h-7 w-7 text-primary" />
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
+              <Globe className="h-6 w-6 sm:h-7 sm:w-7 text-primary shrink-0" />
               ส่งต่อข้ามเครือข่าย
             </h1>
-            <p className="text-muted-foreground mt-1">จัดการการส่งต่อผู้ป่วยข้ามสาขา ข้ามเครือข่าย และข้ามประเทศ พร้อม SHL packet</p>
+            <p className="text-sm text-muted-foreground mt-1">จัดการการส่งต่อผู้ป่วยข้ามสาขา ข้ามเครือข่าย และข้ามประเทศ พร้อม SHL packet</p>
           </div>
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
             <DialogTrigger asChild>
-              <Button><Plus className="h-4 w-4 mr-2" />สร้างการส่งต่อ</Button>
+              <Button className="self-start sm:self-auto"><Plus className="h-4 w-4 mr-2" />สร้างการส่งต่อ</Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>สร้างการส่งต่อข้ามเครือข่าย (Wizard)</DialogTitle></DialogHeader>
@@ -138,26 +138,26 @@ export default function CrossBorder() {
                     {referrals.map(r => (
                       <div
                         key={r.id}
-                        className={`flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer ${selectedReferral?.id === r.id ? "border-primary" : ""}`}
+                        className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer ${selectedReferral?.id === r.id ? "border-primary" : ""}`}
                         onClick={() => setSelectedReferralId(r.id)}
                       >
-                        <div className="flex items-center gap-4">
-                          <div className="p-2 rounded-full bg-primary/10">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="p-2 rounded-full bg-primary/10 shrink-0">
                             <Globe className="h-5 w-5 text-primary" />
                           </div>
-                          <div>
-                            <p className="font-medium">#{r.id} — {r.partnerOrgName || "ไม่ระบุ"}</p>
-                            <p className="text-sm text-muted-foreground">
-                              <Badge variant="outline" className="mr-2">{typeLabels[r.referralType] || r.referralType}</Badge>
-                              {r.partnerCountry && <span className="mr-2">🌍 {r.partnerCountry}</span>}
-                              {r.translationRequired && <span className="text-orange-600">🌐 ต้องแปล</span>}
-                            </p>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate">#{r.id} — {r.partnerOrgName || "ไม่ระบุ"}</p>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              <Badge variant="outline" className="text-[10px]">{typeLabels[r.referralType] || r.referralType}</Badge>
+                              {r.partnerCountry && <span className="text-xs text-muted-foreground">🌍 {r.partnerCountry}</span>}
+                              {r.translationRequired && <span className="text-xs text-orange-600">🌐 ต้องแปล</span>}
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="secondary">{statusLabels[r.status] || r.status}</Badge>
+                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                          <Badge variant="secondary" className="text-[10px]">{statusLabels[r.status] || r.status}</Badge>
                           {r.status === "packet_generated" && (
-                            <Button size="sm" onClick={() => updateStatus.mutate({ id: r.id, status: "sent" })}>
+                            <Button size="sm" onClick={(e) => { e.stopPropagation(); updateStatus.mutate({ id: r.id, status: "sent" }); }}>
                               <Send className="h-3 w-3 mr-1" />ส่ง
                             </Button>
                           )}

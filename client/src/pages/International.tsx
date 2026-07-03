@@ -66,17 +66,17 @@ export default function International() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Plane className="h-7 w-7 text-primary" />
-              ผู้ป่วยต่างชาติ (Medical Tourist)
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
+              <Plane className="h-6 w-6 sm:h-7 sm:w-7 text-primary shrink-0" />
+              <span>ผู้ป่วยต่างชาติ (Medical Tourist)</span>
             </h1>
-            <p className="text-muted-foreground mt-1">จัดการเคสผู้ป่วยต่างชาติ ตั้งแต่สอบถามจนถึงติดตามผลหลังรักษา</p>
+            <p className="text-sm text-muted-foreground mt-1">จัดการเคสผู้ป่วยต่างชาติ ตั้งแต่สอบถามจนถึงติดตามผลหลังรักษา</p>
           </div>
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
             <DialogTrigger asChild>
-              <Button><Plus className="h-4 w-4 mr-2" />เคสใหม่</Button>
+              <Button className="self-start sm:self-auto"><Plus className="h-4 w-4 mr-2" />เคสใหม่</Button>
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader><DialogTitle>สร้างเคสผู้ป่วยต่างชาติ</DialogTitle></DialogHeader>
@@ -169,26 +169,27 @@ export default function International() {
                     {cases.map(c => (
                       <div
                         key={c.id}
-                        className={`flex items-center justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer ${selectedCase?.id === c.id ? "border-primary" : ""}`}
+                        className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer ${selectedCase?.id === c.id ? "border-primary" : ""}`}
                         onClick={() => setSelectedCaseId(c.id)}
                       >
-                        <div className="flex items-center gap-4">
-                          <div className="p-2 rounded-full bg-primary/10">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="p-2 rounded-full bg-primary/10 shrink-0">
                             <User className="h-5 w-5 text-primary" />
                           </div>
-                          <div>
-                            <p className="font-medium">เคส #{c.id} — {c.serviceLine || "ทั่วไป"}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {c.country && <span className="mr-2">🌍 {c.country}</span>}
-                              {c.language && <span className="mr-2">🗣️ {languageLabels[c.language] || c.language}</span>}
-                              {c.contactEmail && <span>✉️ {c.contactEmail}</span>}
-                            </p>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate">เคส #{c.id} — {c.serviceLine || "ทั่วไป"}</p>
+                            <div className="flex flex-wrap gap-1 mt-1 text-xs text-muted-foreground">
+                              {c.country && <span>🌍 {c.country}</span>}
+                              {c.language && <span>🗣️ {languageLabels[c.language] || c.language}</span>}
+                              {c.contactEmail && <span className="truncate max-w-[150px]">✉️ {c.contactEmail}</span>}
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline">{statusLabels[c.status] || c.status}</Badge>
+                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                          <Badge variant="outline" className="text-[10px]">{statusLabels[c.status] || c.status}</Badge>
                           {c.status !== "closed" && (
-                            <Button size="sm" variant="outline" onClick={() => {
+                            <Button size="sm" variant="outline" onClick={(e) => {
+                              e.stopPropagation();
                               const idx = statusFlow.indexOf(c.status);
                               if (idx < statusFlow.length - 1) {
                                 updateStatus.mutate({ id: c.id, status: statusFlow[idx + 1] as any });
