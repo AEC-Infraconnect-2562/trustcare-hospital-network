@@ -1,13 +1,18 @@
 /// Service Worker — Trustcare Hospital Network
-/// Cache-first strategy for static assets (avatars, vendor chunks)
+/// Cache-first for immutable static assets, network-first for person images
 
-const CACHE_NAME = "trustcare-sw-v3";
+const CACHE_NAME = "trustcare-sw-v4-person-images";
 
 // Patterns to cache with cache-first strategy
 const CACHE_FIRST_PATTERNS = [
-  /\/manus-storage\//,       // Avatar images & uploaded assets
   /\/assets\/vendor-/,       // Vendor chunks (react, trpc, ui)
   /\.woff2?$/,               // Web fonts
+];
+
+// Uploaded photos can change independently from the app build and must not keep
+// stale 404/error bodies on mobile browsers.
+const IMAGE_NETWORK_FIRST_PATTERNS = [
+  /\/manus-storage\//,
 ];
 
 // Patterns to skip caching entirely
@@ -46,6 +51,28 @@ self.addEventListener("fetch", (event) => {
 
   // Skip non-cacheable patterns
   if (NO_CACHE_PATTERNS.some((p) => p.test(url.pathname))) return;
+
+  // Network-first for Manus storage images. If the network is unavailable,
+  // fall back to the last known good image response.
+  if (IMAGE_NETWORK_FIRST_PATTERNS.some((p) => p.test(url.pathname))) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        try {
+          const response = await fetch(request, { cache: "no-store" });
+          const contentType = response.headers.get("content-type") || "";
+          if (response.ok && contentType.startsWith("image/")) {
+            await cache.put(request, response.clone());
+          }
+          return response;
+        } catch (error) {
+          const cached = await cache.match(request);
+          if (cached) return cached;
+          throw error;
+        }
+      })
+    );
+    return;
+  }
 
   // Cache-first for matching patterns
   if (CACHE_FIRST_PATTERNS.some((p) => p.test(url.pathname))) {

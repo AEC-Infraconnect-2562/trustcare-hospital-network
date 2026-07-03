@@ -5,7 +5,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { CredentialRenderer } from "@/components/CredentialRenderer";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -50,6 +50,8 @@ import { useWebAuthn } from "@/hooks/useWebAuthn";
 import { exportWalletCardPdf } from "@/lib/pdfExport";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { PersonPhoto } from "@/components/PersonPhoto";
+import { patientPhotoSources } from "@shared/personImages";
 
 // Role-based identity card type mapping
 const ROLE_IDENTITY_TYPES: Record<string, { cardTypes: string[]; label: string; icon: any }> = {
@@ -228,10 +230,19 @@ export default function PatientProfile() {
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative group">
                     <Avatar className="h-28 w-28 border-4 border-muted">
-                      {currentAvatarUrl && <AvatarImage src={currentAvatarUrl} alt="Profile photo" />}
-                      <AvatarFallback className="text-2xl bg-primary/10 text-primary">
-                        {user?.name?.charAt(0)?.toUpperCase() || "U"}
-                      </AvatarFallback>
+                      <PersonPhoto
+                        sources={patientPhotoSources({
+                          primaryUrl: currentAvatarUrl,
+                          credentialData: identityCards[0]?.credentialData,
+                        })}
+                        alt="Profile photo"
+                        className="h-full w-full object-cover"
+                        fallback={
+                          <AvatarFallback className="h-full w-full text-2xl bg-primary/10 text-primary">
+                            {user?.name?.charAt(0)?.toUpperCase() || "U"}
+                          </AvatarFallback>
+                        }
+                      />
                     </Avatar>
                     <button
                       onClick={() => fileInputRef.current?.click()}
@@ -343,7 +354,7 @@ export default function PatientProfile() {
                           setPresentation(null);
                           setDetailOpen(true);
                         }}
-                        avatarUrl={currentAvatarUrl}
+                        avatarUrl={card.patientAvatarUrl || currentAvatarUrl}
                         systemRole={systemRole}
                       />
                     ))}
@@ -392,7 +403,7 @@ export default function PatientProfile() {
                     issuedAt={selectedCard.issuedAt || selectedCard.createdAt}
                     expiresAt={selectedCard.expiresAt}
                     hospitalName={selectedCard.issuerHospitalName}
-                    patientPhotoUrl={currentAvatarUrl}
+                    patientPhotoUrl={selectedCard.patientAvatarUrl || currentAvatarUrl}
                   />
                 ) : (
                   <div className="rounded-xl p-4 text-white bg-gradient-to-br from-blue-600 to-blue-800">
@@ -569,11 +580,15 @@ function IdentityCardItem({
         <CollapsibleTrigger asChild>
           <button className="w-full p-4 flex items-center gap-4 text-left hover:bg-muted/30 transition-colors">
             <div className="h-14 w-11 rounded-lg overflow-hidden border border-gray-200 shadow-sm shrink-0 bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="" className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-              ) : (
-                <User className="h-5 w-5 text-white" />
-              )}
+              <PersonPhoto
+                sources={patientPhotoSources({
+                  primaryUrl: avatarUrl,
+                  credentialData: card.credentialData,
+                })}
+                alt=""
+                className="h-full w-full object-cover"
+                fallback={<User className="h-5 w-5 text-white" />}
+              />
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm truncate">{card.displayName}</p>

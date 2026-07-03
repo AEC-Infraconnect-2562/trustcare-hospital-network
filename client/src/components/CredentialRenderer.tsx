@@ -22,18 +22,8 @@ import {
   FileCheck,
   Clock,
 } from "lucide-react";
-
-// Avatar URLs for demo (AI-generated realistic photos, 400x400 JPEG)
-const AVATAR_URLS = {
-  male: "/manus-storage/patient_male_realistic_opt_e9b1630b.jpg",
-  female: "/manus-storage/patient_female_realistic_opt_d0edb245.jpg",
-  doctor: "/manus-storage/doctor_male_realistic_opt_b09f1058.jpg",
-  doctorFemale: "/manus-storage/doctor_female_realistic_opt_56d94f1d.jpg",
-  nurse: "/manus-storage/nurse_female_realistic_opt_d0e35459.jpg",
-  pharmacist: "/manus-storage/pharmacist_male_realistic_opt_2b3b0f56.jpg",
-  radiologist: "/manus-storage/radiologist_realistic_bd97425d.jpg",
-  medTech: "/manus-storage/med_tech_realistic_78575c20.jpg",
-};
+import { PersonPhoto } from "@/components/PersonPhoto";
+import { patientPhotoSources, practitionerPhotoSources } from "@shared/personImages";
 
 // Hospital brand colors based on actual TrustCare network hospitals
 const HOSPITAL_COLORS: Record<string, { primary: string; gradient: string; logo: string; accent: string }> = {
@@ -200,18 +190,24 @@ function DocumentHeader({ icon: Icon, title, brand, renderData, status }: {
 }
 
 // ─── Patient Info Section ────────────────────────────────────────────────────
-function PatientInfoSection({ renderData, showPhoto, gender, patientPhotoUrl }: {
+function PatientInfoSection({ renderData, showPhoto, gender, patientPhotoUrl, credentialData }: {
   renderData: ReturnType<typeof extractRenderData>;
   showPhoto?: boolean;
   gender?: "male" | "female";
   patientPhotoUrl?: string | null;
+  credentialData?: any;
 }) {
-  const avatarUrl = patientPhotoUrl || (gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male);
+  const photoSources = patientPhotoSources({ primaryUrl: patientPhotoUrl, credentialData, gender });
   return (
     <div className="flex gap-4 items-start">
       {showPhoto && (
-        <div className="h-20 w-16 rounded-xl overflow-hidden border-2 border-gray-200 shadow-md shrink-0">
-          <img src={avatarUrl} alt="" className="h-full w-full object-cover" loading="eager" onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+        <div className="h-20 w-16 rounded-xl overflow-hidden border-2 border-gray-200 shadow-md shrink-0 bg-muted flex items-center justify-center">
+          <PersonPhoto
+            sources={photoSources}
+            alt=""
+            className="h-full w-full object-cover"
+            fallback={<User className="h-6 w-6 text-muted-foreground" />}
+          />
         </div>
       )}
       <div className="space-y-1 flex-1">
@@ -259,14 +255,27 @@ function PractitionerSection({ practitioner, role }: { practitioner: any; role?:
   const isPharmacist = role?.includes("เภสัช") || practitioner.role === "pharmacist";
   const isRadiologist = role?.includes("รังสี") || practitioner.role === "radiologist";
   const isMedTech = role?.includes("เทคนิคการแพทย์") || role?.includes("นักเทคนิค") || practitioner.role === "med_tech";
-  const practitionerAvatar = isNurse ? AVATAR_URLS.nurse 
-    : isPharmacist ? AVATAR_URLS.pharmacist 
-    : isRadiologist ? AVATAR_URLS.radiologist 
-    : isMedTech ? AVATAR_URLS.medTech 
-    : (isFemale ? AVATAR_URLS.doctorFemale : AVATAR_URLS.doctor);
+  const practitionerRole = isNurse ? "nurse"
+    : isPharmacist ? "pharmacist"
+    : isRadiologist ? "radiologist"
+    : isMedTech ? "med_tech"
+    : practitioner.role || role;
+  const photoSources = practitionerPhotoSources({
+    primaryUrl: practitioner.avatarUrl || practitioner.photoUrl || practitioner.profilePhotoUrl,
+    practitioner,
+    role: practitionerRole,
+    gender: isFemale ? "female" : "male",
+  });
   return (
     <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
-      <img src={practitionerAvatar} alt="" className="h-12 w-12 rounded-full object-cover border-2 border-white shadow-sm" loading="eager" onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+      <div className="h-12 w-12 rounded-full overflow-hidden border-2 border-white shadow-sm bg-muted flex items-center justify-center shrink-0">
+        <PersonPhoto
+          sources={photoSources}
+          alt=""
+          className="h-full w-full object-cover"
+          fallback={<User className="h-5 w-5 text-muted-foreground" />}
+        />
+      </div>
       <div>
         <p className="font-medium">{practitioner.name}</p>
         <p className="text-xs text-muted-foreground">
@@ -337,7 +346,11 @@ function PatientIdentityCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
   const gender = extractPatientGender(props.credentialData);
-  const avatarUrl = props.patientPhotoUrl || (gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male);
+  const photoSources = patientPhotoSources({
+    primaryUrl: props.patientPhotoUrl,
+    credentialData: props.credentialData,
+    gender,
+  });
   const clinical = extractClinicalInfo(props.credentialData);
 
   return (
@@ -346,8 +359,13 @@ function PatientIdentityCard({ props }: { props: CredentialRendererProps }) {
       <CardContent className="p-6">
         <div className="flex gap-5">
           <div className="shrink-0">
-            <div className="h-32 w-24 rounded-xl overflow-hidden border-2 border-gray-200 shadow-lg ring-2 ring-offset-2 ring-gray-100">
-              <img src={avatarUrl} alt="" className="h-full w-full object-cover" loading="eager" onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+            <div className="h-32 w-24 rounded-xl overflow-hidden border-2 border-gray-200 shadow-lg ring-2 ring-offset-2 ring-gray-100 bg-muted flex items-center justify-center">
+              <PersonPhoto
+                sources={photoSources}
+                alt=""
+                className="h-full w-full object-cover"
+                fallback={<User className="h-8 w-8 text-muted-foreground" />}
+              />
             </div>
           </div>
           <div className="flex-1 space-y-3">
@@ -396,7 +414,7 @@ function MedicalCertificateCard({ props }: { props: CredentialRendererProps }) {
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
       <DocumentHeader icon={Stethoscope} title="ใบรับรองแพทย์" brand={brand} renderData={renderData} status={props.status} />
       <CardContent className="p-6 space-y-4">
-        <PatientInfoSection renderData={renderData} showPhoto gender={gender} patientPhotoUrl={props.patientPhotoUrl} />
+        <PatientInfoSection renderData={renderData} showPhoto gender={gender} patientPhotoUrl={props.patientPhotoUrl} credentialData={props.credentialData} />
         <Separator />
 
         {clinical.diagnosisText && (
@@ -596,7 +614,7 @@ function PatientSummaryCard({ props }: { props: CredentialRendererProps }) {
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
       <DocumentHeader icon={ClipboardList} title="สรุปข้อมูลผู้ป่วย" brand={brand} renderData={renderData} status={props.status} />
       <CardContent className="p-6 space-y-4">
-        <PatientInfoSection renderData={renderData} showPhoto gender={gender} patientPhotoUrl={props.patientPhotoUrl} />
+        <PatientInfoSection renderData={renderData} showPhoto gender={gender} patientPhotoUrl={props.patientPhotoUrl} credentialData={props.credentialData} />
         <Separator />
         <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
         <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์เจ้าของไข้" />
@@ -1105,7 +1123,11 @@ export function CredentialCompactCard({ props }: { props: CredentialRendererProp
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
   const gender = extractPatientGender(props.credentialData);
   const needsPhoto = ["patient_identity", "medical_certificate"].includes(props.type);
-  const avatarUrl = props.patientPhotoUrl || (gender === "female" ? AVATAR_URLS.female : AVATAR_URLS.male);
+  const photoSources = patientPhotoSources({
+    primaryUrl: props.patientPhotoUrl,
+    credentialData: props.credentialData,
+    gender,
+  });
 
   const typeLabels: Record<string, string> = {
     patient_identity: "บัตรประจำตัวผู้ป่วย",
@@ -1137,8 +1159,13 @@ export function CredentialCompactCard({ props }: { props: CredentialRendererProp
   return (
     <div className="flex items-center gap-3 p-3 rounded-xl border bg-card hover:shadow-lg transition-all duration-200 cursor-pointer group">
       {needsPhoto ? (
-        <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-gray-200 shadow-sm shrink-0 group-hover:border-primary/30 transition-colors">
-          <img src={avatarUrl} alt="" className="h-full w-full object-cover" loading="eager" onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+        <div className="h-12 w-10 rounded-lg overflow-hidden border-2 border-gray-200 shadow-sm shrink-0 group-hover:border-primary/30 transition-colors bg-muted flex items-center justify-center">
+          <PersonPhoto
+            sources={photoSources}
+            alt=""
+            className="h-full w-full object-cover"
+            fallback={<User className="h-5 w-5 text-muted-foreground" />}
+          />
         </div>
       ) : (
         <div className={`h-11 w-11 rounded-xl bg-gradient-to-br ${brand.gradient} flex items-center justify-center shrink-0 shadow-sm`}>

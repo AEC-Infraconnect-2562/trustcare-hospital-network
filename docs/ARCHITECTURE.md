@@ -2062,3 +2062,15 @@ When a user fixes an issue (e.g., uploads a missing document), returning to the 
 |------|--------|
 | `client/src/pages/PrepareForService.tsx` | Added `REMEDIATION_MAP` constant and `TrustLayerRemediationPanel` component |
 | `docs/ARCHITECTURE.md` | Added version history entries (v3.20.1–v3.23.0), updated statistics, added section 40 |
+
+---
+
+## 41. Mobile Credential Person Images (v3.24.0 — 2026-07-03)
+
+TrustCare credential rendering now treats person photos as source-of-truth data, not as per-page decoration. Wallet card APIs enrich each card with `patientAvatarUrl` from `users.avatarUrl`, and credential components read ordered photo candidates from the wallet owner, the VC payload, then demo fallback assets only as a last resort.
+
+The shared photo rules live in `shared/personImages.ts`; UI rendering is centralized in `client/src/components/PersonPhoto.tsx`. This prevents blank mobile photo frames by retrying candidate URLs before falling back to an icon.
+
+Service worker behavior was also updated: `/manus-storage/*` is network-first and only successful `image/*` responses are cached. This avoids stale mobile caches keeping broken avatar responses after production storage fixes.
+
+Operational DB and Manus reseed instructions are documented in `docs/MOBILE_CREDENTIAL_PERSON_IMAGE_HANDOFF.md`.
