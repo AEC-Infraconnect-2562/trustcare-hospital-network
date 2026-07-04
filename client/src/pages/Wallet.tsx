@@ -51,6 +51,12 @@ import {
   HeartPulse,
   KeyRound,
   LockKeyhole,
+  CheckCircle2,
+  Circle,
+  Clock,
+  Zap,
+  Database,
+  Network,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -1547,40 +1553,106 @@ function WalletManifestTrustPanel({ selected }: { selected: any }) {
 
 function WalletManifestDocuments({ bundle }: { bundle?: any }) {
   const documents = bundle?.documents ?? [];
+  const isPersisted = bundle?.source === "persisted_shl_manifest_documents";
   if (!documents.length) {
     return <p className="rounded-md border p-4 text-sm text-muted-foreground">No manifest documents loaded.</p>;
   }
+
   return (
-    <div className="space-y-2">
-      {documents.map((doc: any) => (
-        <details key={doc.id ?? doc.documentType} className="rounded-md border p-3" open={Number(doc.sequence ?? 1) === 1}>
-          <summary className="cursor-pointer list-none">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <FileSearch className="h-4 w-4 text-primary" />
-                  <p className="truncate text-sm font-semibold">{doc.title}</p>
+    <div className="space-y-3">
+      {/* Source indicator */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Database className="h-3.5 w-3.5" />
+          <span>Source: {isPersisted ? "Persisted (DB)" : "Derived (runtime)"}</span>
+        </div>
+        <Badge variant={isPersisted ? "default" : "secondary"} className="text-[11px]">
+          {isPersisted ? "DB-Persisted" : "Derived"}
+        </Badge>
+      </div>
+
+      {      documents.map((doc: any) => {
+        const objectLinks = doc.objectLinks ?? {};
+        const linkEntries = [
+          { key: "manifest", label: "Manifest", icon: FileText, value: resolveObjectLinkValue(objectLinks.manifest ?? objectLinks.shlFile ?? doc.manifestFileId) },
+          { key: "fhirDoc", label: "FHIR Doc", icon: FileCheck2, value: resolveObjectLinkValue(objectLinks.fhirDocumentReference) },
+          { key: "fhirBundle", label: "FHIR Bundle", icon: PackageCheck, value: resolveObjectLinkValue(objectLinks.fhirBundle) },
+          { key: "manifestVc", label: "Manifest VC", icon: Shield, value: resolveObjectLinkValue(objectLinks.manifestCredential) },
+          { key: "holderVp", label: "Holder VP", icon: BadgeCheck, value: resolveObjectLinkValue(objectLinks.holderPresentation) },
+          { key: "futureApi", label: "Future API", icon: Network, value: resolveObjectLinkValue(objectLinks.futureApi) },
+        ];
+        const readyCount = linkEntries.filter((e) => e.value).length;
+
+        return (
+          <details key={doc.id ?? doc.documentType} className="rounded-md border p-3" open={Number(doc.sequence ?? 1) === 1}>
+            <summary className="cursor-pointer list-none">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <FileSearch className="h-4 w-4 text-primary" />
+                    <p className="truncate text-sm font-semibold">{doc.title}</p>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {doc.documentType} - {doc.category} - {doc.sourceRole}
+                  </p>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {doc.documentType} - {doc.category} - {doc.sourceRole}
-                </p>
+                <div className="flex items-center gap-2">
+                  <Badge variant={doc.status === "available_in_manifest" ? "secondary" : "outline"}>
+                    {doc.status === "available_in_manifest" ? "Available" : doc.status}
+                  </Badge>
+                  <Badge variant="outline" className="text-[11px]">
+                    {readyCount}/{linkEntries.length} links
+                  </Badge>
+                </div>
               </div>
-              <Badge variant={doc.status === "available_in_manifest" ? "secondary" : "outline"}>{doc.status}</Badge>
+            </summary>
+
+            {/* Visual Object Links Grid */}
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {linkEntries.map((entry) => (
+                <WalletObjectLinkIndicator
+                  key={entry.key}
+                  icon={entry.icon}
+                  label={entry.label}
+                  value={entry.value}
+                />
+              ))}
             </div>
-          </summary>
-          <div className="mt-3 grid gap-2 text-xs md:grid-cols-2 xl:grid-cols-3">
-            <WalletObjectLink label="FHIR DocumentReference" value={doc.objectLinks?.fhirDocumentReference} />
-            <WalletObjectLink label="SHL file object" value={doc.objectLinks?.shlFile ?? doc.manifestFileId} />
-            <WalletObjectLink label="FHIR bundle" value={doc.objectLinks?.fhirBundle} />
-            <WalletObjectLink label="Manifest VC" value={doc.objectLinks?.manifestCredential} />
-            <WalletObjectLink label="Holder VP" value={doc.objectLinks?.holderPresentation} />
-            <WalletObjectLink label="Future object API" value={doc.objectLinks?.futureApi} />
-          </div>
-          <div className="mt-3 rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
-            This document is disclosed through the SHL manifest file, and trust is checked through Manifest VC + Holder VP + file hashes.
-          </div>
-        </details>
-      ))}
+
+            {/* Access Binding Summary */}
+            {doc.accessBinding && (
+              <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                <div className="flex items-center gap-2 rounded-md border p-2">
+                  <LockKeyhole className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Passcode:</span>
+                  <span className="font-medium">{doc.accessBinding.passcodeRequired ? "Required" : "None"}</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-md border p-2">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Expires:</span>
+                  <span className="font-medium">
+                    {doc.accessBinding.expiresAt
+                      ? new Date(doc.accessBinding.expiresAt).toLocaleDateString("th-TH")
+                      : "No expiry"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 rounded-md border p-2">
+                  <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-muted-foreground">Access:</span>
+                  <span className="font-medium">
+                    {doc.accessBinding.currentAccessCount ?? 0}
+                    {doc.accessBinding.maxAccessCount ? ` / ${doc.accessBinding.maxAccessCount}` : " (unlimited)"}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-3 rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+              Trust verified through Manifest VC + Holder VP + file hashes. All object links must be "ready" for full verification.
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }
@@ -1602,6 +1674,59 @@ function WalletObjectLink({ label, value }: { label: string; value?: string | nu
     <div className="min-w-0 rounded-md border p-2">
       <p className="text-muted-foreground">{label}</p>
       <p className="mt-1 truncate font-mono text-[11px]">{value || "pending"}</p>
+    </div>
+  );
+}
+
+/**
+ * Normalize an objectLink value that may be a string or a rich object from the DB.
+ * Extracts the best identifier string from objects like {hash, token, url}, {presentationId, status}, etc.
+ */
+function resolveObjectLinkValue(raw: unknown): string | null {
+  if (!raw) return null;
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as Record<string, unknown>;
+    // Priority order for extracting a meaningful identifier
+    const candidates = ["url", "presentationId", "credentialId", "resourceId", "endpointPattern", "contentHash", "hash", "sourceBundleHash", "shlFile", "fileId"];
+    for (const key of candidates) {
+      if (typeof obj[key] === "string" && obj[key]) return obj[key] as string;
+    }
+    // If object has 'available' boolean (futureApi), treat as ready
+    if (obj.available === true) return "available";
+    // Fallback: if object has any truthy string value, use the first one
+    for (const val of Object.values(obj)) {
+      if (typeof val === "string" && val) return val;
+    }
+    // Object exists but no string found — still treat as "ready" since the link is populated
+    return "linked";
+  }
+  return null;
+}
+
+function WalletObjectLinkIndicator({ icon: Icon, label, value }: { icon: any; label: string; value?: string | null }) {
+  const displayValue = typeof value === "string" ? value : null;
+  const isReady = Boolean(displayValue);
+  return (
+    <div className={`flex items-center gap-2.5 rounded-md border p-2.5 text-xs transition-colors ${
+      isReady ? "border-green-200 bg-green-50/50 dark:border-green-900/30 dark:bg-green-950/20" : "border-amber-200 bg-amber-50/50 dark:border-amber-900/30 dark:bg-amber-950/20"
+    }`}>
+      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+        isReady ? "bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-400" : "bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400"
+      }`}>
+        {isReady ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <Icon className="h-3 w-3 text-muted-foreground" />
+          <span className="font-medium">{label}</span>
+        </div>
+        <p className={`mt-0.5 truncate font-mono text-[10px] ${
+          isReady ? "text-green-700 dark:text-green-400" : "text-amber-600 dark:text-amber-400"
+        }`}>
+          {isReady ? (displayValue!.length > 30 ? `${displayValue!.slice(0, 14)}...${displayValue!.slice(-10)}` : displayValue) : "pending"}
+        </p>
+      </div>
     </div>
   );
 }
