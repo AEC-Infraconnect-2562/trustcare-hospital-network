@@ -317,7 +317,24 @@ Trusted, high-DQI inputs from an eligible Maker actor become a submitted request
 
 The handler does not call the VC signing helper, create an issued credential, create wallet cards, change credential enums, or bypass Maker/Checker. It returns safe audit-event descriptors and request draft metadata for later persistence.
 
-## 18. Non-Goals
+## 18. PR-10 VP Builder and SHL Packet Job
+
+PR-10 registers the `vp.build` and `shl.build_packet` worker handlers. `docs/SHL_CONTEXT_VERSIONING.md` was reviewed for this PR because the handler creates VP/SHL trust-layer metadata.
+
+The builder reuses `classifyPacketTransport` so small simple payloads become direct VP metadata, while large FHIR bundles, legacy DocumentReference bundles, many credentials, or cross-organization contexts become SHL packet metadata. `shl.build_packet` can force SHL output.
+
+SHL packet output includes:
+
+- standards-compatible manifest shape
+- encrypted file descriptors with hashes and mock object references
+- FHIR bundle and DocumentReference bundle hashes
+- `ShlManifestCredential` metadata
+- holder VP metadata
+- next action for persistence and Checker review
+
+The worker does not return raw SHL keys, QR payloads, passcodes, plaintext clinical payloads, or signed VP/VC JWTs in events. API callers should enqueue these jobs and return `jobId` instead of building large packets synchronously.
+
+## 19. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake
