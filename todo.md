@@ -828,14 +828,14 @@
 
 ## v3.29.0 - Staff Card Fix + Role-Based Card Visibility
 
-- [ ] Fix staff identity card template (currently shows "บัตรประจำตัวผู้ป่วย" instead of "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล")
-- [ ] Ensure all staff users have staff_identity credentials with full data (name, position, hospital)
-- [ ] Fix นพ.สมชาย (system_admin) missing staff card
-- [ ] Fix role-based card visibility: staff role sees only staff cards, patient role sees only patient cards
-- [ ] Staff card must show: ชื่อ-นามสกุล, ตำแหน่ง, สังกัดโรงพยาบาล, employee ID
-- [ ] Patient card must show: ชื่อ-นามสกุล, HN, CarePass ID
-- [ ] Update Architecture docs
-- [ ] Push to GitHub
+- [x] Fix staff identity card template (currently shows "บัตรประจำตัวผู้ป่วย" instead of "บัตรประจำตัวเจ้าหน้าที่โรงพยาบาล") [done in v3.30.0]
+- [x] Ensure all staff users have staff_identity credentials with full data (name, position, hospital) [done in v3.30.0]
+- [x] Fix นพ.สมชาย (system_admin) missing staff card [done in v3.30.0]
+- [x] Fix role-based card visibility: staff role sees only staff cards, patient role sees only patient cards [done in v3.30.0]
+- [x] Staff card must show: ชื่อ-นามสกุล, ตำแหน่ง, สังกัดโรงพยาบาล, employee ID [done in v3.30.0]
+- [x] Patient card must show: ชื่อ-นามสกุล, HN, CarePass ID [done in v3.30.0]
+- [x] Update Architecture docs [done in v3.31.0]
+- [x] Push to GitHub [done in v3.31.0]
 
 ## v3.30.0 - Staff Test Users + Complete VC/VP for All Hospitals & Partners
 
