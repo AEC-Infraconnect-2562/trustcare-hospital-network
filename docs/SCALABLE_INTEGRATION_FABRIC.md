@@ -264,7 +264,20 @@ Resolver output includes:
 
 This keeps integrations contract-scoped to service readiness use cases rather than generic source-system ingestion.
 
-## 14. Non-Goals
+## 14. PR-06 Import Source Payload Handler
+
+PR-06 registers the first worker handler, `import.source_payload`. It converts supported source envelopes into safe intermediate import results:
+
+- HIS DB-view rows
+- HL7v2 messages
+- CSV text with review summaries
+- FHIR-native resources/bundles
+- legacy document metadata with hash/content type
+- future SHL and native VC/VP sources routed to review
+
+The handler resolves the contract first, emits PHI-safe events, and does not issue VC or build canonical FHIR output. Canonical mapping and DQI remain PR-07 responsibilities.
+
+## 15. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake

@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.14 (Scalable Integration Fabric contract resolver)
+**Version:** 5.15 (Scalable Integration Fabric import job handler)
 **Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.15.0 | 2026-07-04 | Import source payload job handler for HIS DB-view, HL7v2, CSV, FHIR-native, document metadata, patient uploads, and future SHL/VC/VP imports |
 | v5.14.0 | 2026-07-04 | Contract resolver foundation for version-aware service readiness context, mapping profile, consent policy, transport policy, and output artifact planning |
 | v5.13.0 | 2026-07-04 | Integration job API and monitor foundation with scoped job creation/list/detail/event procedures and `/integration` job monitor tab |
 | v5.12.0 | 2026-07-04 | Worker runtime skeleton with handler registry, retry policy, idempotency-aware execution, safe event metadata, and local DB-backed runner |
@@ -2483,3 +2484,26 @@ The resolver returns:
 - tenant/hospital scope metadata
 
 This PR does not add schema, worker handlers, or API routes. Later import/mapping/VC/VP/SHL jobs should call the resolver before transforming payloads or issuing trust artifacts.
+
+---
+
+## 51. Import Source Payload Job Handler
+
+PR-06 adds the first job handler implementation for `import.source_payload`. The handler normalizes source envelopes into safe intermediate import results and leaves canonical FHIR mapping, DQI, VC issuance, VP/SHL packet generation, and sync-back to later workers.
+
+### 51.1 Supported Import Shapes
+
+| Source type | PR-06 behavior |
+|-------------|----------------|
+| `his_db_view` | Converts legacy DB-view rows into a HIS payload envelope using existing source-of-truth helpers |
+| `hl7v2` | Validates that the message starts with an `MSH` segment and preserves the message as a source envelope |
+| `csv` | Uses existing CSV review helpers and returns `needs_review` when required fields are missing |
+| `fhir_native` | Accepts FHIR resources/bundles that include `resourceType` |
+| `patient_upload` / `document_metadata` | Accepts metadata-only document references with hash and content type |
+| `smart_health_link` / `native_vc_vp` | Routes to `needs_review` as future trust-layer import types |
+
+The handler calls the contract resolver from PR-05 before processing and emits safe runtime events through the PR-03 worker runtime.
+
+### 51.2 Safety Boundary
+
+PR-06 does not store large binaries in the job row and does not issue credentials. Raw clinical files should be represented by object references and hashes. SHL keys, passcodes, JWTs, plaintext, and PHI-like metadata are redacted by the queue/runtime safety helpers before event/result persistence.
