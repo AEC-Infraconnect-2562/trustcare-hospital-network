@@ -395,7 +395,22 @@ The workbench now surfaces:
 
 Raw job payloads, job results, adapter connection targets, credentials, tokens, SHL keys, passcodes, and plaintext clinical payloads stay hidden from the UI. This PR does not add a migration or role/menu changes.
 
-## 23. Non-Goals
+## 23. PR-15 Observability, Correlation IDs, and Troubleshooting Playbook
+
+PR-15 adds fabric observability helpers and a troubleshooting playbook without adding external logging infrastructure.
+
+The helper module provides:
+
+- fabric trace stages across job creation, import, mapping, DocumentReference, VC issuance, VP/SHL packet, SHL access, sync-back, reconciliation, and adapter health
+- `buildFabricTraceContext()` for PHI-safe trace metadata keyed by `correlationId`
+- `buildFabricTroubleshootingIndex()` for grouping events, inferring stages, counting levels, identifying latest status, and emitting root-cause hints
+- `findSensitiveMetadata()` to catch unredacted sensitive metadata keys before logs/events become unsafe
+
+The playbook is in [`docs/SCALABLE_FABRIC_TROUBLESHOOTING_PLAYBOOK.md`](./SCALABLE_FABRIC_TROUBLESHOOTING_PLAYBOOK.md). It tells Codex/Manus to start with `correlationId`, then narrow by `jobId`, `adapterId`, contract context, SHL/VC/VP identifiers, sync IDs, and reconciliation IDs.
+
+This PR does not add a migration, logging vendor, OpenTelemetry collector, or production dashboard.
+
+## 24. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake

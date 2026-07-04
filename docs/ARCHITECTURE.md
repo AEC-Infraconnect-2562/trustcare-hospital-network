@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.23 (Integration workbench UX)
+**Version:** 5.24 (Observability and troubleshooting playbook)
 **Last updated:** 2026-07-05
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.24.0 | 2026-07-05 | Fabric observability helpers, PHI-safe trace context, troubleshooting index, sensitive metadata checks, and correlation ID playbook |
 | v5.23.0 | 2026-07-05 | Integration engineer workbench UX for adapter health, job backlog, mapping versions, job timeline, retry/dead-letter guidance, and safe event/artifact summaries |
 | v5.22.0 | 2026-07-05 | Edge connector simulator contract for adapter capability, scoped backpressure, circuit breaker state, local-buffer metadata, and `adapter.health_check` worker evaluation |
 | v5.21.0 | 2026-07-05 | Sync-back worker pipeline for plan, execute, reconciliation run, SyncReceipt preparation, and reconciliation persistence hooks across FHIR REST, HL7v2, DB/outbox, CSV batch, and manual queue targets |
@@ -2713,3 +2714,32 @@ PR-14 improves the existing `/integration` page into a practical integration eng
 ### 59.2 Safety Boundary
 
 The workbench shows IDs, statuses, hashes, metadata keys, and operator-safe messages. It intentionally does not render raw job payloads, job results, connection targets, credentials, tokens, SHL keys, passcodes, or plaintext clinical payloads. Patient role visibility remains controlled by existing menu/role policy; this PR does not add patient-facing technical UI.
+
+---
+
+## 60. Observability and Troubleshooting Playbook
+
+PR-15 adds a PHI-safe observability utility and a Manus/Codex troubleshooting playbook for Scalable Integration Fabric jobs.
+
+### 60.1 Trace Context
+
+`server/jobs/observability.ts` defines fabric trace stages and a `buildFabricTraceContext()` helper that preserves or creates `correlationId` while carrying safe identifiers:
+
+- `jobId`
+- `hospitalId`
+- `patientId`
+- `adapterId`
+- `context`
+- `contractId` / `contractVersion`
+- `credentialId`
+- `presentationId`
+- `shlId` / `manifestToken`
+- `syncId` / `reconciliationId`
+
+Trace metadata uses the integration job redaction helper before it is returned or logged.
+
+### 60.2 Troubleshooting Index
+
+`buildFabricTroubleshootingIndex()` groups events by `correlationId`, infers fabric stages, counts event levels, reports latest status, detects sensitive metadata keys, and emits root-cause hints for handler, adapter, SHL, sync-back, reconciliation, and dead-letter issues.
+
+The operational workflow lives in [`docs/SCALABLE_FABRIC_TROUBLESHOOTING_PLAYBOOK.md`](./SCALABLE_FABRIC_TROUBLESHOOTING_PLAYBOOK.md). It should be used by Codex and Manus before adding new logs or database columns so troubleshooting remains traceable without storing PHI in logs.
