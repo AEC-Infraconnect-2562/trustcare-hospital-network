@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.17 (Scalable Integration Fabric DocumentReference pipeline)
+**Version:** 5.18 (Scalable Integration Fabric VC issuance routing jobs)
 **Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.18.0 | 2026-07-04 | VC issuance routing worker that evaluates DQI/trusted source/role policy and drafts Maker/Checker routes without signing or wallet-card creation |
 | v5.17.0 | 2026-07-04 | DocumentReference and legacy file pipeline worker for metadata-only files, hashes, Provenance, object references, and review-state routing |
 | v5.16.0 | 2026-07-04 | Canonical mapping and DQI worker for `mapping.canonicalize_fhir`, OperationOutcome-style metadata, DocumentReference candidates, and needs-review routing |
 | v5.15.0 | 2026-07-04 | Import source payload job handler for HIS DB-view, HL7v2, CSV, FHIR-native, document metadata, patient uploads, and future SHL/VC/VP imports |
@@ -2566,3 +2567,23 @@ The job result includes:
 - review state: `ready_for_maker_review` or `needs_source_review`
 
 PR-08 does not issue VC, bypass Maker/Checker, create wallet cards, or build VP/SHL packets. PR-09 decides whether a ready DocumentReference can be routed to Maker/Checker or trusted VC issuance policy.
+
+---
+
+## 54. VC Issuance Routing Job
+
+PR-09 adds the `vc.issue` worker handler as a routing layer in front of the existing Maker/Checker issuance workflow. The worker evaluates canonical FHIR or DocumentReference output, DQI score, trusted-source policy, credential type, and actor Maker/Checker eligibility.
+
+### 54.1 Routing Behavior
+
+| Condition | Route |
+|-----------|-------|
+| trusted source, DQI above threshold, actor can act as Maker for the credential type | `auto_ready_for_checker` request draft with `pending_checker_review` |
+| low DQI or untrusted source | `maker_review_required` draft |
+| patient actor, unsupported credential type, or source not ready | `blocked` / `needs_review` |
+
+The route always keeps `makerChecker.requiredBeforeIssue = true`. Patient actors cannot be Maker or Checker, and their issuer entitlements are ignored through the shared role policy.
+
+### 54.2 Safety Boundary
+
+PR-09 does not call the VC signer, persist an issued credential, create a wallet card, or change credential enum values. It emits safe worker events and audit-event descriptors that later API/worker persistence can use when submitting a request into the existing `credential_issuance_requests` flow.
