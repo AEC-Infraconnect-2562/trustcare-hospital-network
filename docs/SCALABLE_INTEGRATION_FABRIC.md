@@ -410,7 +410,24 @@ The playbook is in [`docs/SCALABLE_FABRIC_TROUBLESHOOTING_PLAYBOOK.md`](./SCALAB
 
 This PR does not add a migration, logging vendor, OpenTelemetry collector, or production dashboard.
 
-## 24. Non-Goals
+## 24. PR-16 End-to-End Demo Scenario and Smoke Tests
+
+PR-16 adds a synthetic, executable smoke path for the full stacked fabric sequence. The demo chains existing worker helpers instead of adding a separate orchestration engine:
+
+- HIS DB-view import
+- canonical FHIR mapping and DQI summary
+- legacy document metadata to DocumentReference and object reference
+- VC issuance route to Maker/Checker readiness
+- SHL packet metadata with manifest and file hashes
+- verifier/intake trust-check summary
+- sync-back execution and reconciliation result
+- troubleshooting index by `correlationId`
+
+The demo is documented in [`docs/SCALABLE_FABRIC_DEMO_SMOKE_TESTS.md`](./SCALABLE_FABRIC_DEMO_SMOKE_TESTS.md). It is metadata-only and does not issue signed VCs, store binaries, call a real queue, or return raw SHL keys, passcodes, QR payloads, JWTs, plaintext clinical payloads, or real patient identifiers.
+
+This PR does not add a migration or new runtime infrastructure.
+
+## 25. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake
