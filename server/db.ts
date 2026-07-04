@@ -1140,10 +1140,44 @@ export async function revokeShl(id: number, reason?: string) {
 export async function incrementShlAccessCount(id: number) {
   const db = await getDb();
   if (!db) return;
+  await db.update(smartHealthLinks).set({
+    currentAccessCount: sql`${smartHealthLinks.currentAccessCount} + 1`,
+    lastAccessedAt: new Date(),
+  } as any).where(eq(smartHealthLinks.id, id));
+}
+
+export async function reserveShlAccessGrant(id: number): Promise<{ granted: boolean; shl?: any; affectedRows?: number }> {
+  const db = await getDb();
+  if (!db) return { granted: true, affectedRows: 0 };
+  const [result] = await db.update(smartHealthLinks).set({
+    currentAccessCount: sql`${smartHealthLinks.currentAccessCount} + 1`,
+    lastAccessedAt: new Date(),
+  } as any).where(and(
+    eq(smartHealthLinks.id, id),
+    eq(smartHealthLinks.status, "active" as any),
+    sql`(${smartHealthLinks.maxAccessCount} IS NULL OR ${smartHealthLinks.currentAccessCount} < ${smartHealthLinks.maxAccessCount})`,
+  ));
+  const affectedRows = Number((result as any)?.affectedRows ?? (result as any)?.rowsAffected ?? 0);
+  return { granted: affectedRows > 0, shl: await getShlById(id), affectedRows };
+}
+
+export async function recordShlPasscodeFailure(id: number, maxAttempts = 5): Promise<{ failedAttempts: number; locked: boolean; shl?: any }> {
+  const db = await getDb();
+  if (!db) return { failedAttempts: 0, locked: false };
+  await db.update(smartHealthLinks).set({
+    passcodeFailedAttempts: sql`${smartHealthLinks.passcodeFailedAttempts} + 1`,
+    status: sql`CASE WHEN ${smartHealthLinks.passcodeFailedAttempts} + 1 >= ${maxAttempts} THEN 'disabled' ELSE ${smartHealthLinks.status} END`,
+    disabledReason: sql`CASE WHEN ${smartHealthLinks.passcodeFailedAttempts} + 1 >= ${maxAttempts} THEN 'Passcode failure limit reached' ELSE ${smartHealthLinks.disabledReason} END`,
+  } as any).where(eq(smartHealthLinks.id, id));
   const shl = await getShlById(id);
-  if (shl) {
-    await db.update(smartHealthLinks).set({ currentAccessCount: shl.currentAccessCount + 1, lastAccessedAt: new Date() } as any).where(eq(smartHealthLinks.id, id));
-  }
+  const failedAttempts = Number(shl?.passcodeFailedAttempts ?? 0);
+  return { failedAttempts, locked: failedAttempts >= maxAttempts, shl };
+}
+
+export async function resetShlPasscodeFailures(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(smartHealthLinks).set({ passcodeFailedAttempts: 0 } as any).where(eq(smartHealthLinks.id, id));
 }
 
 export async function createShlFile(data: InsertShlFile) {

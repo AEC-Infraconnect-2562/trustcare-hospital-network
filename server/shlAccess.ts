@@ -1,5 +1,10 @@
 import * as db from "./db";
 import { buildManifestResponse, verifyPasscode } from "./portability";
+import {
+  buildShlAccessGrantSnapshot,
+  buildShlPasscodeAttemptState,
+  buildShortLivedObjectUrlPolicy,
+} from "./shlSharedState";
 
 export class ShlAccessError extends Error {
   statusCode: number;
@@ -79,9 +84,12 @@ export async function resolveShlManifestAccessPacket(input: {
   if (shl.passcodeRequired) {
     if (!input.passcode || !shl.passcodeSalt || !shl.passcodeHash) {
       const maxAttempts = Number(shl.passcodeMaxAttempts ?? 5);
-      const failedAttempts = Number(shl.passcodeFailedAttempts ?? 0);
+      const attemptState = buildShlPasscodeAttemptState({
+        failedAttempts: shl.passcodeFailedAttempts,
+        maxAttempts,
+      });
       await deny("bad_passcode", "Passcode is required.", 401, "UNAUTHORIZED", {
-        remainingAttempts: Math.max(maxAttempts - failedAttempts, 0),
+        remainingAttempts: attemptState.remainingAttempts,
       });
     }
     const passcode = input.passcode;
@@ -92,28 +100,41 @@ export async function resolveShlManifestAccessPacket(input: {
     }
     const verified = verifyPasscode(passcode as string, passcodeSalt as string, passcodeHash as string);
     if (!verified) {
-      const failedAttempts = Number(shl.passcodeFailedAttempts ?? 0) + 1;
       const maxAttempts = Number(shl.passcodeMaxAttempts ?? 5);
-      await db.updateSmartHealthLink(shl.id, {
-        passcodeFailedAttempts: failedAttempts,
-        ...(failedAttempts >= maxAttempts ? { status: "disabled", disabledReason: "Passcode failure limit reached" } : {}),
-      } as any);
-      const remainingAttempts = Math.max(maxAttempts - failedAttempts, 0);
+      const failure = await db.recordShlPasscodeFailure(shl.id, maxAttempts);
+      const attemptState = buildShlPasscodeAttemptState({
+        failedAttempts: failure.failedAttempts,
+        maxAttempts,
+      });
       await deny(
         "bad_passcode",
-        failedAttempts >= maxAttempts ? "Passcode failure limit reached." : "Passcode is incorrect.",
+        attemptState.locked ? "Passcode failure limit reached." : "Passcode is incorrect.",
         401,
         "UNAUTHORIZED",
-        { remainingAttempts },
+        { remainingAttempts: attemptState.remainingAttempts },
       );
+    }
+    if (Number(shl.passcodeFailedAttempts ?? 0) > 0) {
+      await db.resetShlPasscodeFailures(shl.id);
     }
   }
 
-  const manifestVersion = Number(shl.currentManifestVersion ?? 1);
+  const grant = await db.reserveShlAccessGrant(shl.id);
+  const grantedShl = grant.shl ?? { ...shl, currentAccessCount: Number(shl.currentAccessCount ?? 0) + 1 };
+  if (!grant.granted) {
+    await db.updateSmartHealthLink(shl.id, { status: "max_accessed", disabledReason: "Maximum access count reached" } as any);
+    await deny("max_accessed", "Smart Health Link maximum access count has been reached.", 429, "FORBIDDEN");
+  }
+  const accessState = buildShlAccessGrantSnapshot({
+    currentAccessCount: grantedShl.currentAccessCount,
+    maxAccessCount: grantedShl.maxAccessCount,
+  });
+
+  const manifestVersion = Number(grantedShl.currentManifestVersion ?? 1);
   const [files, manifestCredential, presentation] = await Promise.all([
-    db.listShlFiles(shl.id, manifestVersion),
-    shl.manifestCredentialId ? db.getIssuedCredentialByCredentialId(shl.manifestCredentialId) : Promise.resolve(undefined),
-    shl.presentationId ? db.getIssuedPresentationByPresentationId(shl.presentationId) : Promise.resolve(undefined),
+    db.listShlFiles(grantedShl.id, manifestVersion),
+    grantedShl.manifestCredentialId ? db.getIssuedCredentialByCredentialId(grantedShl.manifestCredentialId) : Promise.resolve(undefined),
+    grantedShl.presentationId ? db.getIssuedPresentationByPresentationId(grantedShl.presentationId) : Promise.resolve(undefined),
   ]);
 
   const manifest = buildManifestResponse({
@@ -130,25 +151,34 @@ export async function resolveShlManifestAccessPacket(input: {
     trustcare: {
       trustLayer: "vc-vp-around-shl",
       manifestVersion,
-      manifestHash: shl.manifestHash,
-      sourceBundleHash: shl.sourceBundleHash,
-      manifestCredentialId: shl.manifestCredentialId,
+      manifestHash: grantedShl.manifestHash,
+      sourceBundleHash: grantedShl.sourceBundleHash,
+      manifestCredentialId: grantedShl.manifestCredentialId,
       manifestCredentialJwt: manifestCredential?.sdJwtVc,
-      presentationId: shl.presentationId,
+      presentationId: grantedShl.presentationId,
       presentationJwt: presentation?.presentationJwt,
-      context: shl.context,
-      purpose: shl.purpose,
-      maxAccessCount: shl.maxAccessCount,
-      accessCountAfterGrant: accessCount + 1,
-      remainingAccessCount: maxAccessCount === undefined ? null : Math.max(maxAccessCount - accessCount - 1, 0),
-      status: shl.status,
-      consentCredentialId: shl.consentCredentialId,
+      context: grantedShl.context,
+      purpose: grantedShl.purpose,
+      maxAccessCount: grantedShl.maxAccessCount,
+      accessCountAfterGrant: accessState.accessCountAfterGrant,
+      remainingAccessCount: accessState.remainingAccessCount,
+      status: grantedShl.status,
+      consentCredentialId: grantedShl.consentCredentialId,
+      sharedState: {
+        accessCountPersisted: true,
+        passcodeFailureCountPersisted: true,
+        atomicAccessGrant: true,
+      },
+      rateLimit: {
+        hook: "shlId+recipient+ip",
+        result: "not_rate_limited",
+      },
+      objectAccess: buildShortLivedObjectUrlPolicy(),
     },
   });
 
-  await db.incrementShlAccessCount(shl.id);
   await db.createShlAccessLog({
-    shlId: shl.id,
+    shlId: grantedShl.id,
     recipient,
     accessorName: input.accessorName ?? undefined,
     accessorOrg: input.accessorOrg ?? undefined,
