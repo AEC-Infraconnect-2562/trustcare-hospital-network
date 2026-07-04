@@ -881,7 +881,7 @@ export async function listIntegrationJobs(filter?: {
 export async function updateIntegrationJobStatus(
   jobId: string,
   status: InsertIntegrationJob["status"],
-  data: Partial<Pick<InsertIntegrationJob, "result" | "errorCode" | "errorMessage" | "attempts" | "lockedBy" | "lockedAt" | "startedAt" | "completedAt">> = {},
+  data: Partial<Pick<InsertIntegrationJob, "result" | "errorCode" | "errorMessage" | "attempts" | "availableAt" | "lockedBy" | "lockedAt" | "startedAt" | "completedAt">> = {},
 ) {
   const db = await getDb();
   if (!db) return;

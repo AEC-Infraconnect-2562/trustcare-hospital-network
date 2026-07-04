@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.11 (Scalable Integration Fabric job model foundation)
+**Version:** 5.12 (Scalable Integration Fabric worker runtime skeleton)
 **Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.12.0 | 2026-07-04 | Worker runtime skeleton with handler registry, retry policy, idempotency-aware execution, safe event metadata, and local DB-backed runner |
 | v5.11.0 | 2026-07-04 | Integration job model foundation with DB-backed queue tables, tenant-scoped idempotency, attempts/events/artifacts, and dead-letter metadata |
 | v5.10.0 | 2026-07-04 | Scalable Contract-first Integration Fabric architecture target for contract-scoped wallet interoperability jobs, worker runtime, hospital edge connector, SHL hot path, sync-back, and observability |
 | v3.28.0 | 2026-07-03 | PR #15 SHL Manifest Document Bundle — shl_manifest_documents table, DB-persisted document bundles with vcBinding/accessBinding/objectLinks, seed 55+ docs for 12 active SHLs, getManifestDocument endpoint |
@@ -2396,3 +2397,24 @@ The idempotency boundary is tenant-scoped: `tenantId + idempotencyKey` is unique
 - normalizing tenant-scoped list filters
 
 `server/db.ts` exposes incremental DB helpers for creating, looking up, listing, updating, and dead-lettering integration jobs plus attempts, events, and artifacts. PR-02 does not add API endpoints or worker runtime. Those layers are stacked in later PRs so Manus can review schema and queue semantics independently.
+
+---
+
+## 48. Worker Runtime Skeleton
+
+PR-03 adds the first local worker runtime abstraction for the integration job model. It is intentionally in-process and DB-backed for Manus Workspace validation; it does not require Redis, RabbitMQ, Kafka, Kubernetes, or KEDA.
+
+### 48.1 Runtime Components
+
+| Component | Purpose |
+|-----------|---------|
+| `IntegrationJobHandlerRegistry` | Registers one handler per `jobType` and keeps job-type dispatch explicit |
+| `IntegrationJobWorkerRuntime` | Executes a queued job, propagates `correlationId`, emits PHI-safe events, redacts handler results, and applies retry/dead-letter decisions |
+| `retryPolicy.ts` | Provides exponential retry timing with bounded delay and deterministic test behavior |
+| `runDbBackedWorkerOnce` | Local/dev runner that takes one queued DB job, records an attempt, runs the handler, updates status, and writes timeline events |
+
+### 48.2 Safety Boundaries
+
+The runtime uses the same redaction helper as PR-02 before storing event metadata or handler results. Handler error messages are converted to safe generic worker messages so logs and job events do not carry raw clinical payloads, SHL keys, passcodes, plaintext, JWT payloads, or production secrets.
+
+PR-03 does not add long-running background processes, API endpoints, UI surfaces, or production deployment configuration. Later PRs can call the runtime from API-triggered enqueue flows, a local dev command, or a production worker process.

@@ -225,7 +225,19 @@ The foundation is composed of:
 
 Only safe control metadata belongs in job rows. Large files, source payloads, clinical documents, and derived artifacts should be stored behind object references or artifact rows, then connected to Patient Wallet, VC/VP, SHL, or sync-back flows by later jobs.
 
-## 11. Non-Goals
+## 11. PR-03 Worker Runtime Skeleton
+
+PR-03 adds an in-process worker abstraction that can execute the DB-backed jobs from PR-02 without requiring external queue infrastructure. The skeleton includes:
+
+- handler registry keyed by `jobType`
+- bounded retry policy and dead-letter decision path
+- `correlationId` propagation through handler context and events
+- PHI-safe event/result redaction
+- one-shot DB-backed dev runner for Manus Workspace validation
+
+This PR does not introduce a daemon, API endpoint, UI monitor, Kubernetes/KEDA deployment, or production queue dependency. Production deployment can wrap the same handler registry later while preserving the DB-backed local/dev fallback.
+
+## 12. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake
