@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.20 (SHL shared-state hardening)
+**Version:** 5.21 (Sync-back and reconciliation worker)
 **Last updated:** 2026-07-05
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.21.0 | 2026-07-05 | Sync-back worker pipeline for plan, execute, reconciliation run, SyncReceipt preparation, and reconciliation persistence hooks across FHIR REST, HL7v2, DB/outbox, CSV batch, and manual queue targets |
 | v5.20.0 | 2026-07-05 | SHL shared-state hardening with atomic persisted access grants, persisted passcode failure lockout, safe shared-state metadata, rate-limit hooks, and short-lived object URL policy placeholder |
 | v5.19.0 | 2026-07-04 | VP/SHL packet worker handlers for direct VP metadata, SHL packet metadata, manifest/file hashes, DocumentReference bundle metadata, and `ShlManifestCredential` review metadata |
 | v5.18.0 | 2026-07-04 | VC issuance routing worker that evaluates DQI/trusted source/role policy and drafts Maker/Checker routes without signing or wallet-card creation |
@@ -2643,3 +2644,27 @@ Generic SHL manifest output remains standards-compatible. TrustCare-specific sha
 - `objectAccess` short-lived URL policy placeholder
 
 The resolver does not log or return raw SHL keys, passcodes, QR payloads, object credentials, or plaintext clinical payloads.
+
+---
+
+## 57. Sync-back and Reconciliation Worker
+
+PR-12 converts the existing sync-back plan/execution primitives into worker-first handlers for the Scalable Integration Fabric. The worker reuses `server/portability/syncBack.ts` rather than creating a parallel sync model.
+
+### 57.1 Worker Handlers
+
+| Handler | Purpose |
+|---------|---------|
+| `sync_back.plan` | Builds a contract-scoped sync plan, idempotency key, outbound payload, rollback hint, and OperationOutcome metadata. |
+| `sync_back.execute` | Executes the plan result against the selected adapter mode, prepares a `TrustcareSyncReceipt`, and creates reconciliation metadata when consistency is uncertain. |
+| `reconciliation.run` | Runs reconciliation checks, updates attempts/result metadata, and routes unresolved manual or failed checks to review. |
+
+### 57.2 Supported Targets
+
+The worker supports existing sync target kinds: `fhir_rest`, `hl7v2`, `db_view`/outbox, `csv_batch`, and `manual_queue`. FHIR and DB/outbox targets can use transactional/version-aware patterns. HL7v2, CSV batch, and manual queues create reconciliation work because acknowledgements and readback are weaker.
+
+### 57.3 Persistence and Trust Artifacts
+
+The execute handler persists reconciliation job state through `sync_reconciliation_jobs` when a DB connection is available. In local/dev tests without `DATABASE_URL`, persistence is a safe no-op and the returned metadata still identifies the reconciliation job that Manus should expect.
+
+The worker prepares SyncReceipt-compatible metadata via `createSyncReceipt()` but does not directly issue a signed VC or bypass existing issuer policy. Later PRs can route the prepared receipt into Maker/Checker or trusted issuance if policy permits.
