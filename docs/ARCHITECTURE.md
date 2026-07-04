@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.18 (Scalable Integration Fabric VC issuance routing jobs)
+**Version:** 5.19 (Scalable Integration Fabric VP/SHL packet jobs)
 **Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.19.0 | 2026-07-04 | VP/SHL packet worker handlers for direct VP metadata, SHL packet metadata, manifest/file hashes, DocumentReference bundle metadata, and `ShlManifestCredential` review metadata |
 | v5.18.0 | 2026-07-04 | VC issuance routing worker that evaluates DQI/trusted source/role policy and drafts Maker/Checker routes without signing or wallet-card creation |
 | v5.17.0 | 2026-07-04 | DocumentReference and legacy file pipeline worker for metadata-only files, hashes, Provenance, object references, and review-state routing |
 | v5.16.0 | 2026-07-04 | Canonical mapping and DQI worker for `mapping.canonicalize_fhir`, OperationOutcome-style metadata, DocumentReference candidates, and needs-review routing |
@@ -2587,3 +2588,25 @@ The route always keeps `makerChecker.requiredBeforeIssue = true`. Patient actors
 ### 54.2 Safety Boundary
 
 PR-09 does not call the VC signer, persist an issued credential, create a wallet card, or change credential enum values. It emits safe worker events and audit-event descriptors that later API/worker persistence can use when submitting a request into the existing `credential_issuance_requests` flow.
+
+---
+
+## 55. VP Builder and SHL Packet Job
+
+PR-10 adds the `vp.build` and `shl.build_packet` worker handlers. `docs/SHL_CONTEXT_VERSIONING.md` was reviewed before this change because the handler builds SHL manifest and VP/SHL trust-layer metadata.
+
+### 55.1 Packet Decision
+
+The worker reuses `classifyPacketTransport`:
+
+- small single-credential shares become direct VP metadata
+- small multi-credential shares become VP bundle metadata
+- large FHIR bundles, legacy DocumentReference bundles, many credentials, or cross-organization contexts become SHL packet metadata
+
+`shl.build_packet` forces SHL packet output even when the payload is small.
+
+### 55.2 SHL Safety Boundary
+
+The SHL packet builder creates encrypted file descriptors, a standards-compatible manifest response with TrustCare metadata, and `ShlManifestCredential` metadata. It does not return raw SHL key material, QR payloads, passcodes, plaintext clinical payloads, or signed VP/VC JWTs in worker events.
+
+The output includes job/packet metadata, manifest hash, file hashes, source bundle hash, DocumentReference bundle hash, and next action for persisting the packet and submitting manifest VC review. API requests should enqueue these jobs and return `jobId` rather than building large packets synchronously.
