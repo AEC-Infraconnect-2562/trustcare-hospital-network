@@ -1,7 +1,7 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.9 (SHL Manifest Document Bundle — DB Persistence)
-**Last updated:** 2026-07-03
+**Version:** 5.10 (Scalable Integration Fabric architecture target)
+**Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
 ---
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.10.0 | 2026-07-04 | Scalable Contract-first Integration Fabric architecture target for contract-scoped wallet interoperability jobs, worker runtime, hospital edge connector, SHL hot path, sync-back, and observability |
 | v3.28.0 | 2026-07-03 | PR #15 SHL Manifest Document Bundle — shl_manifest_documents table, DB-persisted document bundles with vcBinding/accessBinding/objectLinks, seed 55+ docs for 12 active SHLs, getManifestDocument endpoint |
 | v3.27.0 | 2026-07-03 | Storage proxy (/api/storage-proxy/) for production photo fix, duplicate card revocation rule, second patient card details fix, Manus OAuth removed (test users only) |
 | v3.26.0 | 2026-07-03 | Patient access denied fix (role-aware post-login redirect), permanent profile photo fix (PersonPhoto everywhere, no raw AvatarImage), SW v6 |
@@ -2318,3 +2319,46 @@ Total: 55+ manifest documents seeded with full metadata.
 | Tests passing | 331 | 332 |
 | SHL manifest documents | 0 (derived only) | 55+ (persisted) |
 | TypeScript errors | 0 | 0 |
+
+---
+
+## 46. Scalable Integration Fabric Architecture Target
+
+TrustCare's next integration architecture is a Scalable Contract-first Integration Fabric. The fabric keeps TrustCare focused on patient Wallet portability and hospital service-readiness friction reduction. It does not turn TrustCare into a HIS/EMR replacement, central clinical data lake, health super app, or app aggregator.
+
+Detailed architecture is maintained in [`docs/SCALABLE_INTEGRATION_FABRIC.md`](./SCALABLE_INTEGRATION_FABRIC.md).
+
+### 46.1 Planes
+
+| Plane | Responsibility | Existing foundation |
+|-------|----------------|---------------------|
+| Control plane | Service readiness contracts, mapping profiles, consent policy, adapter capability, trusted source policy | `server/prepareService.ts`, Contract Hub, `service_readiness_contracts`, `integration_adapters`, `mapping_versions` |
+| API plane | Authenticated request validation, role/effective-role checks, audit, quick job enqueue/status responses | Express + tRPC in `server/routers.ts` |
+| Worker plane | Import, mapping, DQI, DocumentReference, VC issuance, VP/SHL packet, sync-back, reconciliation, retry/dead-letter handling | New job runtime planned in stacked PRs |
+| Data plane | Job state, artifacts, SHL state, wallet credentials, object references, audit, reconciliation | Drizzle/MySQL tables, object storage references |
+| Hospital edge connector plane | Adapter capability, health, throttling, circuit breaker, local-buffer metadata, future outbound connector pattern | `integration_adapters`, adapter health logs, simulator planned in stacked PRs |
+
+### 46.2 Contract-Scoped Flow
+
+```text
+source system / legacy document
+  -> service readiness contract + mapping profile
+  -> DB-backed integration job
+  -> canonical FHIR or DocumentReference candidate
+  -> DQI and consent/trusted-source policy
+  -> Maker/Checker or trusted VC issuance
+  -> Patient Wallet
+  -> direct VP or SHL packet
+  -> verifier/intake
+  -> sync-back and reconciliation
+```
+
+Heavy work must move out of API request handling and into idempotent worker jobs. Initial implementations should use a DB-backed queue so Manus Workspace can run without external queue infrastructure. The queue abstraction must remain swappable for Redis Streams, RabbitMQ, Kafka, or cloud queues later.
+
+### 46.3 SHL and VC/VP Boundary
+
+SHL remains the transport and access mechanism. VC/VP remains the trust layer around issuer trust, holder consent, manifest integrity, file integrity, and auditability. Shared SHL state such as passcode failure count and access count must be persisted/atomic for horizontally scaled API pods.
+
+### 46.4 Observability and Safety
+
+Every integration flow should carry `correlationId`, `jobId`, hospital/context/contract identifiers, adapter identifiers where relevant, and SHL/manifest/credential/presentation/sync IDs where relevant. Logs and job events must remain PHI-safe and must not contain raw SHL keys, passcodes, plaintext clinical payloads, JWT sensitive payloads, or production secrets.
