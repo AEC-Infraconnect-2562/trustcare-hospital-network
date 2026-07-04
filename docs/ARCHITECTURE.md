@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.13 (Scalable Integration Fabric job API and monitor)
+**Version:** 5.14 (Scalable Integration Fabric contract resolver)
 **Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.14.0 | 2026-07-04 | Contract resolver foundation for version-aware service readiness context, mapping profile, consent policy, transport policy, and output artifact planning |
 | v5.13.0 | 2026-07-04 | Integration job API and monitor foundation with scoped job creation/list/detail/event procedures and `/integration` job monitor tab |
 | v5.12.0 | 2026-07-04 | Worker runtime skeleton with handler registry, retry policy, idempotency-aware execution, safe event metadata, and local DB-backed runner |
 | v5.11.0 | 2026-07-04 | Integration job model foundation with DB-backed queue tables, tenant-scoped idempotency, attempts/events/artifacts, and dead-letter metadata |
@@ -2451,3 +2452,34 @@ These rules are implemented in `server/jobs/accessPolicy.ts` and covered by unit
 ### 49.3 UI Surface
 
 The existing `/integration` page gains an `Integration Jobs` tab. It shows job status, attempts, context, contract version, `correlationId`, and safe artifact flags. It also includes a synthetic no-op enqueue button for Manus Workspace smoke testing when a migrated database is available.
+
+---
+
+## 50. Contract Resolver Foundation
+
+PR-05 promotes the existing Prepare for Service Contract Hub simulation into a reusable contract resolver for integration jobs and later worker handlers. This keeps the fabric contract-first: a source payload is not mapped generically; it is resolved against a service readiness context, contract version, consent policy, mapping profile, and output artifact plan.
+
+### 50.1 Resolver Inputs
+
+`resolveIntegrationContract` accepts:
+
+- `context`
+- optional `contractId`
+- optional `contractVersion`
+- optional `tenantId`
+- optional `hospitalId`
+
+If an explicit contract/version is unavailable, the resolver falls back to the requested context or `opd_visit` and returns warnings. Fallbacks are visible in the resolver result so API/worker layers can route uncertain cases to review instead of silently proceeding.
+
+### 50.2 Resolver Outputs
+
+The resolver returns:
+
+- selected `ServiceReadinessContract`
+- mapping profile from Data Mapping v2
+- consent policy
+- recommended transport policy
+- output artifact plan covering FHIR resources, DocumentReference, credential types, VP package, SHL packet, and OperationOutcome
+- tenant/hospital scope metadata
+
+This PR does not add schema, worker handlers, or API routes. Later import/mapping/VC/VP/SHL jobs should call the resolver before transforming payloads or issuing trust artifacts.
