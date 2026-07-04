@@ -614,6 +614,168 @@ export const syncReconciliationJobs = mysqlTable("sync_reconciliation_jobs", {
 export type SyncReconciliationJobRow = typeof syncReconciliationJobs.$inferSelect;
 export type InsertSyncReconciliationJob = typeof syncReconciliationJobs.$inferInsert;
 
+export const integrationJobs = mysqlTable("integration_jobs", {
+  id: int("id").autoincrement().primaryKey(),
+  jobId: varchar("jobId", { length: 255 }).notNull(),
+  tenantId: varchar("tenantId", { length: 100 }).default("trustcare-network").notNull(),
+  hospitalId: int("hospitalId"),
+  patientId: int("patientId"),
+  adapterId: int("adapterId"),
+  context: mysqlEnum("context", ["opd_visit", "emergency", "referral", "cross_border", "medical_tourist", "insurance_claim", "pharmacy_dispense"]),
+  contractId: varchar("contractId", { length: 255 }),
+  contractVersion: varchar("contractVersion", { length: 64 }),
+  jobType: mysqlEnum("jobType", [
+    "import.source_payload",
+    "mapping.canonicalize_fhir",
+    "dqi.evaluate",
+    "document.create_reference",
+    "maker_checker.route_review",
+    "vc.issue",
+    "vp.build",
+    "shl.build_packet",
+    "sync_back.plan",
+    "sync_back.execute",
+    "reconciliation.run",
+    "adapter.health_check",
+    "noop",
+  ]).notNull(),
+  sourceType: mysqlEnum("sourceType", ["his_db_view", "hl7v2", "csv", "fhir_native", "patient_upload", "document_metadata", "smart_health_link", "native_vc_vp", "sync_back", "adapter_health", "manual"]).notNull(),
+  status: mysqlEnum("status", ["queued", "claimed", "running", "succeeded", "failed", "needs_review", "dead_lettered", "cancelled"]).default("queued").notNull(),
+  priority: mysqlEnum("priority", ["low", "normal", "high", "urgent"]).default("normal").notNull(),
+  correlationId: varchar("correlationId", { length: 255 }).notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 255 }).notNull(),
+  payloadHash: varchar("payloadHash", { length: 128 }),
+  payload: json("payload"),
+  result: json("result"),
+  errorCode: varchar("errorCode", { length: 100 }),
+  errorMessage: text("errorMessage"),
+  attempts: int("attempts").default(0).notNull(),
+  maxAttempts: int("maxAttempts").default(3).notNull(),
+  availableAt: timestamp("availableAt").defaultNow().notNull(),
+  lockedBy: varchar("lockedBy", { length: 255 }),
+  lockedAt: timestamp("lockedAt"),
+  createdBy: int("createdBy"),
+  startedAt: timestamp("startedAt"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  uniqueIndex("idx_integration_jobs_job_id").on(table.jobId),
+  uniqueIndex("uq_integration_jobs_idempotency").on(table.tenantId, table.idempotencyKey),
+  index("idx_integration_jobs_status").on(table.status),
+  index("idx_integration_jobs_hospital").on(table.hospitalId),
+  index("idx_integration_jobs_patient").on(table.patientId),
+  index("idx_integration_jobs_context").on(table.context),
+  index("idx_integration_jobs_correlation").on(table.correlationId),
+  index("idx_integration_jobs_available").on(table.status, table.availableAt),
+]));
+
+export type IntegrationJob = typeof integrationJobs.$inferSelect;
+export type InsertIntegrationJob = typeof integrationJobs.$inferInsert;
+
+export const integrationJobAttempts = mysqlTable("integration_job_attempts", {
+  id: int("id").autoincrement().primaryKey(),
+  jobId: varchar("jobId", { length: 255 }).notNull(),
+  attemptNo: int("attemptNo").notNull(),
+  status: mysqlEnum("status", ["running", "succeeded", "failed", "retry_scheduled", "dead_lettered"]).default("running").notNull(),
+  workerId: varchar("workerId", { length: 255 }),
+  correlationId: varchar("correlationId", { length: 255 }).notNull(),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  finishedAt: timestamp("finishedAt"),
+  durationMs: int("durationMs"),
+  errorCode: varchar("errorCode", { length: 100 }),
+  errorMessage: text("errorMessage"),
+  retryAt: timestamp("retryAt"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  uniqueIndex("uq_integration_job_attempt").on(table.jobId, table.attemptNo),
+  index("idx_integration_job_attempts_job").on(table.jobId),
+  index("idx_integration_job_attempts_status").on(table.status),
+]));
+
+export type IntegrationJobAttempt = typeof integrationJobAttempts.$inferSelect;
+export type InsertIntegrationJobAttempt = typeof integrationJobAttempts.$inferInsert;
+
+export const integrationJobEvents = mysqlTable("integration_job_events", {
+  id: int("id").autoincrement().primaryKey(),
+  jobId: varchar("jobId", { length: 255 }).notNull(),
+  eventType: varchar("eventType", { length: 100 }).notNull(),
+  level: mysqlEnum("level", ["info", "warning", "error", "debug"]).default("info").notNull(),
+  status: varchar("status", { length: 64 }),
+  message: text("message"),
+  correlationId: varchar("correlationId", { length: 255 }).notNull(),
+  metadata: json("metadata"),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("idx_integration_job_events_job").on(table.jobId),
+  index("idx_integration_job_events_correlation").on(table.correlationId),
+  index("idx_integration_job_events_type").on(table.eventType),
+]));
+
+export type IntegrationJobEvent = typeof integrationJobEvents.$inferSelect;
+export type InsertIntegrationJobEvent = typeof integrationJobEvents.$inferInsert;
+
+export const integrationJobArtifacts = mysqlTable("integration_job_artifacts", {
+  id: int("id").autoincrement().primaryKey(),
+  artifactId: varchar("artifactId", { length: 255 }).notNull(),
+  jobId: varchar("jobId", { length: 255 }).notNull(),
+  artifactType: mysqlEnum("artifactType", [
+    "source_payload",
+    "canonical_fhir",
+    "document_reference",
+    "dqi_summary",
+    "vc_request",
+    "issued_vc",
+    "vp_package",
+    "shl_packet",
+    "sync_plan",
+    "sync_receipt",
+    "operation_outcome",
+    "object_reference",
+  ]).notNull(),
+  objectRef: text("objectRef"),
+  fhirReference: varchar("fhirReference", { length: 255 }),
+  hash: varchar("hash", { length: 128 }),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  uniqueIndex("idx_integration_job_artifacts_artifact").on(table.artifactId),
+  index("idx_integration_job_artifacts_job").on(table.jobId),
+  index("idx_integration_job_artifacts_type").on(table.artifactType),
+]));
+
+export type IntegrationJobArtifact = typeof integrationJobArtifacts.$inferSelect;
+export type InsertIntegrationJobArtifact = typeof integrationJobArtifacts.$inferInsert;
+
+export const integrationDeadLetterJobs = mysqlTable("integration_dead_letter_jobs", {
+  id: int("id").autoincrement().primaryKey(),
+  jobId: varchar("jobId", { length: 255 }).notNull(),
+  tenantId: varchar("tenantId", { length: 100 }).default("trustcare-network").notNull(),
+  hospitalId: int("hospitalId"),
+  correlationId: varchar("correlationId", { length: 255 }).notNull(),
+  reason: text("reason").notNull(),
+  lastErrorCode: varchar("lastErrorCode", { length: 100 }),
+  lastErrorMessage: text("lastErrorMessage"),
+  lastPayloadHash: varchar("lastPayloadHash", { length: 128 }),
+  attempts: int("attempts").default(0).notNull(),
+  metadata: json("metadata"),
+  status: mysqlEnum("status", ["open", "requeued", "resolved", "ignored"]).default("open").notNull(),
+  resolvedAt: timestamp("resolvedAt"),
+  resolvedBy: int("resolvedBy"),
+  resolutionNote: text("resolutionNote"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  uniqueIndex("idx_integration_dead_letter_job").on(table.jobId),
+  index("idx_integration_dead_letter_tenant").on(table.tenantId),
+  index("idx_integration_dead_letter_status").on(table.status),
+  index("idx_integration_dead_letter_correlation").on(table.correlationId),
+]));
+
+export type IntegrationDeadLetterJob = typeof integrationDeadLetterJobs.$inferSelect;
+export type InsertIntegrationDeadLetterJob = typeof integrationDeadLetterJobs.$inferInsert;
+
 // ============================================================
 // TRUST REGISTRY
 // ============================================================

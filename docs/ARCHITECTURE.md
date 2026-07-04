@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.10 (Scalable Integration Fabric architecture target)
+**Version:** 5.11 (Scalable Integration Fabric job model foundation)
 **Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.11.0 | 2026-07-04 | Integration job model foundation with DB-backed queue tables, tenant-scoped idempotency, attempts/events/artifacts, and dead-letter metadata |
 | v5.10.0 | 2026-07-04 | Scalable Contract-first Integration Fabric architecture target for contract-scoped wallet interoperability jobs, worker runtime, hospital edge connector, SHL hot path, sync-back, and observability |
 | v3.28.0 | 2026-07-03 | PR #15 SHL Manifest Document Bundle — shl_manifest_documents table, DB-persisted document bundles with vcBinding/accessBinding/objectLinks, seed 55+ docs for 12 active SHLs, getManifestDocument endpoint |
 | v3.27.0 | 2026-07-03 | Storage proxy (/api/storage-proxy/) for production photo fix, duplicate card revocation rule, second patient card details fix, Manus OAuth removed (test users only) |
@@ -1818,8 +1819,8 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Metric | Value |
 |--------|-------|
-| Database tables | 67 (in schema.ts) |
-| Migration batches | 19 |
+| Database tables | 72 (in schema.ts) |
+| Migration batches | 20 |
 | tRPC routers | 31 (added contractAdmin) |
 | Frontend pages | 37 |
 | Reusable components | 25 (added PersonPhoto, TrustLayerRemediationPanel, UploadDocButton, CheckinQRPanel) |
@@ -2362,3 +2363,36 @@ SHL remains the transport and access mechanism. VC/VP remains the trust layer ar
 ### 46.4 Observability and Safety
 
 Every integration flow should carry `correlationId`, `jobId`, hospital/context/contract identifiers, adapter identifiers where relevant, and SHL/manifest/credential/presentation/sync IDs where relevant. Logs and job events must remain PHI-safe and must not contain raw SHL keys, passcodes, plaintext clinical payloads, JWT sensitive payloads, or production secrets.
+
+---
+
+## 47. Integration Job Model Foundation
+
+The first executable foundation for the Scalable Integration Fabric is a DB-backed job model. It is intentionally generic enough to support import, mapping, DQI, DocumentReference, VC issuance, VP/SHL packet building, sync-back, reconciliation, and adapter health jobs, while staying contract-scoped to hospital service readiness workflows.
+
+### 47.1 Tables
+
+Migration `0020_nasty_mongoose` adds:
+
+| Table | Purpose |
+|-------|---------|
+| `integration_jobs` | Durable queue record with tenant, hospital, patient, context, contract, adapter, `correlationId`, `idempotencyKey`, status, retry counters, payload hash, and safe control metadata |
+| `integration_job_attempts` | Worker attempt ledger for retry scheduling and failure analysis |
+| `integration_job_events` | PHI-safe status/event timeline keyed by `jobId` and `correlationId` |
+| `integration_job_artifacts` | Object/FHIR/VC/VP/SHL artifact references produced by jobs without storing large binaries in the job row |
+| `integration_dead_letter_jobs` | Dead-letter state for jobs that exhaust retry policy or require operator decision |
+
+The idempotency boundary is tenant-scoped: `tenantId + idempotencyKey` is unique. This lets API and worker layers retry safely without creating duplicate clinical workflow jobs.
+
+### 47.2 Server Helpers
+
+`server/jobs/dbQueue.ts` contains pure helper logic for:
+
+- building queued job records
+- deriving stable idempotency keys from contract-scoped source metadata
+- generating or preserving `correlationId`
+- redacting PHI-like fields, SHL keys, passcodes, JWTs, plaintext, and secrets from job metadata
+- validating allowed status transitions
+- normalizing tenant-scoped list filters
+
+`server/db.ts` exposes incremental DB helpers for creating, looking up, listing, updating, and dead-lettering integration jobs plus attempts, events, and artifacts. PR-02 does not add API endpoints or worker runtime. Those layers are stacked in later PRs so Manus can review schema and queue semantics independently.

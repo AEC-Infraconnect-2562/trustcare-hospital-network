@@ -209,7 +209,23 @@ This architecture is implemented as stacked draft PRs:
 
 Each PR must remain independently reviewable by Manus and must document migration, role/menu, SHL/VC/VP, tests, and manual verification impact.
 
-## 10. Non-Goals
+## 10. PR-02 Job Model Foundation
+
+PR-02 establishes the durable queue schema without introducing an external queue dependency. The DB-backed model is the local/dev fallback for Manus Workspace and the contract boundary for later worker/runtime PRs.
+
+Migration `0020_nasty_mongoose` adds the first job foundation tables on top of the latest SHL manifest document bundle schema.
+
+The foundation is composed of:
+
+- `integration_jobs` for tenant/hospital/context/contract-scoped queue state
+- `integration_job_attempts` for worker retry/audit attempts
+- `integration_job_events` for PHI-safe timeline events
+- `integration_job_artifacts` for object, FHIR, VC, VP, SHL, and sync references
+- `integration_dead_letter_jobs` for exhausted retries and operator review
+
+Only safe control metadata belongs in job rows. Large files, source payloads, clinical documents, and derived artifacts should be stored behind object references or artifact rows, then connected to Patient Wallet, VC/VP, SHL, or sync-back flows by later jobs.
+
+## 11. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake

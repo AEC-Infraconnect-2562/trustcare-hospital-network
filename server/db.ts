@@ -620,6 +620,11 @@ import {
   integrationEventLogs,
   credentialStatusEvents, InsertCredentialStatusEvent,
   syncReconciliationJobs, InsertSyncReconciliationJob,
+  integrationJobs, InsertIntegrationJob,
+  integrationJobAttempts, InsertIntegrationJobAttempt,
+  integrationJobEvents, InsertIntegrationJobEvent,
+  integrationJobArtifacts, InsertIntegrationJobArtifact,
+  integrationDeadLetterJobs, InsertIntegrationDeadLetterJob,
   trustRegistry, InsertTrustRegistryEntry,
   taoTrustedIssuers, InsertTaoTrustedIssuer,
   taoTrustedVerifiers, InsertTaoTrustedVerifier,
@@ -811,6 +816,141 @@ export async function listSyncReconciliationJobs(filter?: { status?: string; tar
     return db.select().from(syncReconciliationJobs).where(and(...conditions)).orderBy(desc(syncReconciliationJobs.createdAt)).limit(limit);
   }
   return db.select().from(syncReconciliationJobs).orderBy(desc(syncReconciliationJobs.createdAt)).limit(limit);
+}
+
+// ============================================================
+// INTEGRATION JOB QUEUE HELPERS
+// ============================================================
+export async function createIntegrationJob(data: Omit<InsertIntegrationJob, "id" | "createdAt" | "updatedAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await getIntegrationJobByIdempotencyKey({
+    tenantId: data.tenantId,
+    idempotencyKey: data.idempotencyKey,
+  });
+  if (existing) return { job: existing, reused: true };
+
+  const [result] = await db.insert(integrationJobs).values(data as any).$returningId();
+  const job = await getIntegrationJobByJobId(data.jobId);
+  return { job: job ?? { id: result.id, ...data }, reused: false };
+}
+
+export async function getIntegrationJobByJobId(jobId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(integrationJobs).where(eq(integrationJobs.jobId, jobId)).limit(1);
+  return row ?? null;
+}
+
+export async function getIntegrationJobByIdempotencyKey(filter: { tenantId?: string; idempotencyKey: string }) {
+  const db = await getDb();
+  if (!db) return null;
+  const tenantId = filter.tenantId ?? "trustcare-network";
+  const [row] = await db.select().from(integrationJobs)
+    .where(and(eq(integrationJobs.tenantId, tenantId), eq(integrationJobs.idempotencyKey, filter.idempotencyKey)))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function listIntegrationJobs(filter?: {
+  tenantId?: string;
+  hospitalId?: number;
+  patientId?: number;
+  context?: string;
+  status?: string;
+  correlationId?: string;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  const limit = Math.max(1, Math.min(filter?.limit ?? 50, 200));
+  if (filter?.tenantId) conditions.push(eq(integrationJobs.tenantId, filter.tenantId));
+  if (filter?.hospitalId) conditions.push(eq(integrationJobs.hospitalId, filter.hospitalId));
+  if (filter?.patientId) conditions.push(eq(integrationJobs.patientId, filter.patientId));
+  if (filter?.context) conditions.push(eq(integrationJobs.context, filter.context as any));
+  if (filter?.status) conditions.push(eq(integrationJobs.status, filter.status as any));
+  if (filter?.correlationId) conditions.push(eq(integrationJobs.correlationId, filter.correlationId));
+  if (conditions.length > 0) {
+    return db.select().from(integrationJobs).where(and(...conditions)).orderBy(desc(integrationJobs.createdAt)).limit(limit);
+  }
+  return db.select().from(integrationJobs).orderBy(desc(integrationJobs.createdAt)).limit(limit);
+}
+
+export async function updateIntegrationJobStatus(
+  jobId: string,
+  status: InsertIntegrationJob["status"],
+  data: Partial<Pick<InsertIntegrationJob, "result" | "errorCode" | "errorMessage" | "attempts" | "lockedBy" | "lockedAt" | "startedAt" | "completedAt">> = {},
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(integrationJobs).set({ ...data, status } as any).where(eq(integrationJobs.jobId, jobId));
+}
+
+export async function createIntegrationJobAttempt(data: Omit<InsertIntegrationJobAttempt, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(integrationJobAttempts).values(data as any).$returningId();
+  return result.id;
+}
+
+export async function updateIntegrationJobAttempt(id: number, data: Partial<InsertIntegrationJobAttempt>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(integrationJobAttempts).set(data as any).where(eq(integrationJobAttempts.id, id));
+}
+
+export async function createIntegrationJobEvent(data: Omit<InsertIntegrationJobEvent, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(integrationJobEvents).values(data as any).$returningId();
+  return result.id;
+}
+
+export async function listIntegrationJobEvents(jobId: string, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(integrationJobEvents)
+    .where(eq(integrationJobEvents.jobId, jobId))
+    .orderBy(desc(integrationJobEvents.createdAt))
+    .limit(Math.max(1, Math.min(limit, 200)));
+}
+
+export async function createIntegrationJobArtifact(data: Omit<InsertIntegrationJobArtifact, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) return null;
+  const [result] = await db.insert(integrationJobArtifacts).values(data as any).$returningId();
+  return result.id;
+}
+
+export async function listIntegrationJobArtifacts(jobId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(integrationJobArtifacts)
+    .where(eq(integrationJobArtifacts.jobId, jobId))
+    .orderBy(desc(integrationJobArtifacts.createdAt));
+}
+
+export async function moveIntegrationJobToDeadLetter(data: Omit<InsertIntegrationDeadLetterJob, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(integrationDeadLetterJobs).values(data as any).$returningId();
+  await db.update(integrationJobs).set({ status: "dead_lettered" as any }).where(eq(integrationJobs.jobId, data.jobId));
+  return result.id;
+}
+
+export async function listIntegrationDeadLetterJobs(filter?: { tenantId?: string; status?: string; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  const limit = Math.max(1, Math.min(filter?.limit ?? 50, 200));
+  if (filter?.tenantId) conditions.push(eq(integrationDeadLetterJobs.tenantId, filter.tenantId));
+  if (filter?.status) conditions.push(eq(integrationDeadLetterJobs.status, filter.status as any));
+  if (conditions.length > 0) {
+    return db.select().from(integrationDeadLetterJobs).where(and(...conditions)).orderBy(desc(integrationDeadLetterJobs.createdAt)).limit(limit);
+  }
+  return db.select().from(integrationDeadLetterJobs).orderBy(desc(integrationDeadLetterJobs.createdAt)).limit(limit);
 }
 
 // ============================================================
