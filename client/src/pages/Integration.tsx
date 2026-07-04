@@ -9,8 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
-import { Plug, Plus, RefreshCw, CheckCircle2, XCircle, Database, Activity, ListChecks, Clock3, AlertTriangle } from "lucide-react";
+import { Plug, Plus, RefreshCw, CheckCircle2, XCircle, Database, Activity, ListChecks, Clock3, AlertTriangle, Gauge, RadioTower, GitBranch, Wrench, FileClock, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
+import {
+  getAdapterHealthLabel,
+  getJobTroubleshootingHint,
+  summarizeIntegrationWorkbench,
+  type IntegrationWorkbenchSeverity,
+} from "@shared/integrationWorkbench";
 
 const systemTypeLabels: Record<string, string> = {
   his: "HIS",
@@ -53,12 +59,51 @@ const jobStatusColors: Record<string, string> = {
   cancelled: "bg-gray-100 text-gray-700",
 };
 
+const healthSeverityColors: Record<IntegrationWorkbenchSeverity, string> = {
+  ok: "bg-green-100 text-green-700",
+  watch: "bg-amber-100 text-amber-700",
+  blocked: "bg-red-100 text-red-700",
+  neutral: "bg-gray-100 text-gray-700",
+};
+
+function formatDateTime(value?: string | Date | null) {
+  return value ? new Date(value).toLocaleString("th-TH") : "not recorded";
+}
+
+function metadataKeys(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "no metadata";
+  const keys = Object.keys(value as Record<string, unknown>).slice(0, 5);
+  return keys.length ? keys.join(", ") : "no metadata";
+}
+
 export default function Integration() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [selectedAdapterId, setSelectedAdapterId] = useState<number | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [lastHealthByAdapterId, setLastHealthByAdapterId] = useState<Record<number, any>>({});
 
   const { data: adapters, refetch } = trpc.integration.listAdapters.useQuery({});
   const { data: events } = trpc.integration.listEvents.useQuery({ limit: 20 });
   const { data: jobs, refetch: refetchJobs } = trpc.integration.listJobs.useQuery({ limit: 20 });
+  const selectedAdapter = adapters?.find((adapter: any) => adapter.id === selectedAdapterId) ?? adapters?.[0];
+  const selectedJob = jobs?.find((job: any) => job.jobId === selectedJobId) ?? jobs?.[0];
+  const effectiveSelectedAdapterId = selectedAdapterId ?? selectedAdapter?.id ?? 0;
+  const effectiveSelectedJobId = selectedJobId ?? selectedJob?.jobId ?? "";
+  const { data: healthLogs } = trpc.integration.healthLogs.useQuery(
+    { adapterId: effectiveSelectedAdapterId },
+    { enabled: Boolean(effectiveSelectedAdapterId) },
+  );
+  const { data: mappingVersions } = trpc.integration.listMappingVersions.useQuery(
+    { adapterId: effectiveSelectedAdapterId },
+    { enabled: Boolean(effectiveSelectedAdapterId) },
+  );
+  const { data: selectedJobDetail } = trpc.integration.getJob.useQuery(
+    { jobId: effectiveSelectedJobId },
+    { enabled: Boolean(effectiveSelectedJobId) },
+  );
+  const workbenchSummary = summarizeIntegrationWorkbench(adapters ?? [], jobs ?? []);
+  const selectedJobRecord = selectedJobDetail?.job ?? selectedJob;
+  const selectedJobHint = selectedJobRecord ? getJobTroubleshootingHint(selectedJobRecord) : undefined;
   const createAdapter = trpc.integration.createAdapter.useMutation({
     onSuccess: () => { refetch(); setShowCreateDialog(false); toast.success("สร้าง Adapter สำเร็จ"); }
   });
@@ -70,9 +115,12 @@ export default function Integration() {
     onError: (error) => toast.error(error.message),
   });
   const testConnection = trpc.integration.testConnection.useMutation({
-    onSuccess: (data) => {
-      if (data.healthy) toast.success(`เชื่อมต่อสำเร็จ (${data.responseTimeMs}ms)`);
-      else toast.error("เชื่อมต่อล้มเหลว");
+    onSuccess: (data, variables) => {
+      setLastHealthByAdapterId((current) => ({ ...current, [variables.id]: data }));
+      refetch();
+      const label = data.healthy ? "เชื่อมต่อสำเร็จ" : `ต้องตรวจสอบ: ${data.healthStatus ?? "unknown"}`;
+      if (data.healthy) toast.success(`${label} (${data.responseTimeMs}ms)`);
+      else toast.error(label);
     }
   });
 
@@ -161,6 +209,53 @@ export default function Integration() {
           </CardContent>
         </Card>
 
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground">Adapters ready</p>
+                  <p className="text-2xl font-semibold">{workbenchSummary.healthyAdapters}/{workbenchSummary.totalAdapters}</p>
+                </div>
+                <ShieldCheck className="h-5 w-5 text-green-600" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground">Watch / blocked</p>
+                  <p className="text-2xl font-semibold">{workbenchSummary.watchAdapters + workbenchSummary.blockedAdapters}</p>
+                </div>
+                <RadioTower className="h-5 w-5 text-amber-600" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground">Job backlog</p>
+                  <p className="text-2xl font-semibold">{workbenchSummary.backlogJobs}</p>
+                </div>
+                <Gauge className="h-5 w-5 text-sky-600" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground">Needs review</p>
+                  <p className="text-2xl font-semibold">{workbenchSummary.reviewJobs}</p>
+                </div>
+                <Wrench className="h-5 w-5 text-red-600" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         <Tabs defaultValue="adapters">
           <TabsList>
             <TabsTrigger value="adapters">Adapters ({adapters?.length || 0})</TabsTrigger>
@@ -169,7 +264,8 @@ export default function Integration() {
           </TabsList>
 
           <TabsContent value="adapters" className="mt-4">
-            <div className="space-y-3">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
+              <div className="space-y-3">
               {(!adapters || adapters.length === 0) ? (
                 <Card>
                   <CardContent className="py-12 text-center text-muted-foreground">
@@ -179,11 +275,14 @@ export default function Integration() {
                   </CardContent>
                 </Card>
               ) : (
-                adapters.map(adapter => (
-                  <Card key={adapter.id} className="hover:shadow-sm transition-shadow">
+                adapters.map(adapter => {
+                  const health = getAdapterHealthLabel(adapter);
+                  const latestHealth = lastHealthByAdapterId[adapter.id];
+                  return (
+                  <Card key={adapter.id} className={`hover:shadow-sm transition-shadow ${selectedAdapter?.id === adapter.id ? "ring-2 ring-primary/30" : ""}`}>
                     <CardContent className="pt-4">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
+                        <button type="button" className="flex items-center gap-3 min-w-0 text-left" onClick={() => setSelectedAdapterId(adapter.id)}>
                           <div className="p-2 rounded-lg bg-primary/10 shrink-0">
                             <Plug className="h-5 w-5 text-primary" />
                           </div>
@@ -198,8 +297,13 @@ export default function Integration() {
                               โรงพยาบาล #{adapter.hospitalId}
                               {adapter.lastHealthCheck && ` • ตรวจสอบล่าสุด: ${new Date(adapter.lastHealthCheck).toLocaleString("th-TH")}`}
                             </p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <Badge className={healthSeverityColors[health.severity]}>{health.label}</Badge>
+                              {latestHealth?.backpressure?.state ? <Badge variant="outline">pressure: {latestHealth.backpressure.state}</Badge> : null}
+                              {latestHealth?.circuitBreaker?.state ? <Badge variant="outline">circuit: {latestHealth.circuitBreaker.state}</Badge> : null}
+                            </div>
                           </div>
-                        </div>
+                        </button>
                         <div className="flex items-center gap-2 shrink-0 ml-11 sm:ml-0">
                           <Badge className={statusColors[adapter.status] || "bg-gray-100"}>
                             {adapter.status === "active" ? "ใช้งาน" : adapter.status === "error" ? "ผิดพลาด" : adapter.status === "testing" ? "ทดสอบ" : "ปิดใช้งาน"}
@@ -211,12 +315,97 @@ export default function Integration() {
                       </div>
                     </CardContent>
                   </Card>
-                ))
+                  );
+                })
               )}
+              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <RadioTower className="h-5 w-5" />
+                    Adapter Runtime
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {!selectedAdapter ? (
+                    <div className="py-10 text-center text-sm text-muted-foreground">No adapter selected</div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <p className="font-medium truncate">{selectedAdapter.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Adapter #{selectedAdapter.id} · Hospital #{selectedAdapter.hospitalId}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="rounded-md border p-3">
+                          <p className="text-xs text-muted-foreground">Health</p>
+                          <Badge className={healthSeverityColors[getAdapterHealthLabel(selectedAdapter).severity]}>
+                            {getAdapterHealthLabel(selectedAdapter).label}
+                          </Badge>
+                        </div>
+                        <div className="rounded-md border p-3">
+                          <p className="text-xs text-muted-foreground">Mapping</p>
+                          <p className="font-medium">{mappingVersions?.[0]?.version ?? "no version"}</p>
+                        </div>
+                      </div>
+                      {lastHealthByAdapterId[selectedAdapter.id] ? (
+                        <div className="rounded-md border p-3 text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="font-medium">Latest check</p>
+                            <Badge variant="outline">{lastHealthByAdapterId[selectedAdapter.id].responseTimeMs}ms</Badge>
+                          </div>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs">
+                            <div>
+                              <p className="text-muted-foreground">Backpressure</p>
+                              <p>{lastHealthByAdapterId[selectedAdapter.id].backpressure?.state ?? "unknown"}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Circuit</p>
+                              <p>{lastHealthByAdapterId[selectedAdapter.id].circuitBreaker?.state ?? "unknown"}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Local buffer</p>
+                              <p>{lastHealthByAdapterId[selectedAdapter.id].localBuffer?.depth ?? 0}/{lastHealthByAdapterId[selectedAdapter.id].localBuffer?.limit ?? 0}</p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground">Next action</p>
+                              <p>{lastHealthByAdapterId[selectedAdapter.id].jobAction ?? getAdapterHealthLabel(selectedAdapter).nextAction}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium flex items-center gap-2"><GitBranch className="h-4 w-4" /> Mapping versions</p>
+                        {(mappingVersions ?? []).slice(0, 4).map((mapping: any) => (
+                          <div key={mapping.id} className="flex items-center justify-between rounded-md border p-2 text-xs">
+                            <span>{mapping.resourceType} v{mapping.version}</span>
+                            <Badge variant="outline">{mapping.status}</Badge>
+                          </div>
+                        ))}
+                        {(!mappingVersions || mappingVersions.length === 0) ? <p className="text-xs text-muted-foreground">No mapping versions</p> : null}
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium flex items-center gap-2"><FileClock className="h-4 w-4" /> Health log</p>
+                        {(healthLogs ?? []).slice(0, 5).map((log: any) => (
+                          <div key={log.id} className="rounded-md border p-2 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <Badge className={log.status === "healthy" ? healthSeverityColors.ok : log.status === "down" ? healthSeverityColors.blocked : healthSeverityColors.watch}>{log.status}</Badge>
+                              <span className="text-muted-foreground">{formatDateTime(log.checkedAt)}</span>
+                            </div>
+                            {log.errorMessage ? <p className="mt-1 text-muted-foreground">{log.errorMessage}</p> : null}
+                          </div>
+                        ))}
+                        {(!healthLogs || healthLogs.length === 0) ? <p className="text-xs text-muted-foreground">No health logs</p> : null}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
-          <TabsContent value="jobs" className="mt-4">
+          <TabsContent value="jobs" className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]">
             <Card>
               <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -266,13 +455,20 @@ export default function Integration() {
                               <Badge className={jobStatusColors[job.status] || "bg-gray-100 text-gray-700"}>
                                 {job.status}
                               </Badge>
+                              <Badge className={healthSeverityColors[getJobTroubleshootingHint(job).severity]}>
+                                {getJobTroubleshootingHint(job).label}
+                              </Badge>
                               {job.status === "needs_review" || job.status === "dead_lettered" || job.status === "failed" ? (
                                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                               ) : null}
+                              <Button size="sm" variant="outline" onClick={() => setSelectedJobId(job.jobId)}>
+                                Open
+                              </Button>
                             </div>
                             <p className="text-sm text-muted-foreground mt-1">
                               {job.jobType} {" "}·{" "} {job.sourceType}
                             </p>
+                            <p className="text-xs text-muted-foreground mt-2">{getJobTroubleshootingHint(job).nextAction}</p>
                           </div>
                           <div className="text-xs text-muted-foreground lg:text-right">
                             <p>{job.createdAt ? new Date(job.createdAt).toLocaleString("th-TH") : "not started"}</p>
@@ -299,6 +495,79 @@ export default function Integration() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileClock className="h-5 w-5" />
+                  Job Timeline
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!selectedJobRecord || !selectedJobHint ? (
+                  <div className="py-10 text-center text-sm text-muted-foreground">No job selected</div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={jobStatusColors[selectedJobRecord.status] || "bg-gray-100 text-gray-700"}>{selectedJobRecord.status}</Badge>
+                        <Badge className={healthSeverityColors[selectedJobHint.severity]}>{selectedJobHint.label}</Badge>
+                      </div>
+                      <p className="font-mono text-sm break-all">{selectedJobRecord.jobId}</p>
+                      <p className="text-xs text-muted-foreground">{selectedJobHint.nextAction}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-md border p-3">
+                        <p className="text-muted-foreground">Correlation ID</p>
+                        <p className="font-mono truncate">{selectedJobRecord.correlationId}</p>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <p className="text-muted-foreground">Adapter</p>
+                        <p>{selectedJobRecord.adapterId ? `#${selectedJobRecord.adapterId}` : "not scoped"}</p>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <p className="text-muted-foreground">Contract</p>
+                        <p className="truncate">{selectedJobRecord.contractId || "none"}</p>
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <p className="text-muted-foreground">Attempts</p>
+                        <p>{selectedJobRecord.attempts ?? 0}/{selectedJobRecord.maxAttempts ?? 0}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Events</p>
+                      {(selectedJobDetail?.events ?? []).map((event: any) => (
+                        <div key={event.id} className="rounded-md border p-3 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{event.eventType}</span>
+                            <Badge variant="outline">{event.status ?? event.level}</Badge>
+                          </div>
+                          <p className="mt-1 text-muted-foreground">{event.message ?? "No message"}</p>
+                          <p className="mt-1 font-mono text-muted-foreground truncate">metadata: {metadataKeys(event.metadata)}</p>
+                        </div>
+                      ))}
+                      {(!selectedJobDetail?.events || selectedJobDetail.events.length === 0) ? (
+                        <p className="text-xs text-muted-foreground">No events loaded</p>
+                      ) : null}
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Artifacts</p>
+                      {(selectedJobDetail?.artifacts ?? []).map((artifact: any) => (
+                        <div key={artifact.id ?? artifact.artifactId} className="rounded-md border p-3 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{artifact.artifactType ?? "artifact"}</span>
+                            <Badge variant="outline">{artifact.hash ? `${String(artifact.hash).slice(0, 10)}...` : "no hash"}</Badge>
+                          </div>
+                          <p className="mt-1 font-mono text-muted-foreground truncate">{artifact.artifactId ?? "untracked"}</p>
+                        </div>
+                      ))}
+                      {(!selectedJobDetail?.artifacts || selectedJobDetail.artifacts.length === 0) ? (
+                        <p className="text-xs text-muted-foreground">No artifacts</p>
+                      ) : null}
+                    </div>
                   </div>
                 )}
               </CardContent>

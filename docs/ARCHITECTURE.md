@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.22 (Edge connector simulator and adapter backpressure)
+**Version:** 5.23 (Integration workbench UX)
 **Last updated:** 2026-07-05
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.23.0 | 2026-07-05 | Integration engineer workbench UX for adapter health, job backlog, mapping versions, job timeline, retry/dead-letter guidance, and safe event/artifact summaries |
 | v5.22.0 | 2026-07-05 | Edge connector simulator contract for adapter capability, scoped backpressure, circuit breaker state, local-buffer metadata, and `adapter.health_check` worker evaluation |
 | v5.21.0 | 2026-07-05 | Sync-back worker pipeline for plan, execute, reconciliation run, SyncReceipt preparation, and reconciliation persistence hooks across FHIR REST, HL7v2, DB/outbox, CSV batch, and manual queue targets |
 | v5.20.0 | 2026-07-05 | SHL shared-state hardening with atomic persisted access grants, persisted passcode failure lockout, safe shared-state metadata, rate-limit hooks, and short-lived object URL policy placeholder |
@@ -2693,3 +2694,22 @@ The simulator evaluates existing `integration_adapters` rows plus safe `connecti
 The `adapter.health_check` worker handler and the existing `integration.testConnection` API now share the same evaluator. Healthy adapters can accept scoped jobs. Degraded adapters pause new work for that adapter, and down/open-circuit adapters return retry metadata for worker scheduling or operator review.
 
 The simulator never returns connection targets, credentials, tokens, raw payloads, SHL keys, passcodes, or PHI in job events. It records only health status, response time, and operator-safe issue messages in existing adapter health logs.
+
+---
+
+## 59. Integration Engineer Workbench UX
+
+PR-14 improves the existing `/integration` page into a practical integration engineer workbench without changing role policy or patient-facing navigation.
+
+### 59.1 Workbench Areas
+
+| Area | Purpose |
+|------|---------|
+| Summary metrics | Adapter readiness, watch/blocked adapters, job backlog, and jobs needing review |
+| Adapter runtime panel | Selected adapter health, latest simulator result, backpressure, circuit breaker state, local-buffer metadata, mapping versions, and health log |
+| Job monitor | Job list with correlation ID, contract context, adapter scope, retry/dead-letter guidance, and attempts |
+| Job timeline | Safe event timeline and artifact references without raw payload/result rendering |
+
+### 59.2 Safety Boundary
+
+The workbench shows IDs, statuses, hashes, metadata keys, and operator-safe messages. It intentionally does not render raw job payloads, job results, connection targets, credentials, tokens, SHL keys, passcodes, or plaintext clinical payloads. Patient role visibility remains controlled by existing menu/role policy; this PR does not add patient-facing technical UI.

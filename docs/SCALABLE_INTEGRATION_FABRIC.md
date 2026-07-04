@@ -379,7 +379,23 @@ The contract reports:
 
 This PR does not add a migration, does not store large payloads or local buffer contents, and does not deploy a real on-prem connector.
 
-## 22. Non-Goals
+## 22. PR-14 Integration Engineer Job and Adapter Workbench UX
+
+PR-14 turns the existing `/integration` page into the first operator-facing workbench for the fabric stack. It stays scoped to integration engineers/admins and does not add patient-facing technical details.
+
+The workbench now surfaces:
+
+- adapter readiness and blocked/watch summary
+- selected adapter health, mapping version, backpressure, circuit breaker, and local-buffer metadata
+- health log and mapping-version inspection
+- job backlog and jobs needing review
+- correlation ID, job ID, adapter ID, contract context, and attempt count
+- retry/dead-letter next-action language
+- safe event timeline and artifact references
+
+Raw job payloads, job results, adapter connection targets, credentials, tokens, SHL keys, passcodes, and plaintext clinical payloads stay hidden from the UI. This PR does not add a migration or role/menu changes.
+
+## 23. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake
