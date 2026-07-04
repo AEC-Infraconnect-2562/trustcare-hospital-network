@@ -248,7 +248,23 @@ PR-04 exposes the job foundation through the existing integration router and int
 
 This is not the final troubleshooting workbench. Retry/dead-letter operations, adapter backpressure, richer timelines, and non-engineer language are handled by later stacked PRs.
 
-## 13. Non-Goals
+## 13. PR-05 Contract Resolver Foundation
+
+PR-05 adds a reusable contract resolver around the existing Prepare for Service Contract Hub simulation. The resolver is the common entry point for later import, mapping, DQI, VC issuance, VP/SHL packet, and sync-back workers.
+
+Resolver output includes:
+
+- selected service readiness contract and version
+- tenant/hospital scope
+- mapping profile
+- consent policy
+- recommended transport policy
+- output artifacts such as FHIR resources, DocumentReference, credential types, VP package, SHL packet, and OperationOutcome
+- explicit fallback warnings when a requested contract/version is unavailable
+
+This keeps integrations contract-scoped to service readiness use cases rather than generic source-system ingestion.
+
+## 14. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake
