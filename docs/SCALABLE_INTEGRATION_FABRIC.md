@@ -361,7 +361,25 @@ Supported targets are `fhir_rest`, `hl7v2`, `db_view`/outbox, `csv_batch`, and `
 
 This PR does not add a new migration. It reuses the existing `sync_reconciliation_jobs` table and does not directly issue signed SyncReceipt VCs or bypass Maker/Checker.
 
-## 21. Non-Goals
+## 21. PR-13 Hospital Edge Connector Simulator and Adapter Backpressure
+
+PR-13 adds an executable simulator contract for hospital edge connector runtime behavior. The simulator uses existing `integration_adapters` rows and safe `connectionConfig.runtime` metadata rather than introducing a new deployment dependency.
+
+The contract reports:
+
+- adapter capability by connector pattern
+- max concurrency and throttle metadata
+- adapter-scoped backpressure
+- circuit breaker state
+- health-check result
+- simulated local-buffer depth and limit
+- hospital/adapter capacity scope
+
+`adapter.health_check` jobs and the existing adapter test-connection API share the same evaluator, so integration engineers see the same health/backpressure contract that workers use. A saturated adapter pauses only its own work; it does not globally stop all hospital or tenant jobs.
+
+This PR does not add a migration, does not store large payloads or local buffer contents, and does not deploy a real on-prem connector.
+
+## 22. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake

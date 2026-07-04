@@ -114,6 +114,7 @@ import {
   canViewIntegrationJob,
   scopeIntegrationJobListFilter,
 } from "./jobs/accessPolicy";
+import { evaluateEdgeConnectorRuntime } from "./jobs/edgeConnectorSimulator";
 
 const credentialTypeValues = [
   "patient_identity", "staff_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization",
@@ -2255,16 +2256,15 @@ export const appRouter = router({
     testConnection: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
       const adapter = await db.getIntegrationAdapterById(input.id);
       if (!adapter) throw new TRPCError({ code: "NOT_FOUND" });
-      const config = adapter.connectionConfig as Record<string, unknown> | null | undefined;
-      const health = evaluateAdapterHealth(adapter as any, config);
+      const health = evaluateEdgeConnectorRuntime(adapter as any);
       await db.createAdapterHealthLog({
         adapterId: input.id,
-        status: health.healthy ? "healthy" : "degraded",
+        status: health.healthStatus,
         responseTimeMs: health.responseTimeMs,
         errorMessage: health.errorMessage,
       });
       await db.updateIntegrationAdapter(input.id, {
-        healthStatus: health.healthy ? "healthy" : "degraded",
+        healthStatus: health.healthStatus,
         lastHealthCheck: new Date(),
       } as any);
       return health;
@@ -5776,45 +5776,6 @@ async function resolveShlManifestAccess(ctx: any, shl: any, input: {
   }
 }
 
-function evaluateAdapterHealth(adapter: {
-  id: number;
-  name?: string | null;
-  status?: string | null;
-  connectorPattern?: string | null;
-}, config?: Record<string, unknown> | null) {
-  const status = String(adapter.status ?? "testing");
-  const targetConfigured = hasAdapterConnectionTarget(String(adapter.connectorPattern ?? ""), config);
-  const healthy = status === "active" && targetConfigured;
-  const responseTimeMs = 50 + stableModulo(`${adapter.id}:${adapter.name ?? ""}:${adapter.connectorPattern ?? ""}`, 450);
-  let errorMessage: string | undefined;
-  if (status !== "active") {
-    errorMessage = `Adapter status is ${status}; activate adapter before marking it healthy.`;
-  } else if (!targetConfigured) {
-    errorMessage = "Adapter connection target is incomplete.";
-  }
-  return {
-    healthy,
-    responseTimeMs,
-    errorMessage,
-    evaluatedAt: new Date().toISOString(),
-    evaluationSource: "adapter_configuration",
-  };
-}
-
-function hasAdapterConnectionTarget(pattern: string, config?: Record<string, unknown> | null): boolean {
-  if (!config || typeof config !== "object") return false;
-  const acceptedKeys = [
-    "endpoint", "baseUrl", "url", "dsn", "connectionString", "host", "databaseUrl",
-    "viewName", "tableName", "fileDropPath", "directory", "topic", "queueName",
-  ];
-  const hasTarget = acceptedKeys.some((key) => {
-    const value = config[key];
-    return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
-  });
-  if (hasTarget) return true;
-  return ["portal_adapter", "batch_file"].includes(pattern) && Boolean(config.enabled);
-}
-
 function evaluateEligibility(payer: {
   payerType?: string | null;
   status?: string | null;
@@ -5914,14 +5875,6 @@ function hasStructuredValue(value: unknown): boolean {
   if (value && typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
   if (typeof value === "string") return value.trim().length > 0;
   return false;
-}
-
-function stableModulo(text: string, modulo: number): number {
-  let value = 0;
-  for (const char of text) {
-    value = (value * 31 + char.charCodeAt(0)) % modulo;
-  }
-  return value;
 }
 
 async function buildPortabilityTrustPolicy(input: {
