@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.21 (Sync-back and reconciliation worker)
+**Version:** 5.22 (Edge connector simulator and adapter backpressure)
 **Last updated:** 2026-07-05
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.22.0 | 2026-07-05 | Edge connector simulator contract for adapter capability, scoped backpressure, circuit breaker state, local-buffer metadata, and `adapter.health_check` worker evaluation |
 | v5.21.0 | 2026-07-05 | Sync-back worker pipeline for plan, execute, reconciliation run, SyncReceipt preparation, and reconciliation persistence hooks across FHIR REST, HL7v2, DB/outbox, CSV batch, and manual queue targets |
 | v5.20.0 | 2026-07-05 | SHL shared-state hardening with atomic persisted access grants, persisted passcode failure lockout, safe shared-state metadata, rate-limit hooks, and short-lived object URL policy placeholder |
 | v5.19.0 | 2026-07-04 | VP/SHL packet worker handlers for direct VP metadata, SHL packet metadata, manifest/file hashes, DocumentReference bundle metadata, and `ShlManifestCredential` review metadata |
@@ -2668,3 +2669,27 @@ The worker supports existing sync target kinds: `fhir_rest`, `hl7v2`, `db_view`/
 The execute handler persists reconciliation job state through `sync_reconciliation_jobs` when a DB connection is available. In local/dev tests without `DATABASE_URL`, persistence is a safe no-op and the returned metadata still identifies the reconciliation job that Manus should expect.
 
 The worker prepares SyncReceipt-compatible metadata via `createSyncReceipt()` but does not directly issue a signed VC or bypass existing issuer policy. Later PRs can route the prepared receipt into Maker/Checker or trusted issuance if policy permits.
+
+---
+
+## 58. Edge Connector Simulator and Adapter Backpressure
+
+PR-13 introduces an executable simulator contract for hospital edge connectors. It models adapter runtime behavior without requiring an on-prem agent, Kubernetes controller, external queue broker, or new database table.
+
+### 58.1 Runtime Contract
+
+The simulator evaluates existing `integration_adapters` rows plus safe `connectionConfig.runtime` metadata. The returned contract includes:
+
+| Field | Purpose |
+|-------|---------|
+| capability | Connector pattern, supported source types, supported sync target kinds, max concurrency, throttle policy, and required correlation/idempotency behavior |
+| backpressure | Adapter-scoped active/queued job counts, utilization, retry-after hints, and `adapter_scoped_backpressure` policy |
+| circuitBreaker | Closed, half-open, or open state with failure counts and next retry metadata |
+| localBuffer | Simulated local buffer depth/limit/durability metadata; no payloads or files are stored in DB |
+| capacityScope | Hospital/adapter key proving one overloaded adapter should pause only its own jobs |
+
+### 58.2 Health Evaluation
+
+The `adapter.health_check` worker handler and the existing `integration.testConnection` API now share the same evaluator. Healthy adapters can accept scoped jobs. Degraded adapters pause new work for that adapter, and down/open-circuit adapters return retry metadata for worker scheduling or operator review.
+
+The simulator never returns connection targets, credentials, tokens, raw payloads, SHL keys, passcodes, or PHI in job events. It records only health status, response time, and operator-safe issue messages in existing adapter health logs.
