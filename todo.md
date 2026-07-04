@@ -854,8 +854,8 @@
 
 ## v3.32.0 - Manifest Document UI in /wallet SHL Packages
 
-- [ ] Add documentBundle field to shl.getById tRPC response
-- [ ] Create ManifestDocumentPanel component with visual indicators for object links status
-- [ ] Show status indicators: manifest (URL/hash/token), VC (issued/pending), VP (issued/pending), Future API (available/unavailable)
-- [ ] Integrate panel into wallet SHL package detail view
-- [ ] Run tests, save checkpoint, push to GitHub
+- [x] Add documentBundle field to shl.getById tRPC response
+- [x] Create ManifestDocumentPanel component with visual indicators for object links status
+- [x] Show status indicators: manifest (URL/hash/token), VC (issued/pending), VP (issued/pending), Future API (available/unavailable)
+- [x] Integrate panel into wallet SHL package detail view
+- [x] Run tests, save checkpoint, push to GitHub
