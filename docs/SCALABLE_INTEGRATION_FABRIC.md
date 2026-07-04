@@ -277,7 +277,19 @@ PR-06 registers the first worker handler, `import.source_payload`. It converts s
 
 The handler resolves the contract first, emits PHI-safe events, and does not issue VC or build canonical FHIR output. Canonical mapping and DQI remain PR-07 responsibilities.
 
-## 15. Non-Goals
+## 15. PR-07 Canonical Mapping and DQI Worker
+
+PR-07 registers the `mapping.canonicalize_fhir` worker handler. It consumes the import output from PR-06 and emits:
+
+- canonical FHIR bundle summaries for DB-view, CSV, HL7v2, and FHIR-native source envelopes
+- DocumentReference candidates for legacy document metadata
+- DQI score and issue list
+- OperationOutcome-like metadata
+- `ready` or `needs_review` routing
+
+The worker does not issue VC or create VP/SHL packets. Errors and low DQI route to review so downstream Maker/Checker and credential issuance cannot silently bypass quality gates.
+
+## 16. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake
