@@ -818,6 +818,12 @@ export async function listSyncReconciliationJobs(filter?: { status?: string; tar
   return db.select().from(syncReconciliationJobs).orderBy(desc(syncReconciliationJobs.createdAt)).limit(limit);
 }
 
+export async function updateSyncReconciliationJob(jobId: string, data: Partial<InsertSyncReconciliationJob>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(syncReconciliationJobs).set(data as any).where(eq(syncReconciliationJobs.jobId, jobId));
+}
+
 // ============================================================
 // INTEGRATION JOB QUEUE HELPERS
 // ============================================================

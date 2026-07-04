@@ -349,7 +349,19 @@ TrustCare-specific manifest metadata exposes shared-state, rate-limit hook, and 
 
 This PR does not introduce a new migration. It reuses existing `smart_health_links` columns and does not implement a production object URL signer or per-IP rate-limit store yet.
 
-## 20. Non-Goals
+## 20. PR-12 Sync-back and Reconciliation Worker
+
+PR-12 registers worker handlers around the existing `server/portability/syncBack.ts` plan/execution model:
+
+- `sync_back.plan`
+- `sync_back.execute`
+- `reconciliation.run`
+
+Supported targets are `fhir_rest`, `hl7v2`, `db_view`/outbox, `csv_batch`, and `manual_queue`. The worker preserves idempotency and consistency keys, prepares SyncReceipt-compatible metadata, and persists reconciliation jobs when a DB connection is available. Local/dev tests can disable persistence while still returning reconciliation metadata for Manus verification.
+
+This PR does not add a new migration. It reuses the existing `sync_reconciliation_jobs` table and does not directly issue signed SyncReceipt VCs or bypass Maker/Checker.
+
+## 21. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake
