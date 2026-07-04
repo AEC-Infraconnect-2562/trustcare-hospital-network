@@ -1,7 +1,7 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.19 (Scalable Integration Fabric VP/SHL packet jobs)
-**Last updated:** 2026-07-04
+**Version:** 5.20 (SHL shared-state hardening)
+**Last updated:** 2026-07-05
 **Maintainers:** AEC-Infraconnect-2562
 
 ---
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.20.0 | 2026-07-05 | SHL shared-state hardening with atomic persisted access grants, persisted passcode failure lockout, safe shared-state metadata, rate-limit hooks, and short-lived object URL policy placeholder |
 | v5.19.0 | 2026-07-04 | VP/SHL packet worker handlers for direct VP metadata, SHL packet metadata, manifest/file hashes, DocumentReference bundle metadata, and `ShlManifestCredential` review metadata |
 | v5.18.0 | 2026-07-04 | VC issuance routing worker that evaluates DQI/trusted source/role policy and drafts Maker/Checker routes without signing or wallet-card creation |
 | v5.17.0 | 2026-07-04 | DocumentReference and legacy file pipeline worker for metadata-only files, hashes, Provenance, object references, and review-state routing |
@@ -2610,3 +2611,35 @@ The worker reuses `classifyPacketTransport`:
 The SHL packet builder creates encrypted file descriptors, a standards-compatible manifest response with TrustCare metadata, and `ShlManifestCredential` metadata. It does not return raw SHL key material, QR payloads, passcodes, plaintext clinical payloads, or signed VP/VC JWTs in worker events.
 
 The output includes job/packet metadata, manifest hash, file hashes, source bundle hash, DocumentReference bundle hash, and next action for persisting the packet and submitting manifest VC review. API requests should enqueue these jobs and return `jobId` rather than building large packets synchronously.
+
+---
+
+## 56. SHL Shared-State Hardening
+
+PR-11 hardens the Smart Health Links manifest hot path for horizontally scaled API pods. `docs/SHL_CONTEXT_VERSIONING.md` was reviewed before this change because it touches SHL passcode/access policy and manifest trust metadata.
+
+### 56.1 Persisted Shared State
+
+The SHL manifest resolver now uses DB helpers around the existing `smart_health_links` columns:
+
+- `currentAccessCount`
+- `maxAccessCount`
+- `lastAccessedAt`
+- `passcodeFailedAttempts`
+- `passcodeMaxAttempts`
+- `disabledReason`
+- `status`
+
+Access grant reservation increments `currentAccessCount` atomically while checking the link is still active and below `maxAccessCount`. Passcode failures increment `passcodeFailedAttempts` in shared storage and disable the SHL when the persisted attempt count reaches `passcodeMaxAttempts`. Successful passcode access resets prior failures.
+
+### 56.2 Manifest Trust Metadata
+
+Generic SHL manifest output remains standards-compatible. TrustCare-specific shared-state and object-access metadata stays under the manifest `trustcare` extension:
+
+- `sharedState.accessCountPersisted`
+- `sharedState.passcodeFailureCountPersisted`
+- `sharedState.atomicAccessGrant`
+- `rateLimit` hook metadata for future shlId/recipient/IP throttling
+- `objectAccess` short-lived URL policy placeholder
+
+The resolver does not log or return raw SHL keys, passcodes, QR payloads, object credentials, or plaintext clinical payloads.

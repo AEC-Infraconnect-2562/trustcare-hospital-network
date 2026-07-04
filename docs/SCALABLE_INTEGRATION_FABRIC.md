@@ -334,7 +334,22 @@ SHL packet output includes:
 
 The worker does not return raw SHL keys, QR payloads, passcodes, plaintext clinical payloads, or signed VP/VC JWTs in events. API callers should enqueue these jobs and return `jobId` instead of building large packets synchronously.
 
-## 19. Non-Goals
+## 19. PR-11 SHL Shared-State Hardening
+
+PR-11 hardens the SHL manifest access path for horizontally scaled API pods. `docs/SHL_CONTEXT_VERSIONING.md` was reviewed because the change touches SHL passcode/access state and manifest trust metadata.
+
+The resolver now uses persisted shared state for:
+
+- atomic access grant reservation against `currentAccessCount` and `maxAccessCount`
+- passcode failure counting against `passcodeFailedAttempts` and `passcodeMaxAttempts`
+- lockout through shared `status` and `disabledReason`
+- successful-passcode failure reset
+
+TrustCare-specific manifest metadata exposes shared-state, rate-limit hook, and short-lived object URL policy hints under the `trustcare` extension while keeping the generic SHL manifest standards-compatible.
+
+This PR does not introduce a new migration. It reuses existing `smart_health_links` columns and does not implement a production object URL signer or per-IP rate-limit store yet.
+
+## 20. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake
