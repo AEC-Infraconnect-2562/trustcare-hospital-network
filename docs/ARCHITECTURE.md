@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.12 (Scalable Integration Fabric worker runtime skeleton)
+**Version:** 5.13 (Scalable Integration Fabric job API and monitor)
 **Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.13.0 | 2026-07-04 | Integration job API and monitor foundation with scoped job creation/list/detail/event procedures and `/integration` job monitor tab |
 | v5.12.0 | 2026-07-04 | Worker runtime skeleton with handler registry, retry policy, idempotency-aware execution, safe event metadata, and local DB-backed runner |
 | v5.11.0 | 2026-07-04 | Integration job model foundation with DB-backed queue tables, tenant-scoped idempotency, attempts/events/artifacts, and dead-letter metadata |
 | v5.10.0 | 2026-07-04 | Scalable Contract-first Integration Fabric architecture target for contract-scoped wallet interoperability jobs, worker runtime, hospital edge connector, SHL hot path, sync-back, and observability |
@@ -2418,3 +2419,35 @@ PR-03 adds the first local worker runtime abstraction for the integration job mo
 The runtime uses the same redaction helper as PR-02 before storing event metadata or handler results. Handler error messages are converted to safe generic worker messages so logs and job events do not carry raw clinical payloads, SHL keys, passcodes, plaintext, JWT payloads, or production secrets.
 
 PR-03 does not add long-running background processes, API endpoints, UI surfaces, or production deployment configuration. Later PRs can call the runtime from API-triggered enqueue flows, a local dev command, or a production worker process.
+
+---
+
+## 49. Integration Job API and Monitor Foundation
+
+PR-04 adds the first API and UI surface for the DB-backed job model. The API is intentionally thin: it validates role scope, creates a durable queue record, returns `jobId` immediately, and leaves heavy work to the worker runtime.
+
+### 49.1 API Surface
+
+The existing `integration` tRPC router now exposes:
+
+- `createJob` for staff/integration/admin initiated enqueue requests
+- `listJobs` for scoped job monitor views
+- `getJob` for a safe single-job detail envelope with events and artifacts
+- `listJobEvents` for timeline-only access
+
+The API does not return raw `payload` or `result` bodies to the client. It returns status, hash/reference metadata, `hasPayload`, `hasResult`, `correlationId`, contract/context, and attempt state.
+
+### 49.2 Role Scope
+
+| Actor | Job visibility |
+|-------|----------------|
+| Patient | Own `patientId` jobs only; cannot create integration jobs directly |
+| Doctor/nurse/hospital staff | Jobs scoped to assigned `hospitalId` |
+| Integration engineer | Assigned hospital jobs, or adapter/system jobs when not hospital-bound |
+| System admin | All jobs |
+
+These rules are implemented in `server/jobs/accessPolicy.ts` and covered by unit tests so later PRs can reuse the same policy for worker monitor, retry, and dead-letter actions.
+
+### 49.3 UI Surface
+
+The existing `/integration` page gains an `Integration Jobs` tab. It shows job status, attempts, context, contract version, `correlationId`, and safe artifact flags. It also includes a synthetic no-op enqueue button for Manus Workspace smoke testing when a migrated database is available.

@@ -102,6 +102,18 @@ import {
   purposeForCarePackage,
   validatePartnerConnector,
 } from "./careTransition";
+import { buildQueuedIntegrationJob } from "./jobs/dbQueue";
+import {
+  INTEGRATION_JOB_STATUSES,
+  INTEGRATION_JOB_TYPES,
+  INTEGRATION_SOURCE_TYPES,
+  SERVICE_READINESS_CONTEXTS,
+} from "./jobs/types";
+import {
+  assertIntegrationJobCreateAllowed,
+  canViewIntegrationJob,
+  scopeIntegrationJobListFilter,
+} from "./jobs/accessPolicy";
 
 const credentialTypeValues = [
   "patient_identity", "staff_identity", "consent_receipt", "patient_summary", "allergy_alert", "medication_summary", "referral_vc", "immunization",
@@ -139,6 +151,22 @@ const staffProcedure = protectedProcedure.use(({ ctx, next }) => {
   }
   return next({ ctx });
 });
+
+function policyForbidden(error: unknown): never {
+  throw new TRPCError({
+    code: "FORBIDDEN",
+    message: error instanceof Error ? error.message : "Forbidden",
+  });
+}
+
+function toSafeIntegrationJob(row: any) {
+  const { payload, result, ...safe } = row;
+  return {
+    ...safe,
+    hasPayload: Boolean(payload),
+    hasResult: Boolean(result),
+  };
+}
 
 export const appRouter = router({
   system: systemRouter,
@@ -2266,6 +2294,103 @@ export const appRouter = router({
       limit: z.number().optional(),
     })).query(async ({ input }) => {
       return db.listIntegrationEvents(input);
+    }),
+    createJob: protectedProcedure.input(z.object({
+      jobType: z.enum(INTEGRATION_JOB_TYPES),
+      sourceType: z.enum(INTEGRATION_SOURCE_TYPES),
+      tenantId: z.string().optional(),
+      hospitalId: z.number().optional(),
+      patientId: z.number().optional(),
+      adapterId: z.number().optional(),
+      context: z.enum(SERVICE_READINESS_CONTEXTS).optional(),
+      contractId: z.string().optional(),
+      contractVersion: z.string().optional(),
+      correlationId: z.string().optional(),
+      idempotencyKey: z.string().optional(),
+      sourceRef: z.string().optional(),
+      priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+      payload: z.any().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const actor = ctx.user as any;
+      const hospitalId = input.hospitalId ?? actor.hospitalId ?? undefined;
+      try {
+        assertIntegrationJobCreateAllowed(actor, hospitalId);
+      } catch (error) {
+        policyForbidden(error);
+      }
+
+      const queued = buildQueuedIntegrationJob({
+        ...input,
+        hospitalId,
+        createdBy: ctx.user.id,
+      });
+      const { job, reused } = await db.createIntegrationJob(queued as any);
+      await db.createIntegrationJobEvent({
+        jobId: queued.jobId,
+        eventType: reused ? "job_reused" : "job_queued",
+        level: "info",
+        status: "queued",
+        message: reused ? "Existing idempotent job returned" : "Integration job queued",
+        correlationId: queued.correlationId,
+        metadata: {
+          jobType: queued.jobType,
+          sourceType: queued.sourceType,
+          context: queued.context,
+          contractId: queued.contractId,
+        },
+        createdBy: ctx.user.id,
+      });
+      return {
+        jobId: job.jobId,
+        status: job.status,
+        correlationId: job.correlationId,
+        idempotencyKey: job.idempotencyKey,
+        reused,
+      };
+    }),
+    listJobs: protectedProcedure.input(z.object({
+      tenantId: z.string().optional(),
+      hospitalId: z.number().optional(),
+      patientId: z.number().optional(),
+      context: z.enum(SERVICE_READINESS_CONTEXTS).optional(),
+      status: z.enum(INTEGRATION_JOB_STATUSES).optional(),
+      correlationId: z.string().optional(),
+      limit: z.number().optional(),
+    })).query(async ({ ctx, input }) => {
+      try {
+        const scoped = scopeIntegrationJobListFilter(ctx.user as any, input);
+        const jobs = await db.listIntegrationJobs(scoped);
+        return jobs.map(toSafeIntegrationJob);
+      } catch (error) {
+        policyForbidden(error);
+      }
+    }),
+    getJob: protectedProcedure.input(z.object({ jobId: z.string() })).query(async ({ ctx, input }) => {
+      const job = await db.getIntegrationJobByJobId(input.jobId);
+      if (!job) throw new TRPCError({ code: "NOT_FOUND", message: "Integration job not found" });
+      if (!canViewIntegrationJob(ctx.user as any, job)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot view this integration job." });
+      }
+      const [events, artifacts] = await Promise.all([
+        db.listIntegrationJobEvents(input.jobId, 50),
+        db.listIntegrationJobArtifacts(input.jobId),
+      ]);
+      return {
+        job: toSafeIntegrationJob(job),
+        events,
+        artifacts,
+      };
+    }),
+    listJobEvents: protectedProcedure.input(z.object({
+      jobId: z.string(),
+      limit: z.number().optional(),
+    })).query(async ({ ctx, input }) => {
+      const job = await db.getIntegrationJobByJobId(input.jobId);
+      if (!job) throw new TRPCError({ code: "NOT_FOUND", message: "Integration job not found" });
+      if (!canViewIntegrationJob(ctx.user as any, job)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You cannot view this integration job." });
+      }
+      return db.listIntegrationJobEvents(input.jobId, input.limit ?? 50);
     }),
   }),
 

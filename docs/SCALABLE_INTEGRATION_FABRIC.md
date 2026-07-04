@@ -237,7 +237,18 @@ PR-03 adds an in-process worker abstraction that can execute the DB-backed jobs 
 
 This PR does not introduce a daemon, API endpoint, UI monitor, Kubernetes/KEDA deployment, or production queue dependency. Production deployment can wrap the same handler registry later while preserving the DB-backed local/dev fallback.
 
-## 12. Non-Goals
+## 12. PR-04 Job API and Monitor Foundation
+
+PR-04 exposes the job foundation through the existing integration router and integration engineer/admin workspace:
+
+- API enqueue returns `jobId` quickly and does not run heavy processing inline
+- list/detail endpoints apply patient, hospital staff, integration engineer, and system admin visibility rules
+- monitor responses hide raw payload/result bodies and show only safe status/hash/reference metadata
+- the `/integration` page includes a lightweight Jobs tab and synthetic no-op enqueue smoke action
+
+This is not the final troubleshooting workbench. Retry/dead-letter operations, adapter backpressure, richer timelines, and non-engineer language are handled by later stacked PRs.
+
+## 13. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake

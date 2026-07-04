@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
-import { Plug, Plus, RefreshCw, CheckCircle2, XCircle, Database, Activity } from "lucide-react";
+import { Plug, Plus, RefreshCw, CheckCircle2, XCircle, Database, Activity, ListChecks, Clock3, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 const systemTypeLabels: Record<string, string> = {
@@ -42,13 +42,32 @@ const statusColors: Record<string, string> = {
   testing: "bg-blue-100 text-blue-700",
 };
 
+const jobStatusColors: Record<string, string> = {
+  queued: "bg-blue-100 text-blue-700",
+  claimed: "bg-sky-100 text-sky-700",
+  running: "bg-amber-100 text-amber-700",
+  succeeded: "bg-green-100 text-green-700",
+  failed: "bg-red-100 text-red-700",
+  needs_review: "bg-orange-100 text-orange-700",
+  dead_lettered: "bg-red-200 text-red-800",
+  cancelled: "bg-gray-100 text-gray-700",
+};
+
 export default function Integration() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
   const { data: adapters, refetch } = trpc.integration.listAdapters.useQuery({});
   const { data: events } = trpc.integration.listEvents.useQuery({ limit: 20 });
+  const { data: jobs, refetch: refetchJobs } = trpc.integration.listJobs.useQuery({ limit: 20 });
   const createAdapter = trpc.integration.createAdapter.useMutation({
     onSuccess: () => { refetch(); setShowCreateDialog(false); toast.success("สร้าง Adapter สำเร็จ"); }
+  });
+  const createJob = trpc.integration.createJob.useMutation({
+    onSuccess: (data) => {
+      refetchJobs();
+      toast.success(`Queued job ${data.jobId}`);
+    },
+    onError: (error) => toast.error(error.message),
   });
   const testConnection = trpc.integration.testConnection.useMutation({
     onSuccess: (data) => {
@@ -145,6 +164,7 @@ export default function Integration() {
         <Tabs defaultValue="adapters">
           <TabsList>
             <TabsTrigger value="adapters">Adapters ({adapters?.length || 0})</TabsTrigger>
+            <TabsTrigger value="jobs">Jobs ({jobs?.length || 0})</TabsTrigger>
             <TabsTrigger value="events">Integration Events</TabsTrigger>
           </TabsList>
 
@@ -194,6 +214,95 @@ export default function Integration() {
                 ))
               )}
             </div>
+          </TabsContent>
+
+          <TabsContent value="jobs" className="mt-4">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <ListChecks className="h-5 w-5" />
+                      Integration Jobs
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Queue status for service-readiness integration work. Payload/result bodies are hidden from this monitor.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={createJob.isPending}
+                    onClick={() => createJob.mutate({
+                      jobType: "noop",
+                      sourceType: "manual",
+                      context: "opd_visit",
+                      contractId: "opd_readiness_v1",
+                      contractVersion: "1.0.0",
+                      sourceRef: "integration-monitor-smoke",
+                      payload: { source: "integration-monitor", synthetic: true },
+                    })}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Queue Demo Job
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {(!jobs || jobs.length === 0) ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <Clock3 className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                    <p>No integration jobs yet</p>
+                    <p className="text-xs mt-1">Queued import, mapping, VC/VP, SHL, and sync-back work will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {jobs.map((job: any) => (
+                      <div key={job.jobId} className="rounded-lg border p-4">
+                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-mono text-sm font-medium truncate">{job.jobId}</p>
+                              <Badge className={jobStatusColors[job.status] || "bg-gray-100 text-gray-700"}>
+                                {job.status}
+                              </Badge>
+                              {job.status === "needs_review" || job.status === "dead_lettered" || job.status === "failed" ? (
+                                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                              ) : null}
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {job.jobType} {" "}·{" "} {job.sourceType}
+                            </p>
+                          </div>
+                          <div className="text-xs text-muted-foreground lg:text-right">
+                            <p>{job.createdAt ? new Date(job.createdAt).toLocaleString("th-TH") : "not started"}</p>
+                            <p>attempts {job.attempts ?? 0}/{job.maxAttempts ?? 0}</p>
+                          </div>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 mt-4 text-xs">
+                          <div>
+                            <p className="text-muted-foreground">Correlation ID</p>
+                            <p className="font-mono truncate">{job.correlationId}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Context</p>
+                            <p>{job.context || "system"}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Contract</p>
+                            <p className="truncate">{job.contractId || "none"} {job.contractVersion ? `v${job.contractVersion}` : ""}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Artifacts</p>
+                            <p>{job.hasPayload ? "payload ref/hash" : "no payload"} · {job.hasResult ? "has result" : "no result"}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="events" className="mt-4">
