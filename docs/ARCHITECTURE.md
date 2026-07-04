@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.15 (Scalable Integration Fabric import job handler)
+**Version:** 5.16 (Scalable Integration Fabric mapping and DQI worker)
 **Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.16.0 | 2026-07-04 | Canonical mapping and DQI worker for `mapping.canonicalize_fhir`, OperationOutcome-style metadata, DocumentReference candidates, and needs-review routing |
 | v5.15.0 | 2026-07-04 | Import source payload job handler for HIS DB-view, HL7v2, CSV, FHIR-native, document metadata, patient uploads, and future SHL/VC/VP imports |
 | v5.14.0 | 2026-07-04 | Contract resolver foundation for version-aware service readiness context, mapping profile, consent policy, transport policy, and output artifact planning |
 | v5.13.0 | 2026-07-04 | Integration job API and monitor foundation with scoped job creation/list/detail/event procedures and `/integration` job monitor tab |
@@ -2507,3 +2508,31 @@ The handler calls the contract resolver from PR-05 before processing and emits s
 ### 51.2 Safety Boundary
 
 PR-06 does not store large binaries in the job row and does not issue credentials. Raw clinical files should be represented by object references and hashes. SHL keys, passcodes, JWTs, plaintext, and PHI-like metadata are redacted by the queue/runtime safety helpers before event/result persistence.
+
+---
+
+## 52. Canonical Mapping and DQI Worker
+
+PR-07 adds the `mapping.canonicalize_fhir` worker handler. It consumes the safe intermediate import result from PR-06 and produces either a canonical FHIR summary or a DocumentReference candidate plus DQI metadata.
+
+### 52.1 Mapping Behavior
+
+| Source format | PR-07 behavior |
+|---------------|----------------|
+| `db_view` / `csv` / `hl7v2` / `fhir_native` | Runs existing FHIR canonicalization and returns bundle summary, DQI score, issues, and OperationOutcome |
+| `document_metadata` | Builds a metadata-only DocumentReference candidate and validates hash/content type |
+| unsupported | Routes to `needs_review` with OperationOutcome |
+
+The worker returns `needs_review` when canonicalization emits error issues or the DQI score falls below the configured threshold. It does not issue VC, bypass Maker/Checker, or create VP/SHL packets.
+
+### 52.2 DQI Output
+
+The job result includes:
+
+- `dqiSummary`
+- `operationOutcome`
+- canonical FHIR result or DocumentReference candidate
+- issue list
+- final `ready` or `needs_review` status
+
+Later PRs use this output for DocumentReference persistence and VC issuance routing.
