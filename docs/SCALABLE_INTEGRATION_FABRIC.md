@@ -289,7 +289,21 @@ PR-07 registers the `mapping.canonicalize_fhir` worker handler. It consumes the 
 
 The worker does not issue VC or create VP/SHL packets. Errors and low DQI route to review so downstream Maker/Checker and credential issuance cannot silently bypass quality gates.
 
-## 16. Non-Goals
+## 16. PR-08 DocumentReference and Legacy File Pipeline
+
+PR-08 registers the `document.create_reference` worker handler for legacy PDF, scan, image, and file metadata. It converts metadata-only inputs or PR-07 DocumentReference candidates into:
+
+- FHIR `DocumentReference`
+- FHIR `Provenance`
+- object reference metadata
+- `document_reference`, `object_reference`, and `operation_outcome` artifact descriptors
+- review state for later Maker/Checker routing
+
+The handler rejects inline binary content in job payloads. Files stay in object storage, external references, or mock references for local/dev tests; job rows and events carry hashes, references, and safe metadata only.
+
+PR-08 does not issue VC, create wallet cards, or build VP/SHL packets. Later PRs decide whether a DocumentReference is ready for Maker/Checker or trusted-source issuance.
+
+## 17. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake

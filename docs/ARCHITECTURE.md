@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.16 (Scalable Integration Fabric mapping and DQI worker)
+**Version:** 5.17 (Scalable Integration Fabric DocumentReference pipeline)
 **Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.17.0 | 2026-07-04 | DocumentReference and legacy file pipeline worker for metadata-only files, hashes, Provenance, object references, and review-state routing |
 | v5.16.0 | 2026-07-04 | Canonical mapping and DQI worker for `mapping.canonicalize_fhir`, OperationOutcome-style metadata, DocumentReference candidates, and needs-review routing |
 | v5.15.0 | 2026-07-04 | Import source payload job handler for HIS DB-view, HL7v2, CSV, FHIR-native, document metadata, patient uploads, and future SHL/VC/VP imports |
 | v5.14.0 | 2026-07-04 | Contract resolver foundation for version-aware service readiness context, mapping profile, consent policy, transport policy, and output artifact planning |
@@ -2536,3 +2537,32 @@ The job result includes:
 - final `ready` or `needs_review` status
 
 Later PRs use this output for DocumentReference persistence and VC issuance routing.
+
+---
+
+## 53. DocumentReference and Legacy File Pipeline
+
+PR-08 adds the `document.create_reference` worker handler for legacy PDF, scan, image, and file metadata. It keeps TrustCare wallet-first by turning legacy file metadata into FHIR `DocumentReference` plus `Provenance` before any optional VC issuance or VP/SHL packaging.
+
+### 53.1 Pipeline Behavior
+
+The handler accepts metadata-only payloads or a `documentReferenceCandidate` from PR-07. Valid inputs must include:
+
+- content hash
+- content type
+- object reference or retrievable URL
+- optional source job, source document, patient, hospital, context, contract, and size metadata
+
+Inline binary fields such as base64, file bytes, buffers, or blobs are rejected with `needs_review`. Large binaries remain outside the job row and are represented by object references, mock references for tests/dev, hashes, and artifact descriptors.
+
+### 53.2 Output
+
+The job result includes:
+
+- FHIR `DocumentReference`
+- FHIR `Provenance`
+- object reference metadata with `noBinaryStored`
+- `document_reference`, `object_reference`, and `operation_outcome` artifact descriptors
+- review state: `ready_for_maker_review` or `needs_source_review`
+
+PR-08 does not issue VC, bypass Maker/Checker, create wallet cards, or build VP/SHL packets. PR-09 decides whether a ready DocumentReference can be routed to Maker/Checker or trusted VC issuance policy.
