@@ -303,7 +303,21 @@ The handler rejects inline binary content in job payloads. Files stay in object 
 
 PR-08 does not issue VC, create wallet cards, or build VP/SHL packets. Later PRs decide whether a DocumentReference is ready for Maker/Checker or trusted-source issuance.
 
-## 17. Non-Goals
+## 17. PR-09 VC Issuance Routing Job
+
+PR-09 registers the `vc.issue` worker handler as a Maker/Checker routing layer, not as a direct signer. It evaluates:
+
+- requested or inferred existing credential type
+- canonical FHIR or DocumentReference readiness
+- DQI threshold
+- trusted source policy
+- actor Maker/Checker role and entitlement eligibility
+
+Trusted, high-DQI inputs from an eligible Maker actor become a submitted request draft for Checker review. Low-DQI or untrusted inputs become Maker review drafts. Patient actors, unsupported credential types, or source artifacts that are not ready are blocked and returned as `needs_review`.
+
+The handler does not call the VC signing helper, create an issued credential, create wallet cards, change credential enums, or bypass Maker/Checker. It returns safe audit-event descriptors and request draft metadata for later persistence.
+
+## 18. Non-Goals
 
 - Replacing hospital HIS/EMR/LIS/RIS/PACS systems
 - Creating a central clinical data lake
