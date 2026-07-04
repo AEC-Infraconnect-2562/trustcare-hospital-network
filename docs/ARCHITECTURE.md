@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.24 (Observability and troubleshooting playbook)
+**Version:** 5.25 (End-to-end fabric demo smoke tests)
 **Last updated:** 2026-07-05
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -1789,6 +1789,7 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Version | Date | Key Changes |
 |---------|------|-------------|
+| v5.25.0 | 2026-07-05 | End-to-end scalable fabric demo scenario and smoke-test guide for synthetic import, mapping, DocumentReference, VC routing, SHL packet, verifier intake, sync-back, reconciliation, and correlation tracing |
 | v5.24.0 | 2026-07-05 | Fabric observability helpers, PHI-safe trace context, troubleshooting index, sensitive metadata checks, and correlation ID playbook |
 | v5.23.0 | 2026-07-05 | Integration engineer workbench UX for adapter health, job backlog, mapping versions, job timeline, retry/dead-letter guidance, and safe event/artifact summaries |
 | v5.22.0 | 2026-07-05 | Edge connector simulator contract for adapter capability, scoped backpressure, circuit breaker state, local-buffer metadata, and `adapter.health_check` worker evaluation |
@@ -2743,3 +2744,32 @@ Trace metadata uses the integration job redaction helper before it is returned o
 `buildFabricTroubleshootingIndex()` groups events by `correlationId`, infers fabric stages, counts event levels, reports latest status, detects sensitive metadata keys, and emits root-cause hints for handler, adapter, SHL, sync-back, reconciliation, and dead-letter issues.
 
 The operational workflow lives in [`docs/SCALABLE_FABRIC_TROUBLESHOOTING_PLAYBOOK.md`](./SCALABLE_FABRIC_TROUBLESHOOTING_PLAYBOOK.md). It should be used by Codex and Manus before adding new logs or database columns so troubleshooting remains traceable without storing PHI in logs.
+
+---
+
+## 61. End-to-End Fabric Demo Scenario
+
+PR-16 adds a synthetic smoke-test scenario for the stacked Scalable Integration Fabric. The scenario is a validation harness, not a production orchestrator or a replacement for DB-backed worker execution.
+
+### 61.1 Demo Path
+
+`server/jobs/scalableFabricDemoScenario.ts` chains existing worker helpers and pure functions:
+
+| Stage | Existing capability exercised |
+|-------|-------------------------------|
+| Job creation | Correlation/idempotency trace metadata |
+| Adapter health | Edge connector simulator capability, backpressure, and circuit state |
+| Import | HIS DB-view source normalization |
+| Mapping | Canonical FHIR and DQI worker output |
+| DocumentReference | Legacy file metadata, hash, object reference, Provenance, and review state |
+| VC issuance | Maker/Checker route readiness without issuing a signed VC |
+| VP/SHL packet | SHL packet metadata, manifest hash, file references, and `ShlManifestCredential` metadata |
+| Verifier intake | Metadata-level issuer trust, holder consent, manifest integrity, and object-link checks |
+| Sync-back | HL7v2 sync-back execution and SyncReceipt-compatible metadata |
+| Reconciliation | Reconciliation run result and traceable status |
+
+### 61.2 Safety Boundary
+
+The demo uses synthetic identifiers and returns only safe status, hash, manifest, artifact, job, and correlation metadata. It does not store binaries, issue signed credentials, call external systems, generate real QR payloads, or return raw SHL keys, passcodes, JWTs, plaintext clinical payloads, real Thai IDs, or real patient identifiers.
+
+Manual validation steps live in [`docs/SCALABLE_FABRIC_DEMO_SMOKE_TESTS.md`](./SCALABLE_FABRIC_DEMO_SMOKE_TESTS.md).
