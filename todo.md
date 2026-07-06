@@ -908,3 +908,19 @@
 - [x] Write vitest tests for credential exchange endpoints
 - [x] Write vitest tests for SHL resolution via external API
 - [x] Push to GitHub, save checkpoint
+
+## v3.34.0 - Cross-Device QR Code Scanning Fix
+
+### Research
+- [ ] Study RU_VC project QR scanning implementation (cross-device approach)
+- [ ] Identify the pattern used for real-time QR verification across devices
+
+### Implementation
+- [ ] Implement server-side QR session management (generate session, poll status)
+- [ ] Update QR code generation to embed session-based verification URL
+- [ ] Implement real-time status polling/WebSocket for cross-device verification
+- [ ] Update Verifier page to support cross-device QR scanning workflow
+- [ ] Update Wallet QR presentation to work with session-based approach
+- [ ] Write tests for QR cross-device flow
+- [ ] Fix Verifier page camera not opening for QR scanning
+- [ ] Push to GitHub, save checkpoint

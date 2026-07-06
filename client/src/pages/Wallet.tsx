@@ -1307,7 +1307,7 @@ function WalletShlPackages({
                     <Button
                       size="sm"
                       className="gap-2"
-                      onClick={() => { window.location.href = `/verifier?vp=${encodeURIComponent(selected.presentationId)}`; }}
+                      onClick={() => { window.location.href = `/verify?vp=${encodeURIComponent(selected.presentationId)}`; }}
                     >
                       <Shield className="h-4 w-4" />
                       Verify VP
@@ -1455,7 +1455,7 @@ function WalletShlSelectedInline({
             <Button
               size="sm"
               className="gap-2"
-              onClick={() => { window.location.href = `/verifier?vp=${encodeURIComponent(selected.presentationId)}`; }}
+              onClick={() => { window.location.href = `/verify?vp=${encodeURIComponent(selected.presentationId)}`; }}
             >
               <Shield className="h-4 w-4" />
               Verify VP

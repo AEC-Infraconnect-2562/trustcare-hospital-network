@@ -44,6 +44,7 @@ const ServiceVerify = lazy(() => import("./pages/ServiceVerify"));
 const PatientNotifications = lazy(() => import("./pages/PatientNotifications"));
 const ContractAdmin = lazy(() => import("./pages/ContractAdmin"));
 const ContractHub = lazy(() => import("./pages/ContractHub"));
+const PublicVerify = lazy(() => import("./pages/PublicVerify"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 function PageLoader() {
@@ -69,6 +70,7 @@ function Router() {
         <Route path="/issuer/:id" component={CredentialDetail} />
         <Route path="/maker-queue" component={MakerQueue} />
         <Route path="/checker-queue" component={CheckerQueue} />
+        <Route path="/verify" component={PublicVerify} />
         <Route path="/verifier" component={Verifier} />
         <Route path="/consent" component={Consent} />
         <Route path="/notifications" component={PatientNotifications} />

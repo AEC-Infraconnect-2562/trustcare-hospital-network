@@ -999,7 +999,7 @@ export const appRouter = router({
         presentationId: presentation.id,
         expiresAt: presentation.expiresAt,
         credentialCount: credentialRows.length,
-        qrData: `${proto}://${host}/verifier?vp=${presentation.id}`,
+        qrData: `${proto}://${host}/verify?vp=${presentation.id}`,
       };
     }),
     generateCheckinQR: protectedProcedure.input(z.object({
@@ -1175,7 +1175,7 @@ export const appRouter = router({
       const proto = ctx.req.headers["x-forwarded-proto"] || ctx.req.protocol || "https";
       const host = ctx.req.headers["x-forwarded-host"] || ctx.req.headers.host || "";
       const origin = `${proto}://${host}`;
-      const qrUrl = `${origin}/verifier?vp=${presentation.id}`;
+      const qrUrl = `${origin}/verify?vp=${presentation.id}`;
       return {
         presentationId: presentation.id,
         format: "jwt-vp",

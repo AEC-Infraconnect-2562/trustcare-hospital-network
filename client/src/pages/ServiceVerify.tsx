@@ -332,6 +332,7 @@ export default function ServiceVerify() {
                   onScanError={(err: string) =>
                     toast.error(`Camera error: ${err}`)
                   }
+                  autoStart
                 />
               </div>
               <Separator className="my-5" />

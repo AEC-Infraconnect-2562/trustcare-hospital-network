@@ -9,6 +9,8 @@ export interface QRScannerProps {
   height?: number;
   fps?: number;
   aspectRatio?: number;
+  /** Auto-start camera when component mounts (like RU_VC pattern) */
+  autoStart?: boolean;
 }
 
 type ScannerState = "idle" | "starting" | "scanning" | "paused" | "error";
@@ -20,6 +22,7 @@ export default function QRScanner({
   height = 320,
   fps = 10,
   aspectRatio = 1.0,
+  autoStart = false,
 }: QRScannerProps) {
   const [state, setState] = useState<ScannerState>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -27,6 +30,7 @@ export default function QRScanner({
   const scannerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mountedRef = useRef(true);
+  const startedRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -35,6 +39,14 @@ export default function QRScanner({
       stopScanner();
     };
   }, []);
+
+  // Auto-start when autoStart prop is true
+  useEffect(() => {
+    if (autoStart && !startedRef.current && state === "idle") {
+      startedRef.current = true;
+      startScanner();
+    }
+  }, [autoStart]);
 
   const stopScanner = useCallback(async () => {
     if (scannerRef.current) {
@@ -97,7 +109,9 @@ export default function QRScanner({
             ? "ไม่พบกล้องในอุปกรณ์นี้ (No camera found)"
             : err?.message?.includes("NotReadableError")
               ? "กล้องถูกใช้งานอยู่โดยแอปอื่น (Camera in use)"
-              : `เกิดข้อผิดพลาด: ${err?.message || "Unknown error"}`;
+              : err?.message?.includes("insecure origin")
+                ? "ต้องใช้ HTTPS เพื่อเข้าถึงกล้อง — กรุณาเปิดผ่าน URL ที่เป็น https://"
+                : `เกิดข้อผิดพลาด: ${err?.message || "Unknown error"}`;
 
       if (mountedRef.current) {
         setState("error");
@@ -125,6 +139,7 @@ export default function QRScanner({
     await stopScanner();
     setState("idle");
     setLastScanned("");
+    startedRef.current = false;
   }, [stopScanner]);
 
   return (
@@ -150,7 +165,7 @@ export default function QRScanner({
         )}
 
         {state === "starting" && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ minHeight: "280px" }}>
             <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin" />
             <p className="text-sm text-muted-foreground">กำลังเปิดกล้อง...</p>
           </div>

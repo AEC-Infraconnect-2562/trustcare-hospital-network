@@ -131,6 +131,7 @@ export default function Verifier() {
                       onScanError={handleScanError}
                       fps={10}
                       aspectRatio={1.0}
+                      autoStart={scanMode === "camera"}
                     />
                     {verifyQr.isPending && (
                       <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
