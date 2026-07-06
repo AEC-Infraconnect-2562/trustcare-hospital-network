@@ -981,3 +981,13 @@
 - [x] Frontend ObjectLink/ShlFieldLine already handle objects safely (defensive String() wrapping)
 - [x] All 352 tests passing, 0 TypeScript errors
 - [x] Push to GitHub, save checkpoint
+
+## v3.38.2 - Fix Verifier Clinical Display (Same Context for All VCs)
+
+- [x] Root cause: PublicVerify.tsx only showed credential type name + issuer without expanding credentialSubject data per type
+- [x] Fix PublicVerify.tsx to render type-specific context from each credential's credentialSubject payload
+- [x] Implemented expandable cards with type-specific renderers (PatientSummary, AllergyAlert, Consent, Referral, LabResult, MedCert, Prescription, etc.)
+- [x] Each credential type shows its own unique data (e.g., Consent shows scopes/purpose, PatientSummary shows conditions/allergies/meds, Referral shows documentNo/FHIR resource)
+- [x] Verified with 3 different VP types: referral (15 creds), pharmacy (3 creds), insurance (2 creds) - all show correct context
+- [x] All 352 tests passing, 0 TypeScript errors
+- [ ] Push to GitHub, save checkpoint
