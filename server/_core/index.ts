@@ -117,6 +117,10 @@ async function startServer() {
   const { createExternalWalletApiRouter } = await import("../externalWalletApi");
   app.use("/api/v1", createExternalWalletApiRouter());
 
+  // Wallet Sync API (credential pull for external wallets)
+  const { createWalletSyncRouter } = await import("../walletSyncApi");
+  app.use(createWalletSyncRouter());
+
   // tRPC API
   app.use(
     "/api/trpc",

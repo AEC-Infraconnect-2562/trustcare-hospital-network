@@ -1008,3 +1008,26 @@
 - [x] Verify all records match Wallet expected format (0 null credentialData, all have trustcare+documentReference+humanDocument)
 - [x] All 352 tests passing
 - [x] Push to GitHub (e08fa9c), save checkpoint
+
+## v3.40.0 - Wallet Sync API + DID Resolution Endpoints + VP Display Fixes
+
+### Wallet Sync API
+- [x] Create /api/wallet/sync endpoint (POST) - Wallet sends DID/token, receives all patient credentials
+- [x] Implement DID-based auth for wallet sync (verify wallet DID signature or bearer token)
+- [x] Return credentials in wallet-compatible format (credentialData + metadata)
+- [x] Support incremental sync (since timestamp parameter)
+- [x] Create /api/wallet/sync/status endpoint (GET) - check sync availability
+- [x] Create /api/wallet/sync/did-resolve endpoint (POST) - resolve DID to public keys
+
+### DID Resolution Enhancement
+- [x] Create DID Resolution endpoint: GET /.well-known/did.json (network-level DID document)
+- [x] Create per-hospital DID resolution: GET /hospital/:code/did.json (shortcut route)
+- [x] Create per-hospital JWKS: GET /hospital/:code/did/jwks.json
+- [x] Include public keys (ES256 JWK) in DID documents for VC verification
+
+### VP Context & Display Fixes
+- [x] Fix VP context assignment — context should match document type (not always "single_document")
+- [x] Wallet display: show only latest VP per cardType (deduplicate same-type credentials)
+- [x] Move superseded/older VPs to "ประวัติ (Superseded)" tab sorted by date
+- [x] Write vitest tests for wallet sync and VP deduplication logic
+- [ ] Push to GitHub, save checkpoint

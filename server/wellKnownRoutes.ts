@@ -8,10 +8,11 @@
  */
 import { Router } from "express";
 import { localIssuerJwks } from "./portability/vc";
-import { hospitalDidWeb, didWebDocument } from "./portability/did";
+import { hospitalDidWeb, didWebDocument, getHospitalPublicJwk, getAllHospitalPublicKeys } from "./portability/did";
 import { getDb } from "./db";
 import { hospitals, trustRegistry } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
+import { TRUSTCARE_DEMO_HOSPITALS } from "./portability/seedData";
 
 const CACHE_MAX_AGE = 3600; // 1 hour
 
@@ -233,6 +234,75 @@ export function createWellKnownRouter(): Router {
     } catch (err: any) {
       console.error("[DID:Hospital] Error:", err.message);
       res.status(500).json({ error: "Failed to generate hospital DID document" });
+    }
+  });
+
+  /**
+   * GET /hospital/:code/did.json
+   * Shortcut route for per-hospital DID resolution (simpler URL for wallets)
+   * Equivalent to /hospital/:code/.well-known/did.json
+   */
+  router.get("/hospital/:code/did.json", async (req, res) => {
+    try {
+      const code = req.params.code.toLowerCase();
+      const hospitalDef = TRUSTCARE_DEMO_HOSPITALS.find(h => h.code.toLowerCase() === code);
+
+      // Try DB first
+      const db = await getDb();
+      let hospitalRecord: any = null;
+      if (db) {
+        const [row] = await db.select().from(hospitals).where(eq(hospitals.code, code)).limit(1);
+        hospitalRecord = row;
+      }
+
+      if (!hospitalRecord && !hospitalDef) {
+        return res.status(404).json({
+          error: "Hospital not found",
+          did: hospitalDidWeb(code),
+          hint: `No hospital with code "${code}" exists in the Trustcare network.`,
+        });
+      }
+
+      const name = hospitalRecord?.name || hospitalDef?.nameTh || code;
+      const nameEn = hospitalRecord?.nameEn || hospitalDef?.nameEn || code;
+      const publicJwk = getHospitalPublicJwk(code.toUpperCase());
+
+      const doc = didWebDocument({
+        hospitalCode: code,
+        name,
+        nameEn,
+        publicJwk,
+      });
+
+      res.set("Cache-Control", `public, max-age=${CACHE_MAX_AGE}`);
+      res.set("Content-Type", "application/did+ld+json");
+      res.json(doc);
+    } catch (err: any) {
+      console.error("[DID:Hospital:Shortcut] Error:", err.message);
+      res.status(500).json({ error: "Failed to generate hospital DID document" });
+    }
+  });
+
+  /**
+   * GET /hospital/:code/did/jwks.json
+   * Per-hospital JWKS endpoint — returns the public key(s) for a specific hospital.
+   * External wallets use this to verify VC signatures from a specific issuer.
+   */
+  router.get("/hospital/:code/did/jwks.json", async (req, res) => {
+    try {
+      const code = req.params.code.toUpperCase();
+      const publicJwk = getHospitalPublicJwk(code);
+
+      res.set("Cache-Control", `public, max-age=${CACHE_MAX_AGE}`);
+      res.set("Content-Type", "application/json");
+      res.json({
+        keys: [publicJwk],
+        issuer: hospitalDidWeb(code.toLowerCase()),
+        hospitalCode: code,
+      });
+    } catch (err: any) {
+      console.error("[JWKS:Hospital] Error:", err.message);
+      res.status(500).json({ error: "Failed to generate hospital JWKS" });
     }
   });
 

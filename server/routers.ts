@@ -574,8 +574,27 @@ export const appRouter = router({
           issuedAt: cred?.issuedAt || card.createdAt,
         };
       });
+      // Deduplication: keep only the latest card per cardType+issuerHospitalName
+      // Older duplicates are excluded from active display (they go to superseded tab)
+      const latestByTypeIssuer = new Map<string, any>();
+      const sortedByDate = [...enriched].sort((a, b) => {
+        const dateA = new Date(a.issuedAt || a.createdAt).getTime();
+        const dateB = new Date(b.issuedAt || b.createdAt).getTime();
+        return dateB - dateA; // newest first
+      });
+      const activeCards: any[] = [];
+      for (const card of sortedByDate) {
+        // Only deduplicate active credentials; revoked/expired already go to superseded
+        if (card.credentialStatus !== 'active') continue;
+        const dedupeKey = `${card.cardType}::${card.issuerHospitalName || 'unknown'}`;
+        if (!latestByTypeIssuer.has(dedupeKey)) {
+          latestByTypeIssuer.set(dedupeKey, card);
+          activeCards.push(card);
+        }
+        // older duplicates are excluded — they'll appear in superseded tab
+      }
       const grouped: Record<string, any[]> = {};
-      for (const card of enriched) {
+      for (const card of activeCards) {
         const cat = card.documentCategory || 'operations';
         if (!grouped[cat]) grouped[cat] = [];
         grouped[cat].push(card);
@@ -1094,7 +1113,51 @@ export const appRouter = router({
     }),
     superseded: protectedProcedure.query(async ({ ctx }) => {
       const allCreds = await db.listIssuedCredentials({ subjectId: ctx.user.id });
-      return allCreds.filter((c: any) => c.status === 'revoked' || c.status === 'expired');
+      const cards = await db.listWalletCards(ctx.user.id);
+      const credMap = new Map(allCreds.map((c: any) => [c.id, c]));
+      // Build enriched card list with credential data
+      const enriched = cards.map((card: any) => {
+        const cred = credMap.get(card.credentialId);
+        return {
+          ...card,
+          credentialStatus: cred?.status || 'active',
+          expiresAt: cred?.expiresAt || null,
+          credentialData: cred?.credentialData || null,
+          credentialType: cred?.type || card.cardType,
+          issuedAt: cred?.issuedAt || card.createdAt,
+          revokedAt: cred?.revokedAt || null,
+          revocationReason: cred?.revocationReason || null,
+          type: cred?.type || card.cardType,
+        };
+      });
+      // Find superseded cards: revoked/expired + older duplicates of same type+issuer
+      const sortedByDate = [...enriched].sort((a, b) => {
+        const dateA = new Date(a.issuedAt || a.createdAt).getTime();
+        const dateB = new Date(b.issuedAt || b.createdAt).getTime();
+        return dateB - dateA;
+      });
+      const latestByTypeIssuer = new Map<string, any>();
+      const supersededCards: any[] = [];
+      for (const card of sortedByDate) {
+        if (card.credentialStatus === 'revoked' || card.credentialStatus === 'expired') {
+          supersededCards.push(card);
+          continue;
+        }
+        const dedupeKey = `${card.cardType}::${card.issuerHospitalName || 'unknown'}`;
+        if (!latestByTypeIssuer.has(dedupeKey)) {
+          latestByTypeIssuer.set(dedupeKey, card);
+        } else {
+          // This is an older duplicate — it's superseded
+          supersededCards.push({ ...card, revocationReason: 'superseded' });
+        }
+      }
+      // Sort superseded by date descending (newest superseded first)
+      supersededCards.sort((a, b) => {
+        const dateA = new Date(a.issuedAt || a.createdAt).getTime();
+        const dateB = new Date(b.issuedAt || b.createdAt).getTime();
+        return dateB - dateA;
+      });
+      return supersededCards;
     }),
     history: protectedProcedure.query(async ({ ctx }) => {
       return db.listPresentationHistory(ctx.user.id);
@@ -1139,7 +1202,7 @@ export const appRouter = router({
         presentationId: presentation.id,
         patientId: ctx.user.id,
         holderDid: defaultHolderDid(ctx.user.id),
-        context: "single_document",
+        context: contextForWalletCardType(String(credentialRow.type ?? card.cardType)),
         purpose: presentation.purpose,
         audience: presentation.audience,
         presentationJwt: presentation.jwt,
@@ -5248,6 +5311,42 @@ function purposeForWalletCardType(cardType: string): ConsentPurpose {
   if (referralTypes.has(cardType)) return "referral";
   if (cardType === "consent_receipt") return "treatment";
   return "treatment";
+}
+
+/** Maps a wallet card type to a meaningful VP context (instead of generic "single_document") */
+function contextForWalletCardType(cardType: string): string {
+  const map: Record<string, string> = {
+    appointment: "appointment",
+    prescription: "prescription",
+    lab_result: "lab_result",
+    diagnostic_report: "diagnostic_report",
+    discharge_summary: "discharge_summary",
+    medical_certificate: "medical_certificate",
+    referral: "referral",
+    immunization: "immunization",
+    allergy: "allergy_alert",
+    medication: "medication",
+    patient_summary: "patient_summary",
+    consent: "consent",
+    identity: "identity",
+    patient_identity: "identity",
+    staff_identity: "identity",
+    coverage: "insurance",
+    insurance_eligibility: "insurance",
+    claim: "claim",
+    claim_package: "claim",
+    claim_receipt: "claim",
+    travel_document: "travel_document",
+    travel_document_verification: "travel_document",
+    shl_manifest: "shl_package",
+    pharmacy_dispense: "pharmacy",
+    visa_support_letter: "visa_support",
+    quotation: "quotation",
+    guarantee_letter: "guarantee_letter",
+    mpi_link_certificate: "identity_link",
+    sync_receipt: "sync_receipt",
+  };
+  return map[cardType] ?? cardType;
 }
 
 type ShlPurpose = (typeof shlPurposeValues)[number];

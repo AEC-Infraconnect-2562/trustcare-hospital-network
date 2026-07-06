@@ -719,37 +719,46 @@ export default function Wallet() {
               <Card>
                 <CardContent className="p-0">
                   <div className="divide-y">
-                    {superseded.map((cred: any) => (
-                      <div
-                        key={cred.id}
-                        className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
-                            <History className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium">{cred.type}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {cred.revocationReason || cred.status} •{" "}
-                              {new Date(
-                                cred.revokedAt || cred.createdAt
-                              ).toLocaleString("th-TH")}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge
-                          variant={
-                            cred.status === "revoked"
-                              ? "destructive"
-                              : "secondary"
-                          }
-                          className="text-[10px]"
+                    {superseded.map((cred: any) => {
+                      const config = cardTypeConfig[cred.cardType] || { icon: FileText, bgGradient: "from-gray-500 to-gray-700", label: cred.cardType };
+                      const IconComp = config.icon;
+                      return (
+                        <div
+                          key={cred.id}
+                          className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
                         >
-                          {cred.status === "revoked" ? "เพิกถอน" : "หมดอายุ"}
-                        </Badge>
-                      </div>
-                    ))}
+                          <div className="flex items-center gap-3">
+                            <div className={`h-9 w-9 rounded-full bg-gradient-to-br ${config.bgGradient} flex items-center justify-center opacity-60`}>
+                              <IconComp className="h-4 w-4 text-white" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{cred.displayName || config.label}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {cred.issuerHospitalName || ""}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {cred.revocationReason === "superseded" ? "ถูกแทนที่ (มีฉบับใหม่กว่า)" : cred.revocationReason || cred.credentialStatus} •{" "}
+                                {new Date(
+                                  cred.issuedAt || cred.revokedAt || cred.createdAt
+                                ).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" })}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge
+                            variant={
+                              cred.credentialStatus === "revoked"
+                                ? "destructive"
+                                : cred.revocationReason === "superseded"
+                                ? "outline"
+                                : "secondary"
+                            }
+                            className="text-[10px]"
+                          >
+                            {cred.credentialStatus === "revoked" ? "เพิกถอน" : cred.revocationReason === "superseded" ? "แทนที่แล้ว" : "หมดอายุ"}
+                          </Badge>
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
