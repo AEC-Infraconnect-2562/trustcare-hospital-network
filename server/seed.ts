@@ -9,16 +9,38 @@ import { TRUSTCARE_DEMO_HOSPITALS } from "./portability/seedData";
 // The old codes (TC-BKK, TC-CM, TC-PKT) are DEPRECATED and must not be used.
 
 // ─── Avatar URL Helper ─────────────────────────────────────────────────────────
-// Uses the same /api/storage-proxy/ paths as PERSON_IMAGE_URLS in shared/personImages.ts
-// DO NOT CHANGE these paths — they match the existing photo display logic
+// Per-user unique avatar URLs — each test user has a distinct AI-generated portrait
+// matching their name, gender, ethnicity, and role
+const USER_AVATAR_MAP: Record<string, string> = {
+  "demo-sysadmin-001": "/manus-storage/sysadmin_somchai_7aa02209.jpg",
+  "demo-hospadmin-001": "/manus-storage/hospadmin_wipa_aeeee791.jpg",
+  "demo-doctor-001": "/manus-storage/doctor_thanawat_f91f7278.jpg",
+  "demo-nurse-001": "/manus-storage/nurse_pimjai_ace1fd06.jpg",
+  "demo-engineer-001": "/manus-storage/engineer_piya_eb6aeff4.jpg",
+  "demo-hospadmin-002": "/manus-storage/hospadmin_weera_3eb0fed7.jpg",
+  "demo-doctor-003": "/manus-storage/doctor_panu_06e68e06.jpg",
+  "demo-doctor-004": "/manus-storage/doctor_napa_abd67502.jpg",
+  "demo-nurse-003": "/manus-storage/nurse_jan_ac93cf3a.jpg",
+  "demo-hospadmin-003": "/manus-storage/hospadmin_dao_2b841b65.jpg",
+  "demo-doctor-002": "/manus-storage/doctor_supaporn_8b7c6a8a.jpg",
+  "demo-doctor-005": "/manus-storage/doctor_kriangkrai_b6bcdefb.jpg",
+  "demo-nurse-002": "/manus-storage/nurse_anucha_e814499a.jpg",
+  "demo-nurse-004": "/manus-storage/nurse_prae_dd21c148.jpg",
+  "demo-partner-siriraj-001": "/manus-storage/doctor_prasit_2ed84c26.jpg",
+  "demo-partner-bumrungrad-001": "/manus-storage/doctor_sarah_chen_97f031b5.jpg",
+  "demo-patient-001": "/manus-storage/patient_somsak_a2e00e97.jpg",
+  "demo-patient-002": "/manus-storage/patient_malee_74d2ef04.jpg",
+  "demo-patient-003": "/manus-storage/patient_john_williams_b4e9e7f3.jpg",
+};
+
+// Fallback for any user not in the map (legacy behavior)
 function staffAvatarUrl(systemRole: string, gender: "male" | "female"): string {
-  if (systemRole === "nurse") return "/api/storage-proxy/nurse_female_realistic_opt_d0e35459.jpg";
-  if (systemRole === "doctor" && gender === "female") return "/api/storage-proxy/doctor_female_realistic_opt_56d94f1d.jpg";
-  if (systemRole === "doctor" && gender === "male") return "/api/storage-proxy/doctor_male_realistic_opt_b09f1058.jpg";
-  if (systemRole === "pharmacist") return "/api/storage-proxy/pharmacist_male_realistic_opt_2b3b0f56.jpg";
-  // For admin, engineer, maker, checker — use doctor images based on gender
-  if (gender === "female") return "/api/storage-proxy/doctor_female_realistic_opt_56d94f1d.jpg";
-  return "/api/storage-proxy/doctor_male_realistic_opt_b09f1058.jpg";
+  if (systemRole === "nurse" && gender === "female") return "/manus-storage/nurse_pimjai_ace1fd06.jpg";
+  if (systemRole === "nurse" && gender === "male") return "/manus-storage/nurse_anucha_e814499a.jpg";
+  if (systemRole === "doctor" && gender === "female") return "/manus-storage/doctor_napa_abd67502.jpg";
+  if (systemRole === "doctor" && gender === "male") return "/manus-storage/doctor_thanawat_f91f7278.jpg";
+  if (gender === "female") return "/manus-storage/hospadmin_wipa_aeeee791.jpg";
+  return "/manus-storage/sysadmin_somchai_7aa02209.jpg";
 }
 
 // Demo users for each systemRole
@@ -238,9 +260,10 @@ export async function seedDatabase() {
   // ─── 3. Seed Users (with avatarUrl) ─────────────────────────────────────────
   for (const u of DEMO_USERS) {
     const hospitalId = u.hospitalCode ? (hospitalIdMap.get(u.hospitalCode) ?? null) : null;
-    const avatar = u.systemRole === "patient"
-      ? (u.gender === "female" ? "/api/storage-proxy/patient_female_realistic_opt_d0edb245.jpg" : "/api/storage-proxy/patient_male_realistic_opt_e9b1630b.jpg")
-      : staffAvatarUrl(u.systemRole, u.gender);
+    const avatar = USER_AVATAR_MAP[u.openId]
+      ?? (u.systemRole === "patient"
+        ? (u.gender === "female" ? "/manus-storage/patient_malee_74d2ef04.jpg" : "/manus-storage/patient_somsak_a2e00e97.jpg")
+        : staffAvatarUrl(u.systemRole, u.gender));
 
     await db.insert(users).values({
       openId: u.openId,

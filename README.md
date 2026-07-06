@@ -1,7 +1,7 @@
 # TrustCare Hospital Network
 
-**Version:** 3.20.0  
-**Last Updated:** 2026-07-03  
+**Version:** 3.38.0  
+**Last Updated:** 2026-07-06  
 **Stack:** React 19 + Tailwind 4 + Express 4 + tRPC 11 + Drizzle ORM + MySQL
 
 ---
@@ -65,9 +65,9 @@ The system enables:
 
 ## Testing
 
-- **319 test cases** across 25 test files (all passing)
+- **354 test cases** across 32 test files (all passing)
 - **0 TypeScript errors** with strict mode enabled
-- Coverage includes: role guards, maker/checker workflow, claim analytics, multi-role switching, SHL, portability, QR scanning, DICOM viewer, schema registry, contract admin CRUD
+- Coverage includes: role guards, maker/checker workflow, claim analytics, multi-role switching, SHL, portability, QR scanning, DICOM viewer, schema registry, contract admin CRUD, JWKS/DID endpoints, ES256 signing
 
 ---
 
@@ -75,7 +75,7 @@ The system enables:
 
 The system includes realistic seed data for demonstration:
 
-- **16 demo users** with unique AI-generated portrait photos
+- **19 demo users** with unique AI-generated portrait photos (matched to name/gender/ethnicity)
 - **6 claim scenarios** covering all Thai payer types (NHSO, SSO, AIA, CSMBS, Travel, Self-Pay)
 - **10 credential requests** across all workflow statuses
 - **6 payer adapters** with validation rulesets
@@ -88,6 +88,9 @@ The system includes realistic seed data for demonstration:
 | Standard | Usage |
 |----------|-------|
 | W3C VC Data Model 2.0 | Credential issuance and verification |
+| W3C DID Core v1.0 | Decentralized Identifier resolution (did:web method) |
+| IETF RFC 7517 (JWKS) | Public key discovery via `/.well-known/jwks.json` |
+| DIF Domain Linkage | Domain-to-DID binding via `/.well-known/did-configuration.json` |
 | FHIR R4 | Claim, ClaimResponse, PaymentReconciliation, CoverageEligibility |
 | SMART Health Links | Secure health data sharing |
 | SMART Health Cards | Compact verifiable health credentials |
@@ -119,7 +122,7 @@ pnpm drizzle-kit generate
 
 ## Documentation
 
-- `docs/ARCHITECTURE.md` — Full system architecture (1700+ lines)
+- `docs/ARCHITECTURE.md` — Full system architecture (2500+ lines)
 - `docs/CONTRIBUTING.md` — Development guidelines and schema rules
 - `docs/CLAIM_CENTER_RESEARCH_AND_MANUS_HANDOFF.md` — Claim Center design decisions
 - `docs/CARE_TRANSITION_PARTNER_PORTAL.md` — Care transition workflow

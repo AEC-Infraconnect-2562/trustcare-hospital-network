@@ -60,6 +60,101 @@ const API_ENDPOINTS: ApiEndpoint[] = [
     },
   },
   {
+    id: "jwks",
+    method: "GET",
+    path: "/.well-known/jwks.json",
+    title: "JWKS (JSON Web Key Set)",
+    description: "Retrieve the public keys used by TrustCare to sign VCs and VPs. Use these keys to verify credential signatures. No authentication required.",
+    category: "Discovery",
+    auth: "none",
+    responseExample: {
+      keys: [
+        {
+          kty: "EC",
+          crv: "P-256",
+          x: "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+          y: "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
+          kid: "trustcare-network-es256-v1",
+          use: "sig",
+          alg: "ES256",
+        },
+      ],
+    },
+  },
+  {
+    id: "did_document",
+    method: "GET",
+    path: "/.well-known/did.json",
+    title: "DID Document (Network)",
+    description: "Resolve the DID Document for did:web:trustcare.network. Contains verification methods and service endpoints for the TrustCare network issuer. No authentication required.",
+    category: "Discovery",
+    auth: "none",
+    responseExample: {
+      "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/suites/jws-2020/v1"],
+      id: "did:web:trustcare.network",
+      verificationMethod: [
+        {
+          id: "did:web:trustcare.network#key-1",
+          type: "JsonWebKey2020",
+          controller: "did:web:trustcare.network",
+          publicKeyJwk: { kty: "EC", crv: "P-256", x: "...", y: "..." },
+        },
+      ],
+      authentication: ["did:web:trustcare.network#key-1"],
+      assertionMethod: ["did:web:trustcare.network#key-1"],
+    },
+  },
+  {
+    id: "did_hospital",
+    method: "GET",
+    path: "/hospital/:code/.well-known/did.json",
+    title: "DID Document (Per-Hospital)",
+    description: "Resolve the DID Document for a specific hospital (e.g., did:web:trustcare.network:hospital:tcc). Use hospital codes: tcc, tcp, tcm. No authentication required.",
+    category: "Discovery",
+    auth: "none",
+    responseExample: {
+      "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/suites/jws-2020/v1"],
+      id: "did:web:trustcare.network:hospital:tcc",
+      verificationMethod: [
+        {
+          id: "did:web:trustcare.network:hospital:tcc#key-1",
+          type: "JsonWebKey2020",
+          controller: "did:web:trustcare.network:hospital:tcc",
+          publicKeyJwk: { kty: "EC", crv: "P-256", x: "...", y: "..." },
+        },
+      ],
+      authentication: ["did:web:trustcare.network:hospital:tcc#key-1"],
+      assertionMethod: ["did:web:trustcare.network:hospital:tcc#key-1"],
+      service: [
+        { id: "did:web:trustcare.network:hospital:tcc#portability", type: "CredentialIssuance", serviceEndpoint: "https://trustcarehealth.live/api/portability/tcc" },
+      ],
+    },
+  },
+  {
+    id: "did_configuration",
+    method: "GET",
+    path: "/.well-known/did-configuration.json",
+    title: "DID Configuration (Domain Linkage)",
+    description: "DIF Well-Known DID Configuration proving domain ownership. Links the domain trustcarehealth.live to did:web:trustcare.network. No authentication required.",
+    category: "Discovery",
+    auth: "none",
+    responseExample: {
+      "@context": "https://identity.foundation/.well-known/did-configuration/v1",
+      linked_dids: [
+        {
+          "@context": ["https://www.w3.org/2018/credentials/v1", "https://identity.foundation/.well-known/did-configuration/v1"],
+          type: ["VerifiableCredential", "DomainLinkageCredential"],
+          issuer: "did:web:trustcare.network",
+          issuanceDate: "2026-07-06T00:00:00.000Z",
+          credentialSubject: {
+            id: "did:web:trustcare.network",
+            origin: "https://trustcarehealth.live",
+          },
+        },
+      ],
+    },
+  },
+  {
     id: "authenticate",
     method: "POST",
     path: "/api/v1/wallet/authenticate",
@@ -332,10 +427,11 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   },
 ];
 
-const CATEGORIES = ["General", "Authentication", "Contracts", "Credentials", "SHL", "Identity", "Documents"];
+const CATEGORIES = ["General", "Discovery", "Authentication", "Contracts", "Credentials", "SHL", "Identity", "Documents"];
 
 const CATEGORY_ICONS: Record<string, any> = {
   General: Globe,
+  Discovery: Globe,
   Authentication: Key,
   Contracts: FileText,
   Credentials: Shield,

@@ -1,14 +1,15 @@
 export const PERSON_IMAGE_CACHE_VERSION = "20260703";
 
 export const PERSON_IMAGE_URLS = {
-  patientMale: "/api/storage-proxy/patient_male_realistic_opt_e9b1630b.jpg",
-  patientFemale: "/api/storage-proxy/patient_female_realistic_opt_d0edb245.jpg",
-  doctorMale: "/api/storage-proxy/doctor_male_realistic_opt_b09f1058.jpg",
-  doctorFemale: "/api/storage-proxy/doctor_female_realistic_opt_56d94f1d.jpg",
-  nurseFemale: "/api/storage-proxy/nurse_female_realistic_opt_d0e35459.jpg",
-  pharmacistMale: "/api/storage-proxy/pharmacist_male_realistic_opt_2b3b0f56.jpg",
-  radiologist: "/api/storage-proxy/radiologist_realistic_bd97425d.jpg",
-  medTech: "/api/storage-proxy/med_tech_realistic_78575c20.jpg",
+  patientMale: "/manus-storage/patient_somsak_a2e00e97.jpg",
+  patientFemale: "/manus-storage/patient_malee_74d2ef04.jpg",
+  doctorMale: "/manus-storage/doctor_thanawat_f91f7278.jpg",
+  doctorFemale: "/manus-storage/doctor_napa_abd67502.jpg",
+  nurseFemale: "/manus-storage/nurse_pimjai_ace1fd06.jpg",
+  nurseMale: "/manus-storage/nurse_anucha_e814499a.jpg",
+  pharmacistMale: "/manus-storage/engineer_piya_eb6aeff4.jpg",
+  radiologist: "/manus-storage/doctor_kriangkrai_b6bcdefb.jpg",
+  medTech: "/manus-storage/doctor_prasit_2ed84c26.jpg",
 } as const;
 
 export type PersonGender = "male" | "female";
@@ -127,7 +128,7 @@ export function defaultPractitionerImage(
   practitioner?: unknown,
 ): string {
   const roleText = `${role ?? ""} ${String(toRecord(practitioner)?.role ?? "")}`.toLowerCase();
-  if (roleText.includes("nurse")) return PERSON_IMAGE_URLS.nurseFemale;
+  if (roleText.includes("nurse")) return gender === "male" ? PERSON_IMAGE_URLS.nurseMale : PERSON_IMAGE_URLS.nurseFemale;
   if (roleText.includes("pharmacist")) return PERSON_IMAGE_URLS.pharmacistMale;
   if (roleText.includes("radiologist")) return PERSON_IMAGE_URLS.radiologist;
   if (roleText.includes("med_tech") || roleText.includes("med tech") || roleText.includes("laboratory")) {

@@ -1,7 +1,7 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.10 (External Wallet API & Contract Hub)
-**Last updated:** 2026-07-04
+**Version:** 5.20 (Production ES256 Signing, JWKS/DID Resolution, Unique Avatars)
+**Last updated:** 2026-07-06
 **Maintainers:** AEC-Infraconnect-2562
 
 ---
@@ -68,7 +68,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 | Backend   | Express 4, Node.js 22               | HTTP server                 |
 | ORM       | Drizzle ORM 0.44                    | Type-safe database queries  |
 | Database  | MySQL (TiDB-compatible)             | Persistent storage          |
-| Crypto    | jose (JWT), HMAC-SHA256             | VC signing and verification |
+| Crypto    | jose (JWT), ES256 (P-256 ECDSA)     | VC/VP signing and verification |
 | Auth      | Manus OAuth + Demo Login            | Session management          |
 | Storage   | S3-compatible                       | File/credential storage     |
 | Testing   | Vitest 2                            | Unit + E2E testing          |
@@ -199,7 +199,7 @@ The system supports 24 verifiable credential types organized into 9 document cat
 
 3. **Checker Approval** — A user with `systemRole = "checker"` and appropriate `credentialEntitlements.checkerTypes` reviews the request. On approval, the system:
    - Calls `issueCredentialFromRequest()` which selects the appropriate VC builder
-   - Signs the credential as SD-JWT-VC using HMAC-SHA256 (dev) or asymmetric key
+   - Signs the credential as SD-JWT-VC using ES256 (P-256 ECDSA) asymmetric key
    - Stores the issued credential in `issued_credentials`
    - Creates a wallet card in `wallet_cards`
    - Updates the request status to `issued`
@@ -224,7 +224,7 @@ Verifier receives JWT → portability.verify (single VC)
                        → portability.verifyJsonPresentation (VP bundle)
 
 Checks performed:
-  1. JWT signature verification (HMAC or asymmetric)
+  1. JWT signature verification (ES256 asymmetric — public key resolved via JWKS)
   2. Trusted issuer check (Trust Registry — trustLevel must be "verified")
   3. Revocation status check (credential_status_events)
   4. Expiration check
@@ -538,14 +538,51 @@ Demo patients (demo-patient-001/002/003) are bound to seed patient data from TCC
 
 | Environment | Algorithm     | Key Source                                    |
 | ----------- | ------------- | --------------------------------------------- |
-| Development | HMAC-SHA256   | `TRUSTCARE_VC_SIGNING_SECRET` or `JWT_SECRET` |
-| Production  | ES256 (P-256) | Per-hospital key pair in trust registry       |
+| All         | ES256 (P-256) | `TRUSTCARE_VC_SIGNING_PRIVATE_JWK` env var    |
 
-### 8.3 Trust Domain
+**Environment Variables:**
 
-- Default domain: `trustcare.network`
+| Variable | Purpose |
+| -------- | ------- |
+| `TRUSTCARE_VC_SIGNING_PRIVATE_JWK` | ES256 private key in JWK format (used for signing) |
+| `TRUSTCARE_VC_SIGNING_PUBLIC_JWK` | ES256 public key in JWK format (published in JWKS) |
+| `TRUSTCARE_VC_SIGNING_ALG` | Signing algorithm identifier (`ES256`) |
+| `TRUSTCARE_VC_KEY_ID` | Key ID (`kid`) for key rotation tracking |
+
+### 8.3 Trust Domain & Public Discovery Endpoints
+
+- Default domain: `trustcare.network` (production: `trustcarehealth.live`)
 - Hospital DID resolution: `https://{domain}/hospital/{code}/.well-known/did.json`
 - Portability endpoint: `https://{domain}/api/portability/{code}`
+
+**Public Well-Known Endpoints (no authentication required):**
+
+| Endpoint | Purpose | Cache |
+| -------- | ------- | ----- |
+| `GET /.well-known/jwks.json` | JSON Web Key Set — all network + hospital public keys | max-age=3600 |
+| `GET /.well-known/did.json` | DID Document for `did:web:trustcare.network` | max-age=3600 |
+| `GET /hospital/:code/.well-known/did.json` | Per-hospital DID Document (e.g., `/hospital/tcc/.well-known/did.json`) | max-age=3600 |
+| `GET /.well-known/did-configuration.json` | DIF Domain Linkage Credential | max-age=86400 |
+
+**JWKS Response Structure:**
+
+```json
+{
+  "keys": [
+    {
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "...",
+      "y": "...",
+      "kid": "trustcare-network-es256-v1",
+      "use": "sig",
+      "alg": "ES256"
+    }
+  ]
+}
+```
+
+External verifiers resolve issuer public keys by fetching the JWKS endpoint and matching the `kid` from the JWT header to select the correct verification key.
 
 ---
 
@@ -834,7 +871,7 @@ The `portability-flow.e2e.test.ts` tests the full VC/VP lifecycle:
 
 ## 18. Security Considerations
 
-- All VC signing uses cryptographic algorithms (HMAC-SHA256 in dev, ES256 in production)
+- All VC/VP signing uses ES256 (P-256 ECDSA) asymmetric cryptography — public keys discoverable via `/.well-known/jwks.json`
 - Consent is enforced at the policy layer before any credential issuance
 - Break-glass access is logged with mandatory reason
 - Credential revocation is tracked via `credential_status_events`
@@ -888,15 +925,16 @@ Patient Profile Page → Upload Photo (max 5MB, image/*)
 
 When rendering credentials, the system selects the patient/practitioner photo in this order:
 
-1. **Uploaded photo** — `patientPhotoUrl` from `users.avatarUrl` (S3)
-2. **Role-based AI avatar** — Pre-generated realistic photos per role:
+1. **Per-user unique avatar** — `USER_AVATAR_MAP[openId]` in `server/seed.ts` maps each demo user to a unique AI-generated portrait stored at `/manus-storage/` URLs
+2. **Uploaded photo** — `patientPhotoUrl` from `users.avatarUrl` (S3)
+3. **Role-based AI avatar** — Pre-generated realistic photos per role:
    - `patientMale` / `patientFemale` — Thai patients (~40 years old)
    - `doctorMale` / `doctorFemale` — Thai doctors in white coats
-   - `nurse` — Thai female nurse in white uniform
+   - `nurseFemale` / `nurseMale` — Thai nurses in uniform
    - `pharmacist` — Thai male pharmacist in lab coat
    - `radiologist` — Thai male radiologist with imaging equipment
    - `medTech` — Thai female medical technologist in lab coat
-3. **Dicebear fallback** — Generated cartoon avatar (last resort, `onError` handler)
+4. **Dicebear fallback** — Generated cartoon avatar (last resort, `onError` handler)
 
 ### 20.3 Practitioner Role Detection
 
@@ -1500,30 +1538,33 @@ Prompt Engineering → AI Image Generation → Upload to CDN → DB Update
 | Step | Tool | Output |
 |------|------|--------|
 | 1. Prompt crafting | Demographic-aware prompts (age, gender, ethnicity, profession) | Detailed text prompts |
-| 2. Image generation | AI portrait generator (1:1 aspect ratio, 1024×1024) | PNG files |
+| 2. Image generation | AI portrait generator (1:1 aspect ratio, 1024×1024) | JPG files |
 | 3. CDN upload | `manus-upload-file --webdev` | Permanent `/manus-storage/` URLs |
-| 4. DB seeding | SQL UPDATE on `users.avatarUrl` | All 16 demo users updated |
+| 4. DB seeding | `USER_AVATAR_MAP` in `server/seed.ts` | All 19 demo users with unique avatars |
 
 ### 30.3 Demo User Portrait Mapping
 
 | OpenID | Name | Role | Portrait Style |
 |--------|------|------|----------------|
 | demo-sysadmin-001 | นพ.สมชาย ระบบดี | system_admin | Thai male, 50s, formal medical attire |
-| demo-hospadmin-001 | นางสาวพิมพ์ใจ บริหารดี | hospital_admin | Thai female, 40s, business professional |
-| demo-doctor-001 | นพ.วิชัย รักษาดี | doctor | Thai male, 45, white coat |
-| demo-doctor-002 | พญ.สุภาพร ใจเย็น | doctor | Thai female, 38, white coat |
-| demo-nurse-001 | นางสาวนภา ดูแลดี | nurse | Thai female, 30s, nurse uniform |
-| demo-nurse-002 | นายธนกร พยาบาลดี | nurse | Thai male, 35, nurse scrubs |
-| demo-engineer-001 | นายเทคนิค ระบบดี | engineer | Thai male, 30s, casual tech |
+| demo-hospadmin-001 | นางวิภา บริหารเก่ง | hospital_admin | Thai female, 45, business professional |
+| demo-hospadmin-002 | นายวีระ ภูเก็ตดี | hospital_admin | Thai male, 48, business professional |
+| demo-hospadmin-003 | นางสาวดาว เชียงใหม่ | hospital_admin | Thai female, 40, northern Thai professional |
+| demo-doctor-001 | นพ.ธนวัฒน์ รักษาดี | doctor (checker) | Thai male, 45, white coat |
+| demo-doctor-002 | พญ.สุภาพร ใจดี | doctor (checker) | Thai female, 38, white coat |
+| demo-doctor-003 | นพ.ภาณุ ทะเลใส | doctor (checker) | Thai male, 42, white coat |
+| demo-doctor-004 | พญ.นภา อันดามัน | doctor | Thai female, 35, white coat |
+| demo-doctor-005 | นพ.เกรียงไกร ล้านนา | doctor | Thai male, 50, white coat |
+| demo-doctor-006 | นพ.ประสิทธิ์ ศิริราช | doctor | Thai male, 55, senior physician |
+| demo-doctor-007 | Dr. Sarah Chen | doctor | East Asian female, 40, white coat |
+| demo-nurse-001 | นางสาวพิมพ์ใจ ดูแลดี | nurse (maker) | Thai female, 30, nurse uniform |
+| demo-nurse-002 | นายอนุชา ช่วยเหลือ | nurse (maker) | Thai male, 32, nurse scrubs |
+| demo-nurse-003 | นางสาวจันทร์ ดูแลใจ | nurse (maker) | Thai female, 28, nurse uniform |
+| demo-nurse-004 | นางสาวแพร ดอยสุเทพ | nurse (maker) | Thai female, 35, northern Thai nurse |
+| demo-engineer-001 | นายปิยะ เชื่อมต่อดี | integration_engineer | Thai male, 35, casual tech |
 | demo-patient-001 | นายสมชาย ใจดี | patient | Thai male, 55, casual |
-| demo-patient-002 | นางสมหญิง รักสุขภาพ | patient | Thai female, 48, casual |
-| demo-patient-003 | นายวิชัย ผู้สูงวัย | patient | Thai male, 72, elderly |
-| demo-patient-004 | Haruka Tanaka | patient | Japanese female, 35, professional |
-| demo-patient-005 | นายอาทิตย์ เด็กหนุ่ม | patient | Thai male, 22, young casual |
-| demo-patient-006 | Mrs. Sarah Johnson | patient | Caucasian female, 45, professional |
-| demo-patient-007 | นางสาวมาลี โรคเรื้อรัง | patient | Thai female, 60, elderly |
-| demo-patient-008 | Mr. Ahmed Al-Rashid | patient | Middle Eastern male, 50, business |
-| demo-patient-009 | นางสาวน้องใหม่ ยังไม่มีข้อมูล | patient | Thai female, 25, young casual |
+| demo-patient-002 | นางสาวมาลี วัฒนา | patient | Thai female, 48, casual |
+| demo-patient-003 | Mr. John Williams | patient | Caucasian male, 50, business casual |
 
 ### 30.4 Storage Architecture
 
@@ -1728,15 +1769,17 @@ When a maker submits a credential request for review (`submitForReview` mutation
 
 ### 34.1 Avatar Photo Coverage
 
-All demo users now have unique AI-generated portrait photos (no generic placeholders):
+All demo users now have unique AI-generated portrait photos (no generic placeholders). Each portrait matches the user's name, gender, ethnicity, and professional role:
 
 | Category | Count | Style |
 |----------|-------|-------|
-| Thai male patients | 5 | Professional headshot, varied ages |
-| Thai female patients | 3 | Professional headshot, varied ages |
-| International patients | 4 | Caucasian, East Asian, South Asian, Hispanic |
-| Staff (makers/checkers) | 4 | Professional medical staff attire |
-| **Total unique avatars** | **16** | **100% coverage** |
+| System Admin | 1 | Thai male senior physician |
+| Hospital Admins | 3 | Thai professionals (2F, 1M) |
+| Doctors | 7 | White coats, varied ages (4M, 3F; includes 1 East Asian) |
+| Nurses | 4 | Nurse uniforms/scrubs (3F, 1M) |
+| Integration Engineer | 1 | Thai male, casual tech |
+| Patients | 3 | Varied ethnicity (2 Thai, 1 Caucasian) |
+| **Total unique avatars** | **19** | **100% coverage, no duplicates** |
 
 ### 34.2 Credential Request Seed Data
 
@@ -1822,10 +1865,10 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 | tRPC routers | 32 (added externalWallet) |
 | Frontend pages | 38 (added ContractHub) |
 | Reusable components | 25 (added PersonPhoto, TrustLayerRemediationPanel, UploadDocButton, CheckinQRPanel) |
-| Test files | 29 |
-| Test cases | 341 (all passing) |
+| Test files | 32 |
+| Test cases | 354 (all passing) |
 | TypeScript errors | 0 |
-| Demo users | 16 (all with unique avatars) |
+| Demo users | 19 (all with unique AI-generated portraits) |
 | Claim scenarios | 6 (fully seeded with FHIR data) |
 | Payer adapters | 6 (all payer types covered) |
 | Credential requests | 10 (all statuses represented) |
@@ -2490,3 +2533,74 @@ The External Wallet API integrates with:
 | `client/src/App.tsx` | Route registration |
 | `client/src/components/DashboardLayout.tsx` | Sidebar nav entry |
 | `server/externalWalletApi.test.ts` | 9 test cases |
+
+
+---
+
+## 47. Public Key Discovery & DID Resolution
+
+### 47.1 Overview
+
+TrustCare exposes standard W3C DID Web Method and IETF JWKS endpoints for external verifiers to resolve issuer public keys without requiring authentication or API keys. This enables any compliant wallet or verifier to independently verify credentials issued by the TrustCare network.
+
+### 47.2 Implementation (`server/wellKnownRoutes.ts`)
+
+The well-known routes are mounted as Express middleware on the main app, separate from the tRPC layer:
+
+```typescript
+// Mounted in server/_core/index.ts
+import { wellKnownRouter } from "../wellKnownRoutes";
+app.use(wellKnownRouter);
+```
+
+### 47.3 Endpoint Details
+
+**`GET /.well-known/jwks.json`**
+
+Returns a JSON Web Key Set containing all active public keys in the TrustCare network. Keys include the network-level signing key and per-hospital keys from the trust registry.
+
+Response headers: `Cache-Control: public, max-age=3600`, `Content-Type: application/json`
+
+**`GET /.well-known/did.json`**
+
+Returns the DID Document for `did:web:trustcare.network` following the W3C DID Core v1.0 specification. The document includes verification methods, authentication, and assertion method references.
+
+**`GET /hospital/:code/.well-known/did.json`**
+
+Returns the DID Document for a specific hospital (e.g., `did:web:trustcare.network:hospital:tcc`). Returns 404 if the hospital code is not found in the trust registry.
+
+**`GET /.well-known/did-configuration.json`**
+
+Returns a DIF Domain Linkage Credential that proves the domain `trustcarehealth.live` is controlled by the entity identified by `did:web:trustcare.network`.
+
+### 47.4 Verification Flow for External Wallets
+
+```
+External Wallet receives VC JWT
+  → Parse JWT header → extract `kid` and `iss` (DID)
+  → Resolve DID to DID Document (fetch /.well-known/did.json)
+  → Find verificationMethod matching `kid`
+  → OR fetch /.well-known/jwks.json and match `kid`
+  → Verify ES256 signature using resolved public key
+  → Check trust registry membership
+  → Return verification result (green/yellow/red)
+```
+
+### 47.5 Interactive API Documentation
+
+A public interactive API documentation page is available at `/docs/api` for external wallet developers. The page provides:
+
+- Complete endpoint reference with request/response examples
+- Code samples in cURL, JavaScript, and Python
+- Authentication flow documentation
+- Getting Started integration guide
+- Dark/light theme support
+
+### 47.6 Files
+
+| File | Purpose |
+|------|---------|
+| `server/wellKnownRoutes.ts` | Express router for all well-known endpoints |
+| `server/_core/index.ts` | Mounts the well-known router |
+| `server/wellKnown.test.ts` | 7 test cases for JWKS/DID endpoints |
+| `client/src/pages/ApiDocs.tsx` | Interactive API documentation page |

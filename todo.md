@@ -958,3 +958,17 @@
 - [x] Add vitest tests for JWKS and DID endpoints (7 tests passing)
 - [x] All 354 tests passing, 0 TypeScript errors
 - [x] Push to GitHub, save checkpoint
+
+## v3.38.0 - Fix Test User Profile Photos (Unique & Matching Profiles)
+
+- [x] Identify all 19 test users with duplicate/mismatched avatars
+- [x] Generate 19 unique AI portraits matching each user's gender, ethnicity, and role
+- [x] Upload images via manus-upload-file --webdev (19 unique JPG files)
+- [x] Update USER_AVATAR_MAP in seed.ts + PERSON_IMAGE_URLS in shared/personImages.ts
+- [x] Reseed database to apply new avatars
+- [x] Verify no duplicate photos remain (Mr. John Williams = Caucasian male)
+- [x] Update ARCHITECTURE.md to v5.20 (ES256, JWKS, DID, avatar sections)
+- [x] Update README.md (v3.38.0, 354 tests, standards compliance)
+- [x] Add Discovery endpoints to ApiDocs.tsx (JWKS, DID, DID-Configuration)
+- [x] All 354 tests passing, 0 TypeScript errors
+- [x] Push to GitHub, save checkpoint

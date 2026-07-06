@@ -65,15 +65,17 @@ describe("person image helpers", () => {
         credentialSubject: {
           patient: {
             gender: "female",
-            photoUrl: "/manus-storage/patient_female_realistic_opt_d0edb245.jpg",
+            photoUrl: PERSON_IMAGE_URLS.patientFemale,
           },
         },
       },
     });
 
+    // normalizePersonImageUrl rewrites /manus-storage/ to /api/storage-proxy/
+    const expectedFemaleUrl = PERSON_IMAGE_URLS.patientFemale.replace("/manus-storage/", "/api/storage-proxy/");
     expect(sources).toEqual([
       "/missing/upload.jpg",
-      PERSON_IMAGE_URLS.patientFemale,
+      expectedFemaleUrl,
     ]);
   });
 
