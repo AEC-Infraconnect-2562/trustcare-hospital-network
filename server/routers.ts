@@ -4450,7 +4450,7 @@ export const appRouter = router({
       return db.listSchemaVersions(input?.credentialType);
     }),
 
-    validate: protectedProcedure.input(z.object({
+        validate: protectedProcedure.input(z.object({
       credentialType: z.string().min(1),
       schemaVersion: z.string().min(1),
       credentialData: z.any(),
@@ -4462,8 +4462,157 @@ export const appRouter = router({
       );
     }),
   }),
+  // ============================================================
+  // EXTERNAL WALLET API - Admin Management (Contract Hub)
+  // ============================================================
+  externalWallet: router({
+    listApps: protectedProcedure.input(z.object({
+      status: z.string().optional(),
+      walletType: z.string().optional(),
+    }).optional()).query(async ({ input }) => {
+      return db.listExternalWalletApps(input || undefined);
+    }),
+    getApp: protectedProcedure.input(z.object({ appId: z.string() })).query(async ({ input }) => {
+      const app = await db.getExternalWalletApp(input.appId);
+      if (!app) throw new TRPCError({ code: "NOT_FOUND", message: "App not found" });
+      const keys = await db.listExternalWalletApiKeys(input.appId);
+      return { app, keys };
+    }),
+    registerApp: protectedProcedure.input(z.object({
+      name: z.string().min(1),
+      nameEn: z.string().optional(),
+      description: z.string().optional(),
+      organizationName: z.string().min(1),
+      organizationDid: z.string().optional(),
+      contactEmail: z.string().email(),
+      contactPhone: z.string().optional(),
+      walletType: z.enum(["personal_health", "insurance", "government", "employer", "pharmacy", "research", "other"]),
+      platformType: z.enum(["ios", "android", "web", "cross_platform"]).optional(),
+      redirectUris: z.array(z.string()).optional(),
+      webhookUrl: z.string().optional(),
+      scopes: z.array(z.string()),
+      rateLimitPerMinute: z.number().optional(),
+      rateLimitPerDay: z.number().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { generateAppId, generateApiKey, generateKeyId } = await import("./externalWalletApi");
+      const appId = generateAppId();
+      await db.createExternalWalletApp({
+        appId,
+        name: input.name,
+        nameEn: input.nameEn || null,
+        description: input.description || null,
+        organizationName: input.organizationName,
+        organizationDid: input.organizationDid || null,
+        contactEmail: input.contactEmail,
+        contactPhone: input.contactPhone || null,
+        walletType: input.walletType,
+        platformType: input.platformType || "cross_platform",
+        redirectUris: input.redirectUris || null,
+        webhookUrl: input.webhookUrl || null,
+        scopes: input.scopes,
+        rateLimitPerMinute: input.rateLimitPerMinute || 60,
+        rateLimitPerDay: input.rateLimitPerDay || 10000,
+        status: "active",
+        trustLevel: "basic",
+        logoUrl: null,
+        allowedContractIds: null,
+        complianceCertRef: null,
+        termsAcceptedAt: null,
+        reviewedBy: ctx.user.id,
+        reviewedAt: new Date(),
+        reviewNotes: null,
+        metadata: null,
+      });
+      // Generate initial API key
+      const { key, prefix, hash } = generateApiKey();
+      const keyId = generateKeyId();
+      await db.createExternalWalletApiKey({
+        keyId,
+        appId,
+        keyHash: hash,
+        keyPrefix: prefix,
+        label: "Initial API Key",
+        scopes: null,
+        expiresAt: null,
+        status: "active",
+        createdBy: ctx.user.id,
+      });
+      return { appId, apiKey: key, keyId, keyPrefix: prefix };
+    }),
+    updateApp: protectedProcedure.input(z.object({
+      appId: z.string(),
+      name: z.string().optional(),
+      nameEn: z.string().optional(),
+      description: z.string().optional(),
+      status: z.enum(["pending_review", "active", "suspended", "revoked"]).optional(),
+      trustLevel: z.enum(["unverified", "basic", "verified", "certified"]).optional(),
+      scopes: z.array(z.string()).optional(),
+      rateLimitPerMinute: z.number().optional(),
+      rateLimitPerDay: z.number().optional(),
+      reviewNotes: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { appId, ...updates } = input;
+      const updateData: any = { ...updates };
+      if (input.status || input.trustLevel) {
+        updateData.reviewedBy = ctx.user.id;
+        updateData.reviewedAt = new Date();
+      }
+      await db.updateExternalWalletApp(appId, updateData);
+      return { success: true };
+    }),
+    revokeApp: protectedProcedure.input(z.object({
+      appId: z.string(),
+      reason: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      await db.updateExternalWalletApp(input.appId, {
+        status: "revoked",
+        reviewedBy: ctx.user.id,
+        reviewedAt: new Date(),
+        reviewNotes: input.reason || "Revoked by admin",
+      });
+      return { success: true };
+    }),
+    rotateKey: protectedProcedure.input(z.object({
+      appId: z.string(),
+      oldKeyId: z.string().optional(),
+    })).mutation(async ({ input, ctx }) => {
+      const { generateApiKey, generateKeyId } = await import("./externalWalletApi");
+      // Revoke old key if specified
+      if (input.oldKeyId) {
+        await db.updateExternalWalletApiKeyStatus(input.oldKeyId, "revoked");
+      }
+      // Generate new key
+      const { key, prefix, hash } = generateApiKey();
+      const keyId = generateKeyId();
+      await db.createExternalWalletApiKey({
+        keyId,
+        appId: input.appId,
+        keyHash: hash,
+        keyPrefix: prefix,
+        label: `Rotated Key ${new Date().toISOString().slice(0, 10)}`,
+        scopes: null,
+        expiresAt: null,
+        status: "active",
+        createdBy: ctx.user.id,
+      });
+      return { apiKey: key, keyId, keyPrefix: prefix };
+    }),
+    revokeKey: protectedProcedure.input(z.object({
+      keyId: z.string(),
+    })).mutation(async ({ input }) => {
+      await db.updateExternalWalletApiKeyStatus(input.keyId, "revoked");
+      return { success: true };
+    }),
+    auditLogs: protectedProcedure.input(z.object({
+      appId: z.string().optional(),
+      action: z.string().optional(),
+      limit: z.number().optional(),
+      offset: z.number().optional(),
+    }).optional()).query(async ({ input }) => {
+      return db.listExternalWalletAuditLogs(input || undefined);
+    }),
+  }),
 });
-
 export type AppRouter = typeof appRouter;
 
 // Helper

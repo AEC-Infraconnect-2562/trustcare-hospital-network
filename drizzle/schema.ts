@@ -1511,3 +1511,114 @@ export const shlManifestDocuments = mysqlTable("shl_manifest_documents", {
 ]));
 export type ShlManifestDocument = typeof shlManifestDocuments.$inferSelect;
 export type InsertShlManifestDocument = typeof shlManifestDocuments.$inferInsert;
+
+// ============================================================
+// EXTERNAL WALLET API - Third-Party Wallet Integration
+// ============================================================
+
+export const externalWalletApps = mysqlTable("external_wallet_apps", {
+  id: int("id").autoincrement().primaryKey(),
+  appId: varchar("appId", { length: 128 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  nameEn: varchar("nameEn", { length: 255 }),
+  description: text("description"),
+  organizationName: varchar("organizationName", { length: 255 }).notNull(),
+  organizationDid: varchar("organizationDid", { length: 500 }),
+  contactEmail: varchar("contactEmail", { length: 255 }).notNull(),
+  contactPhone: varchar("contactPhone", { length: 64 }),
+  walletType: mysqlEnum("walletType", ["personal_health", "insurance", "government", "employer", "pharmacy", "research", "other"]).notNull(),
+  platformType: mysqlEnum("platformType", ["ios", "android", "web", "cross_platform"]).default("cross_platform").notNull(),
+  redirectUris: json("redirectUris"),
+  webhookUrl: varchar("webhookUrl", { length: 500 }),
+  logoUrl: varchar("logoUrl", { length: 500 }),
+  scopes: json("scopes").notNull(), // ["credentials:read", "credentials:present", "shl:resolve", "documents:read", "identity:link"]
+  allowedContractIds: json("allowedContractIds"), // restrict to specific contracts or null for all
+  rateLimitPerMinute: int("rateLimitPerMinute").default(60).notNull(),
+  rateLimitPerDay: int("rateLimitPerDay").default(10000).notNull(),
+  status: mysqlEnum("status", ["pending_review", "active", "suspended", "revoked"]).default("pending_review").notNull(),
+  trustLevel: mysqlEnum("trustLevel", ["unverified", "basic", "verified", "certified"]).default("unverified").notNull(),
+  complianceCertRef: varchar("complianceCertRef", { length: 255 }),
+  termsAcceptedAt: timestamp("termsAcceptedAt"),
+  reviewedBy: int("reviewedBy"),
+  reviewedAt: timestamp("reviewedAt"),
+  reviewNotes: text("reviewNotes"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  index("idx_ewa_status").on(table.status),
+  index("idx_ewa_wallet_type").on(table.walletType),
+]));
+export type ExternalWalletApp = typeof externalWalletApps.$inferSelect;
+export type InsertExternalWalletApp = typeof externalWalletApps.$inferInsert;
+
+export const externalWalletApiKeys = mysqlTable("external_wallet_api_keys", {
+  id: int("id").autoincrement().primaryKey(),
+  keyId: varchar("keyId", { length: 64 }).notNull().unique(),
+  appId: varchar("appId", { length: 128 }).notNull(),
+  keyHash: varchar("keyHash", { length: 128 }).notNull(), // SHA-256 hash of the actual key
+  keyPrefix: varchar("keyPrefix", { length: 12 }).notNull(), // first 8 chars for identification
+  label: varchar("label", { length: 128 }).notNull(),
+  scopes: json("scopes"), // override app-level scopes if needed
+  expiresAt: timestamp("expiresAt"),
+  lastUsedAt: timestamp("lastUsedAt"),
+  usageCount: bigint("usageCount", { mode: "number" }).default(0).notNull(),
+  status: mysqlEnum("status", ["active", "expired", "revoked"]).default("active").notNull(),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("idx_ewak_app").on(table.appId),
+  index("idx_ewak_prefix").on(table.keyPrefix),
+]));
+export type ExternalWalletApiKey = typeof externalWalletApiKeys.$inferSelect;
+export type InsertExternalWalletApiKey = typeof externalWalletApiKeys.$inferInsert;
+
+export const externalWalletSessions = mysqlTable("external_wallet_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionToken: varchar("sessionToken", { length: 128 }).notNull().unique(),
+  appId: varchar("appId", { length: 128 }).notNull(),
+  keyId: varchar("keyId", { length: 64 }).notNull(),
+  patientDid: varchar("patientDid", { length: 500 }),
+  patientId: int("patientId"),
+  scopes: json("scopes").notNull(),
+  ipAddress: varchar("ipAddress", { length: 64 }),
+  userAgent: text("userAgent"),
+  expiresAt: timestamp("expiresAt").notNull(),
+  lastActivityAt: timestamp("lastActivityAt"),
+  status: mysqlEnum("status", ["active", "expired", "revoked"]).default("active").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("idx_ews_app").on(table.appId),
+  index("idx_ews_patient").on(table.patientId),
+  index("idx_ews_expires").on(table.expiresAt),
+]));
+export type ExternalWalletSession = typeof externalWalletSessions.$inferSelect;
+export type InsertExternalWalletSession = typeof externalWalletSessions.$inferInsert;
+
+export const externalWalletAuditLogs = mysqlTable("external_wallet_audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  appId: varchar("appId", { length: 128 }).notNull(),
+  keyId: varchar("keyId", { length: 64 }),
+  sessionToken: varchar("sessionToken", { length: 128 }),
+  action: varchar("action", { length: 128 }).notNull(),
+  endpoint: varchar("endpoint", { length: 255 }).notNull(),
+  method: varchar("method", { length: 10 }).notNull(),
+  statusCode: int("statusCode"),
+  requestBody: json("requestBody"),
+  responseStatus: mysqlEnum("responseStatus", ["success", "error", "denied", "rate_limited"]).notNull(),
+  errorMessage: text("errorMessage"),
+  ipAddress: varchar("ipAddress", { length: 64 }),
+  userAgent: text("userAgent"),
+  durationMs: int("durationMs"),
+  patientId: int("patientId"),
+  resourceType: varchar("resourceType", { length: 64 }),
+  resourceId: varchar("resourceId", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("idx_ewal_app").on(table.appId),
+  index("idx_ewal_action").on(table.action),
+  index("idx_ewal_created").on(table.createdAt),
+  index("idx_ewal_patient").on(table.patientId),
+]));
+export type ExternalWalletAuditLog = typeof externalWalletAuditLogs.$inferSelect;
+export type InsertExternalWalletAuditLog = typeof externalWalletAuditLogs.$inferInsert;

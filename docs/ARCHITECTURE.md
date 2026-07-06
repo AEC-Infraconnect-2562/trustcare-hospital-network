@@ -1,7 +1,7 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.9 (SHL Manifest Document Bundle — DB Persistence)
-**Last updated:** 2026-07-03
+**Version:** 5.10 (External Wallet API & Contract Hub)
+**Last updated:** 2026-07-04
 **Maintainers:** AEC-Infraconnect-2562
 
 ---
@@ -40,7 +40,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 │  │  patientIdentity · integration · trustRegistry · shl ·       │   │
 │  │  claim · international · crossBorderReferral ·               │   │
 │  │  careTransition · partnerPortal · portability ·              │   │
-│  │  executiveDashboard · tao · schemaRegistry                   │   │
+│  │  executiveDashboard · tao · schemaRegistry · externalWallet  │   │
 │  └──────────────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────────┐   │
 │  │              server/portability/ (VC/VP Engine)               │   │
@@ -54,7 +54,7 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        DATABASE (MySQL/TiDB)                         │
-│  60 tables · migrations through 0019 + shl_manifest_documents       │
+│  64 tables · migrations through 0020                                 │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -77,9 +77,9 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 ### 1.3 Module Dependency Graph
 
 ```
-routers.ts (care transition release, 29 routers)
+routers.ts (external wallet release, 32 routers)
   ├── db.ts (query helpers)
-  │     └── drizzle/schema.ts (59 table definitions + 2 DB-only tables)
+  │     └── drizzle/schema.ts (63 table definitions + 1 DB-only table)
   ├── shared/rolePolicy.ts (role authorization logic)
   ├── shared/menuConfig.ts (menu visibility per role)
   ├── scheduledHandlers/ (periodic task handlers)
@@ -1817,13 +1817,13 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 
 | Metric | Value |
 |--------|-------|
-| Database tables | 67 (in schema.ts) |
-| Migration batches | 19 |
-| tRPC routers | 31 (added contractAdmin) |
-| Frontend pages | 37 |
+| Database tables | 71 (67 + 4 external wallet tables) |
+| Migration batches | 20 |
+| tRPC routers | 32 (added externalWallet) |
+| Frontend pages | 38 (added ContractHub) |
 | Reusable components | 25 (added PersonPhoto, TrustLayerRemediationPanel, UploadDocButton, CheckinQRPanel) |
-| Test files | 27 |
-| Test cases | 331 (all passing) |
+| Test files | 29 |
+| Test cases | 341 (all passing) |
 | TypeScript errors | 0 |
 | Demo users | 16 (all with unique avatars) |
 | Claim scenarios | 6 (fully seeded with FHIR data) |
@@ -1833,6 +1833,8 @@ Persistent DB follow-up for Manus is documented in [`docs/PREPARE_FOR_SERVICE_CO
 | Trust layer checklist items | 10 (5 base + 5 SHL-specific) |
 | Remediation actions | 10 (mapped to system pages) |
 | SHL packages | 12 active (5 with passcode) |
+| External Wallet API endpoints | 12 REST endpoints |
+| External Wallet scopes | 9 permission scopes |
 
 ---
 
@@ -2318,3 +2320,173 @@ Total: 55+ manifest documents seeded with full metadata.
 | Tests passing | 331 | 332 |
 | SHL manifest documents | 0 (derived only) | 55+ (persisted) |
 | TypeScript errors | 0 | 0 |
+
+
+---
+
+## 46. External Wallet API & Contract Hub (v3.33.0 — 2026-07-04)
+
+### 46.1 Overview
+
+The External Wallet API enables **third-party wallet applications** (mobile wallets, health apps, insurance platforms) to connect to the TrustCare Hospital Network for credential exchange, SHL resolution, and identity linking. The system follows an **API-key + bearer-token** authentication model with scope-based authorization.
+
+### 46.2 Architecture Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                    EXTERNAL WALLET APPLICATION                        │
+│  (Mobile Wallet / Health App / Insurance Platform / Government App)   │
+└──────────────────────────────────────────────────────────────────────┘
+                              │ HTTPS REST
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    /api/v1/* (External Wallet API)                    │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │  Auth Middleware: API Key (SHA-256) → Bearer Token (Session)   │  │
+│  │  Rate Limiter: Per-app configurable (default 100 req/min)      │  │
+│  │  Scope Guard: Fine-grained permission checking                 │  │
+│  │  Audit Logger: Every request logged with timing + metadata     │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
+│  │Contracts │ │Credential│ │   SHL    │ │ Identity │ │Documents │  │
+│  │  Module  │ │  Module  │ │  Module  │ │  Module  │ │  Module  │  │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    TRUSTCARE INTERNAL SERVICES                        │
+│  VC/VP Engine · SHL Resolver · MPI · Trust Registry · Consent        │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 46.3 Authentication Flow
+
+```
+1. App Registration (Admin via Contract Hub UI)
+   └── Admin registers app → receives appId + API key (ewk_...)
+
+2. Token Exchange (External Wallet)
+   POST /api/v1/wallet/authenticate
+   Headers: X-API-Key: ewk_<64-hex-chars>
+   Body: { walletDid, walletType, requestedScopes }
+   Response: { sessionToken: "ews_...", expiresAt, grantedScopes }
+
+3. Authenticated Requests (Bearer Token)
+   Headers: Authorization: Bearer ews_<96-hex-chars>
+   → Scope-checked per endpoint
+```
+
+### 46.4 API Endpoints
+
+| Method | Endpoint | Scopes Required | Purpose |
+|--------|----------|-----------------|---------|
+| GET | `/api/v1/info` | (public) | API capabilities, version, supported scopes |
+| POST | `/api/v1/wallet/authenticate` | API Key auth | Exchange API key for bearer session token |
+| GET | `/api/v1/contracts` | `contracts:read` | List available service contracts |
+| GET | `/api/v1/contracts/:id` | `contracts:read` | Get contract details with bundle templates |
+| POST | `/api/v1/credentials/present` | `credentials:present` | Present VP to system |
+| POST | `/api/v1/credentials/request` | `credentials:request` | Request credentials from system |
+| GET | `/api/v1/credentials/status/:id` | `credentials:read` | Check credential issuance status |
+| POST | `/api/v1/shl/resolve` | `shl:resolve` | Resolve SMART Health Link URL |
+| POST | `/api/v1/shl/access` | `shl:resolve` | Access SHL files with passcode |
+| POST | `/api/v1/identity/link` | `identity:link` | Link external wallet DID to patient |
+| GET | `/api/v1/identity/verify` | `identity:read` | Verify DID-patient binding |
+| POST | `/api/v1/documents/submit` | `documents:write` | Submit documents to system |
+| GET | `/api/v1/documents/available` | `documents:read` | List available documents for patient |
+
+### 46.5 Permission Scopes
+
+| Scope | Description |
+|-------|-------------|
+| `contracts:read` | View available service contracts and templates |
+| `credentials:read` | Read credential status and metadata |
+| `credentials:present` | Present Verifiable Presentations to the system |
+| `credentials:request` | Request new credentials from the system |
+| `shl:resolve` | Resolve and access SMART Health Links |
+| `identity:link` | Link DID to patient identity (MPI) |
+| `identity:read` | Verify DID-patient binding status |
+| `documents:read` | Read available documents for linked patient |
+| `documents:write` | Submit documents to the system |
+
+### 46.6 Database Tables (4 new)
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `external_wallet_apps` | Registered third-party wallet applications | appId, name, organizationName, walletDid, walletType, allowedScopes, status, trustLevel, rateLimit |
+| `external_wallet_api_keys` | API key management (hashed secrets) | keyId, appId, keyHash, keyPrefix, label, allowedScopes, status, expiresAt, usageCount |
+| `external_wallet_sessions` | Active bearer token sessions | sessionToken, appId, keyId, grantedScopes, patientId, expiresAt, lastActivityAt |
+| `external_wallet_audit_logs` | Complete API access audit trail | appId, action, method, endpoint, responseStatus, durationMs, patientId, resourceId, errorMessage |
+
+### 46.7 Admin Management (Contract Hub)
+
+The **Contract Hub** admin page (`/contract-hub`) provides:
+
+- **Registered Apps Tab**: View/manage all registered external wallet apps with status badges, trust levels, and scope assignments
+- **App Registration**: Register new apps with organization details, wallet DID, platform metadata, and scope selection
+- **API Key Management**: Generate, rotate, and revoke API keys per app
+- **Audit Logs Tab**: View all external API access logs with filtering by app, action, and status
+- **API Documentation Tab**: Inline reference for all endpoints, auth flow, and scope requirements
+
+**tRPC Admin Router (`externalWallet`):**
+
+| Procedure | Purpose |
+|-----------|---------|
+| `listApps` | List all registered external wallet apps |
+| `getApp` | Get detailed app info including keys |
+| `registerApp` | Register new app + generate initial API key |
+| `updateApp` | Update app config, scopes, rate limits |
+| `revokeApp` | Revoke app access (sets status to revoked) |
+| `rotateKey` | Generate new API key, deactivate old one |
+| `revokeKey` | Revoke a specific API key |
+| `auditLogs` | Query audit logs with pagination |
+
+### 46.8 Security Model
+
+| Layer | Implementation |
+|-------|---------------|
+| API Key Storage | SHA-256 hash only (raw key shown once at generation) |
+| Key Format | `ewk_` prefix + 64 hex chars (256-bit entropy) |
+| Session Token | `ews_` prefix + 96 hex chars (384-bit entropy) |
+| Rate Limiting | In-memory sliding window per app (configurable) |
+| Scope Enforcement | Per-endpoint middleware checks granted scopes |
+| Audit Trail | Every request logged with timing, status, and metadata |
+| Trust Levels | `sandbox` → `basic` → `verified` → `premium` (admin-assigned) |
+
+### 46.9 Integration with Existing Systems
+
+The External Wallet API integrates with:
+
+- **VC/VP Engine** (`server/portability/`): Credential verification and issuance
+- **SHL Module** (`server/portability/shl.ts`): SMART Health Link resolution
+- **MPI** (`patient_identifiers` table): DID-to-patient identity linking
+- **Trust Registry**: Validates external wallet DIDs against known entities
+- **Consent Engine**: Respects patient consent policies for data access
+- **Service Readiness Contracts**: Maps to available service bundles
+
+### 46.10 Supported Wallet Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `personal_health` | Patient-facing health wallets | HealthLink, PatientSphere |
+| `insurance` | Insurance company platforms | Thai Health Insurance, AIA |
+| `government` | Government health platforms | สปสช., กรมควบคุมโรค |
+| `hospital_his` | Hospital Information Systems | HIS adapters, EMR connectors |
+| `research` | Research/academic platforms | Clinical trial systems |
+| `pharmacy` | Pharmacy management systems | Drug dispensing verification |
+
+### 46.11 Files Added/Modified
+
+| File | Change |
+|------|--------|
+| `drizzle/schema.ts` | +4 tables (external_wallet_apps, api_keys, sessions, audit_logs) |
+| `drizzle/0020_easy_the_professor.sql` | Migration SQL |
+| `server/externalWalletApi.ts` | New module: REST endpoints + auth middleware |
+| `server/db.ts` | +8 helper functions for external wallet CRUD |
+| `server/routers.ts` | +1 tRPC router (externalWallet) with 8 procedures |
+| `server/_core/index.ts` | Mount `/api/v1` Express router |
+| `client/src/pages/ContractHub.tsx` | Admin UI page |
+| `client/src/App.tsx` | Route registration |
+| `client/src/components/DashboardLayout.tsx` | Sidebar nav entry |
+| `server/externalWalletApi.test.ts` | 9 test cases |

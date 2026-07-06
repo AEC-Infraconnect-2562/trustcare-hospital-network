@@ -40,6 +40,10 @@ import {
   payerRulesets, InsertPayerRuleset,
   patientUploadedDocuments, InsertPatientUploadedDocument,
   shlManifestDocuments, InsertShlManifestDocument,
+  externalWalletApps, InsertExternalWalletApp,
+  externalWalletApiKeys, InsertExternalWalletApiKey,
+  externalWalletSessions, InsertExternalWalletSession,
+  externalWalletAuditLogs, InsertExternalWalletAuditLog,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isIssuerPrivilegeRole, isPatientRole } from "@shared/rolePolicy";
@@ -2407,4 +2411,130 @@ export async function deleteBundleTemplate(id: number) {
   const db = await getDb();
   if (!db) return;
   await db.update(serviceBundleTemplates).set({ status: "deprecated" }).where(eq(serviceBundleTemplates.id, id));
+}
+
+// ============================================================
+// EXTERNAL WALLET API
+// ============================================================
+
+export async function getExternalWalletApp(appId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(externalWalletApps).where(eq(externalWalletApps.appId, appId)).limit(1);
+  return row ?? null;
+}
+
+export async function listExternalWalletApps(filter?: { status?: string; walletType?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.status) conditions.push(eq(externalWalletApps.status, filter.status as any));
+  if (filter?.walletType) conditions.push(eq(externalWalletApps.walletType, filter.walletType as any));
+  if (conditions.length > 0) {
+    return db.select().from(externalWalletApps).where(and(...conditions)).orderBy(desc(externalWalletApps.createdAt));
+  }
+  return db.select().from(externalWalletApps).orderBy(desc(externalWalletApps.createdAt));
+}
+
+export async function createExternalWalletApp(data: Omit<InsertExternalWalletApp, "id" | "createdAt" | "updatedAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(externalWalletApps).values(data).$returningId();
+  return result.id;
+}
+
+export async function updateExternalWalletApp(appId: string, data: Partial<InsertExternalWalletApp>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(externalWalletApps).set(data).where(eq(externalWalletApps.appId, appId));
+}
+
+export async function getExternalWalletApiKeyByHash(keyHash: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(externalWalletApiKeys).where(eq(externalWalletApiKeys.keyHash, keyHash)).limit(1);
+  return row ?? null;
+}
+
+export async function listExternalWalletApiKeys(appId: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(externalWalletApiKeys).where(eq(externalWalletApiKeys.appId, appId)).orderBy(desc(externalWalletApiKeys.createdAt));
+}
+
+export async function createExternalWalletApiKey(data: Omit<InsertExternalWalletApiKey, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(externalWalletApiKeys).values(data).$returningId();
+  return result.id;
+}
+
+export async function updateExternalWalletApiKeyStatus(keyId: string, status: "active" | "expired" | "revoked") {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(externalWalletApiKeys).set({ status }).where(eq(externalWalletApiKeys.keyId, keyId));
+}
+
+export async function incrementApiKeyUsage(keyId: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(externalWalletApiKeys).set({ lastUsedAt: new Date(), usageCount: sql`${externalWalletApiKeys.usageCount} + 1` }).where(eq(externalWalletApiKeys.keyId, keyId));
+}
+
+export async function getExternalWalletSession(sessionToken: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(externalWalletSessions).where(eq(externalWalletSessions.sessionToken, sessionToken)).limit(1);
+  return row ?? null;
+}
+
+export async function createExternalWalletSession(data: Omit<InsertExternalWalletSession, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(externalWalletSessions).values(data).$returningId();
+  return result.id;
+}
+
+export async function updateExternalWalletSessionActivity(sessionToken: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(externalWalletSessions).set({ lastActivityAt: new Date() }).where(eq(externalWalletSessions.sessionToken, sessionToken));
+}
+
+export async function revokeExternalWalletSession(sessionToken: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(externalWalletSessions).set({ status: "revoked" }).where(eq(externalWalletSessions.sessionToken, sessionToken));
+}
+
+export async function createExternalWalletAuditLog(data: Omit<InsertExternalWalletAuditLog, "id" | "createdAt">) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(externalWalletAuditLogs).values(data);
+}
+
+export async function listExternalWalletAuditLogs(filter?: { appId?: string; action?: string; limit?: number; offset?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filter?.appId) conditions.push(eq(externalWalletAuditLogs.appId, filter.appId));
+  if (filter?.action) conditions.push(eq(externalWalletAuditLogs.action, filter.action));
+  const limit = filter?.limit || 100;
+  const offset = filter?.offset || 0;
+  if (conditions.length > 0) {
+    return db.select().from(externalWalletAuditLogs).where(and(...conditions)).orderBy(desc(externalWalletAuditLogs.createdAt)).limit(limit).offset(offset);
+  }
+  return db.select().from(externalWalletAuditLogs).orderBy(desc(externalWalletAuditLogs.createdAt)).limit(limit).offset(offset);
+}
+
+export async function findPatientByIdentifier(identifierType: string, identifierValue: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(patientIdentifiers).where(
+    and(
+      eq(patientIdentifiers.identifierType, identifierType as any),
+      eq(patientIdentifiers.identifierValue, identifierValue)
+    )
+  ).limit(1);
+  return row ?? null;
 }

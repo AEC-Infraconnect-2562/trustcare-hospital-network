@@ -43,6 +43,7 @@ const PrepareForService = lazy(() => import("./pages/PrepareForService"));
 const ServiceVerify = lazy(() => import("./pages/ServiceVerify"));
 const PatientNotifications = lazy(() => import("./pages/PatientNotifications"));
 const ContractAdmin = lazy(() => import("./pages/ContractAdmin"));
+const ContractHub = lazy(() => import("./pages/ContractHub"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 function PageLoader() {
@@ -96,6 +97,7 @@ function Router() {
         <Route path="/users" component={Users} />
         <Route path="/settings" component={Settings} />
         <Route path="/contract-admin" component={ContractAdmin} />
+        <Route path="/contract-hub" component={ContractHub} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

@@ -109,6 +109,7 @@ const menuItemsEn: Record<string, string> = {
   users: "User Management",
   settings: "Settings",
   "contract-admin": "Contract Admin",
+  "contract-hub": "Contract Hub",
 };
 
 const allMenuItems: MenuItemDef[] = [
@@ -143,6 +144,7 @@ const allMenuItems: MenuItemDef[] = [
   { id: "users", label: "จัดการผู้ใช้", icon: "Users", path: "/users", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
   { id: "settings", label: "ตั้งค่าระบบ", icon: "Settings", path: "/settings", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
   { id: "contract-admin", label: "จัดการสัญญาบริการ", icon: "FileStack", path: "/contract-admin", roles: ["system_admin", "hospital_admin"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
+  { id: "contract-hub", label: "Contract Hub (External Wallet)", icon: "PlugZap", path: "/contract-hub", roles: ["system_admin", "hospital_admin", "integration_engineer"], group: "integration_governance", groupLabel: "เชื่อมต่อและกำกับดูแล" },
 ];
 
 function getMenuForRole(role: SystemRole) {

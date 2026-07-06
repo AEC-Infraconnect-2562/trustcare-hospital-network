@@ -107,6 +107,10 @@ async function startServer() {
     return handleWebhookConfigList(req, res);
   });
 
+  // External Wallet API (REST endpoints for third-party wallets)
+  const { createExternalWalletApiRouter } = await import("../externalWalletApi");
+  app.use("/api/v1", createExternalWalletApiRouter());
+
   // tRPC API
   app.use(
     "/api/trpc",

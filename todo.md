@@ -859,3 +859,52 @@
 - [x] Show status indicators: manifest (URL/hash/token), VC (issued/pending), VP (issued/pending), Future API (available/unavailable)
 - [x] Integrate panel into wallet SHL package detail view
 - [x] Run tests, save checkpoint, push to GitHub
+
+## v3.33.0 - External Wallet API & Contract Hub Integration
+
+### Database Schema
+- [x] Create external_wallet_apps table (app registration, DID, scopes, rate limits)
+- [x] Create external_wallet_api_keys table (API key management with hashed secrets)
+- [x] Create external_wallet_sessions table (active token sessions)
+- [x] Create external_wallet_audit_logs table (API access audit trail)
+- [x] Apply migration SQL via webdev_execute_sql
+
+### API Middleware & Auth
+- [x] Implement API key authentication middleware for /api/v1/* routes
+- [x] Implement bearer token issuance and validation
+- [x] Implement rate limiting per app
+- [x] Implement scope-based access control
+
+### REST Endpoints (/api/v1/wallet/*)
+- [x] POST /api/v1/wallet/authenticate - Exchange API key for bearer token
+- [x] GET /api/v1/contracts - List available service contracts
+- [x] GET /api/v1/contracts/:contractId - Get contract details + schema
+- [x] POST /api/v1/credentials/present - Present VP to system
+- [x] POST /api/v1/credentials/request - Request credentials from system
+- [x] GET /api/v1/credentials/status/:credentialId - Check credential status
+- [x] POST /api/v1/shl/resolve - Resolve SHL link and get manifest
+- [x] POST /api/v1/shl/access - Access SHL files with passcode
+- [x] POST /api/v1/identity/link - Link external wallet DID to patient
+- [x] GET /api/v1/identity/verify - Verify DID-patient binding
+- [x] POST /api/v1/documents/submit - Submit documents to system
+- [x] GET /api/v1/documents/available - List available documents for patient
+
+### Admin tRPC Endpoints (Contract Hub Management)
+- [x] externalWallet.listApps - List registered external wallet apps
+- [x] externalWallet.registerApp - Register new external wallet app
+- [x] externalWallet.updateApp - Update app config/scopes
+- [x] externalWallet.revokeApp - Revoke app access
+- [x] externalWallet.rotateKey - Rotate API key
+- [x] externalWallet.auditLogs - View API access logs
+
+### Contract Hub Admin UI
+- [x] Add "Contract Hub" page for managing external wallet connections
+- [x] Show registered apps with status, scopes, rate limits
+- [x] API key management (generate, rotate, revoke)
+- [x] Audit log viewer for external API access
+
+### Testing & Documentation
+- [x] Write vitest tests for external wallet API auth flow
+- [x] Write vitest tests for credential exchange endpoints
+- [x] Write vitest tests for SHL resolution via external API
+- [x] Push to GitHub, save checkpoint

@@ -141,6 +141,13 @@
       "when": 1783093281360,
       "tag": "0019_youthful_vanisher",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1783172878752,
+      "tag": "0020_easy_the_professor",
+      "breakpoints": true
     }
   ]
 }
