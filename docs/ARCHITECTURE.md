@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.20 (Production ES256 Signing, JWKS/DID Resolution, Unique Avatars)
+**Version:** 5.30 (Wallet Sync API, VP Context Mapping, Wallet Dedup, DID Shortcuts)
 **Last updated:** 2026-07-06
 **Maintainers:** AEC-Infraconnect-2562
 
@@ -2604,3 +2604,211 @@ A public interactive API documentation page is available at `/docs/api` for exte
 | `server/_core/index.ts` | Mounts the well-known router |
 | `server/wellKnown.test.ts` | 7 test cases for JWKS/DID endpoints |
 | `client/src/pages/ApiDocs.tsx` | Interactive API documentation page |
+
+---
+
+## 48. Wallet Sync API
+
+### 48.1 Overview
+
+The Wallet Sync API (`server/walletSyncApi.ts`) provides a dedicated REST interface for external wallet applications to synchronize patient credentials. Unlike the tRPC-based wallet procedures (which require a portal session), the Sync API supports both external wallet session tokens (`ews_` prefix) and portal session cookies, enabling headless wallet sync without browser interaction.
+
+### 48.2 Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    External Wallet App                            │
+│  (Mobile/Desktop wallet that stores patient credentials)         │
+└──────────────────────┬───────────────────────────────────────────┘
+                       │ HTTPS + Bearer Token (ews_*)
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                  Wallet Sync API Router                           │
+│  POST /api/wallet/sync         ← Full credential pull            │
+│  GET  /api/wallet/sync/status  ← Sync availability & stats       │
+│  POST /api/wallet/sync/did-resolve ← DID → public key resolution │
+└──────────────────────┬───────────────────────────────────────────┘
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+   ┌────────────┐ ┌─────────┐ ┌──────────────┐
+   │ wallet_cards│ │issued_  │ │ hospitals    │
+   │   table    │ │creds    │ │   table      │
+   └────────────┘ └─────────┘ └──────────────┘
+```
+
+### 48.3 Authentication Flow
+
+The `resolvePatientFromRequest()` function implements a multi-strategy authentication resolver:
+
+1. **External Wallet Session (ews_):** Checks the `Authorization: Bearer ews_<token>` header against the `external_wallet_sessions` table. Validates session status and expiry.
+2. **Portal Session Cookie:** Falls back to parsing the `trustcare_session` cookie and verifying it via the Manus SDK.
+3. **Explicit Patient ID:** If authenticated, allows overriding with `patientId` in the request body.
+
+### 48.4 Incremental Sync
+
+The `since` parameter enables incremental sync by filtering credentials to only those issued after the specified ISO timestamp. The response includes `hasMore` and `nextSince` fields for pagination:
+
+```json
+{
+  "credentials": [...],
+  "syncedAt": "2026-07-06T12:00:00Z",
+  "total": 50,
+  "hasMore": true,
+  "nextSince": "2026-06-15T00:00:00Z"
+}
+```
+
+### 48.5 Files
+
+| File | Purpose |
+|------|---------|
+| `server/walletSyncApi.ts` | Express router with 3 endpoints |
+| `server/walletSync.test.ts` | Unit tests for router structure and VP context |
+| `server/walletSyncE2E.test.ts` | 34 E2E integration tests |
+
+---
+
+## 49. VP Context Mapping System
+
+### 49.1 Overview
+
+When a patient presents a credential (creates a Verifiable Presentation), the system assigns a **context** value that describes the document type. Previously, all presentations used a hardcoded `"single_document"` context. The `contextForWalletCardType()` function now maps 30+ card types to meaningful context values.
+
+### 49.2 Implementation
+
+The function is defined and exported in `server/routers.ts`:
+
+```typescript
+export function contextForWalletCardType(cardType: string): string {
+  const map: Record<string, string> = {
+    appointment: "appointment",
+    prescription: "prescription",
+    lab_result: "lab_result",
+    // ... 30+ mappings
+    sync_receipt: "sync_receipt",
+  };
+  return map[cardType] ?? cardType;
+}
+```
+
+### 49.3 Design Principles
+
+The mapping follows these principles:
+
+1. **One-to-one for unique types:** Most card types map directly to their own context (e.g., `prescription` → `prescription`).
+2. **Many-to-one for related types:** Related card types share a context (e.g., `claim`, `claim_package`, `claim_receipt` all map to `claim`).
+3. **Identity consolidation:** `identity`, `patient_identity`, and `staff_identity` all map to `identity`.
+4. **Graceful fallback:** Unknown types return the card type string itself (never `"single_document"`).
+
+### 49.4 Files
+
+| File | Purpose |
+|------|---------|
+| `server/routers.ts` (line 5317) | `contextForWalletCardType()` function |
+| `server/vpContext.test.ts` | 32 unit tests covering all mappings |
+
+---
+
+## 50. Wallet Deduplication Logic
+
+### 50.1 Overview
+
+The wallet display implements a deduplication algorithm to ensure patients see only their most current credential per type per issuer. This prevents confusion from multiple versions of the same document (e.g., three prescriptions from the same hospital on different dates).
+
+### 50.2 Algorithm
+
+**Dedup Key:** `${cardType}::${issuerHospitalName || 'unknown'}`
+
+**Active Cards (cardsByCategory procedure):**
+
+```
+1. Fetch all wallet cards + their credential metadata
+2. Sort by issuedAt descending (newest first)
+3. For each card:
+   a. Skip non-active (revoked/expired/suspended) → they go to superseded
+   b. Compute dedupeKey
+   c. If key not seen → keep in active list
+   d. If key already seen → exclude (goes to superseded)
+4. Group active cards by documentCategory
+```
+
+**Superseded Cards (superseded procedure):**
+
+```
+1. Fetch all wallet cards + their credential metadata
+2. Sort by issuedAt descending
+3. For each card:
+   a. If revoked/expired/suspended → add to superseded
+   b. If active and first for its dedupeKey → skip (it's the active one)
+   c. If active and duplicate → add to superseded with reason "superseded"
+4. Sort superseded by date descending
+```
+
+### 50.3 Edge Cases
+
+| Scenario | Behavior |
+|----------|----------|
+| Null issuerHospitalName | Uses `"unknown"` as issuer in dedup key |
+| Null issuedAt | Falls back to `createdAt` for date sorting |
+| Same type, different issuers | Treated as separate (both shown in active) |
+| All cards revoked | Active list is empty, all in superseded |
+| Single card per type | No dedup needed, shown in active |
+
+### 50.4 Files
+
+| File | Purpose |
+|------|---------|
+| `server/routers.ts` (line 560) | `cardsByCategory` procedure with dedup |
+| `server/routers.ts` (line 1130) | `superseded` procedure |
+| `server/walletDedup.test.ts` | 18 unit tests for dedup logic |
+| `client/src/pages/Wallet.tsx` | UI rendering for both tabs |
+
+---
+
+## 51. DID Resolution Shortcut Routes
+
+### 51.1 Overview
+
+In addition to the standard `.well-known` DID resolution paths, TrustCare provides shortcut routes that simplify integration for external wallets:
+
+| Standard Path | Shortcut Path |
+|---------------|---------------|
+| `/hospital/:code/.well-known/did.json` | `/hospital/:code/did.json` |
+| (none) | `/hospital/:code/did/jwks.json` |
+
+### 51.2 Rationale
+
+External wallet developers reported that the `.well-known` path convention, while standards-compliant, adds unnecessary complexity for mobile wallet implementations. The shortcut routes provide:
+
+1. **Simpler URLs** for wallet configuration
+2. **Per-hospital JWKS** without needing to parse the full DID document
+3. **Consistent caching** (1 hour, public)
+
+### 51.3 Security
+
+All DID resolution endpoints are public (no authentication required) and only expose **public** key material. The `d` parameter (private key) is never included in any response. Keys are derived deterministically from the hospital code using the network's key derivation function.
+
+### 51.4 Files
+
+| File | Purpose |
+|------|---------|
+| `server/wellKnownRoutes.ts` (line 241) | Shortcut DID route |
+| `server/wellKnownRoutes.ts` (line 287) | Per-hospital JWKS route |
+| `server/walletSyncE2E.test.ts` | E2E tests for shortcut routes |
+
+---
+
+## 52. Test Coverage Summary (v5.30)
+
+| Test File | Tests | Category |
+|-----------|-------|----------|
+| `vpContext.test.ts` | 32 | VP context mapping (all 30+ card types) |
+| `walletDedup.test.ts` | 18 | Dedup algorithm (active + superseded) |
+| `walletSyncE2E.test.ts` | 34 | Wallet Sync API + DID shortcuts (HTTP) |
+| `walletSync.test.ts` | 10 | Router structure + VP context + dedup |
+| `wellKnown.test.ts` | 7 | JWKS + DID + DID-configuration |
+| `trustcare.test.ts` | 6 | Router structure + auth |
+| `tao-consent.test.ts` | 10 | TAO trust registry + wallet categories |
+| Other test files | 328 | All other system features |
+| **Total** | **445** | **35 test files, 0 failures** |

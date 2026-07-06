@@ -1038,4 +1038,16 @@
 - [x] Fix dedup logic to work correctly - ensure only latest VP per cardType+issuer shown in Health Cards
 - [x] Ensure old/duplicate VPs are properly moved to Superseded tab sorted by date
 - [x] Verify wallet display on dev shows correct forms for all card types (no generic fallback)
-- [ ] Push to GitHub, save checkpoint, and publish
+- [x] Push to GitHub, save checkpoint, and publish
+
+## v3.40.2 - E2E Tests & Documentation Update
+
+- [x] Write E2E tests: Wallet Sync API (POST /api/wallet/sync with auth, incremental sync, error cases)
+- [x] Write E2E tests: DID Resolution (/.well-known/did.json, /hospital/:code/did.json, /hospital/:code/did/jwks.json)
+- [x] Write E2E tests: VP Context correctness (verify context matches cardType for all document types)
+- [x] Write E2E tests: Wallet dedup logic (only latest per cardType+issuer in active, older in superseded)
+- [x] Write E2E tests: Superseded tab (includes suspended, revoked, expired + older duplicates)
+- [x] Update API documentation (docs/API.md) with all new endpoints
+- [x] Update Architecture documentation (docs/ARCHITECTURE.md) with new modules
+- [x] Run all tests (unit + E2E) and verify 0 failures (445 tests, 35 files, 0 failures)
+- [x] Push to GitHub, save checkpoint

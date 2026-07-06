@@ -5314,7 +5314,7 @@ function purposeForWalletCardType(cardType: string): ConsentPurpose {
 }
 
 /** Maps a wallet card type to a meaningful VP context (instead of generic "single_document") */
-function contextForWalletCardType(cardType: string): string {
+export function contextForWalletCardType(cardType: string): string {
   const map: Record<string, string> = {
     appointment: "appointment",
     prescription: "prescription",
