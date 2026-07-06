@@ -163,7 +163,7 @@ export async function verifyCredential(input: VerificationOptions & { jwt: strin
       kid: typeof protectedHeader.kid === "string" ? protectedHeader.kid : undefined,
       alg: String(protectedHeader.alg ?? ""),
       policy: effectivePolicy,
-    }), { audience: input.audience ?? DEFAULT_AUDIENCE });
+    }), input.audience ? { audience: input.audience } : {});
     const payload = result.payload as JsonRecord;
     const credential = payload.vc as JsonRecord | undefined;
     const issuer = String(payload.iss ?? "");
@@ -278,7 +278,7 @@ export async function verifyPresentation(input: VerificationOptions & { jwt: str
       kid: typeof protectedHeader.kid === "string" ? protectedHeader.kid : undefined,
       alg: String(protectedHeader.alg ?? ""),
       policy: { ...effectivePolicy, requireTrustedIssuer: false },
-    }), { audience: input.audience ?? DEFAULT_AUDIENCE });
+    }), input.audience ? { audience: input.audience } : {});
     const payload = result.payload as JsonRecord;
     const vp = payload.vp as JsonRecord | undefined;
     const vcJwtList = Array.isArray(vp?.verifiableCredential) ? (vp.verifiableCredential as string[]) : [];
