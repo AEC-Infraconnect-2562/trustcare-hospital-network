@@ -1100,8 +1100,17 @@
 
 ## v3.44.0 - Deep Research: Rich Claims & Printer-Friendly VP
 
-- [ ] Research real Thai hospital document formats (OPD card, lab report, prescription, referral, discharge summary, medical certificate, etc.)
-- [ ] Enrich claims builders in reseed.ts with realistic medical data fields from research
-- [ ] Redesign VP renderer (CredentialRenderer) to look like real hospital documents (printer-friendly, professional layout)
-- [ ] Re-run reseed, verify all types render correctly without crashes
-- [ ] Push to GitHub, save checkpoint
+- [x] Research real Thai hospital document formats (OPD card, lab report, prescription, referral, discharge summary, medical certificate, etc.)
+- [x] Enrich claims builders in reseed.ts with realistic medical data fields from research
+- [x] Redesign VP renderer (CredentialRenderer) to look like real hospital documents (printer-friendly, professional layout)
+- [x] Re-run reseed, verify all types render correctly without crashes
+- [x] Push to GitHub, save checkpoint
+
+## v3.43.1 - CORS Fix for External Wallet Sync
+
+- [x] Add Vary: Origin header to CORS middleware to prevent CDN caching issues
+- [x] Verify all 5 endpoints return CORS headers on OPTIONS preflight (204)
+- [x] Verify all 5 endpoints return CORS headers on actual POST/GET responses (including 400/401/404/500)
+- [x] Verify from both origins: http://127.0.0.1:5175 and https://aec-infraconnect-2562.github.io
+- [x] All 510 tests pass
+- [x] Push to GitHub, save checkpoint

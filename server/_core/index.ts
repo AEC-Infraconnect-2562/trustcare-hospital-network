@@ -75,19 +75,28 @@ async function startServer() {
   }
 
   // CORS middleware — must be before route handlers
+  // Sets CORS headers for wallet-related paths from allowed origins.
+  // Vary: Origin is ALWAYS set on wallet paths to prevent CDN/proxy caching issues.
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     const matchedOrigin = isAllowedOrigin(origin);
-    if (matchedOrigin && isWalletPath(req.path)) {
-      res.setHeader("Access-Control-Allow-Origin", matchedOrigin);
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      res.setHeader("Access-Control-Allow-Credentials", "true");
-      res.setHeader("Access-Control-Max-Age", "86400");
 
-      // Handle preflight
-      if (req.method === "OPTIONS") {
-        return res.status(204).end();
+    if (isWalletPath(req.path)) {
+      // Always set Vary: Origin on wallet paths regardless of origin match
+      // This prevents CDN from caching a response without CORS headers and serving it to allowed origins
+      res.setHeader("Vary", "Origin");
+
+      if (matchedOrigin) {
+        res.setHeader("Access-Control-Allow-Origin", matchedOrigin);
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+        res.setHeader("Access-Control-Max-Age", "86400");
+
+        // Handle preflight — respond immediately
+        if (req.method === "OPTIONS") {
+          return res.status(204).end();
+        }
       }
     }
     next();
