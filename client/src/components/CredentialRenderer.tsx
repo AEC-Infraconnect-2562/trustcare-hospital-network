@@ -657,7 +657,13 @@ function PrescriptionCard({ props }: { props: CredentialRendererProps }) {
 function LabResultCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
-  const clinical = extractClinicalInfo(props.credentialData);
+  const subject = props.credentialData?.credentialSubject || props.credentialData;
+  const observations: any[] = subject?.observations || [];
+  const specimen = subject?.specimen || {};
+  const orderingPractitioner = subject?.orderingPractitioner || subject?.verifiedBy || {};
+  const performedBy = subject?.performedBy || {};
+  const reportStatus = subject?.reportStatus || "final";
+  const clinicalNote = subject?.clinicalNote || "";
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
@@ -666,29 +672,48 @@ function LabResultCard({ props }: { props: CredentialRendererProps }) {
         <PatientInfoSection renderData={renderData} />
         <Separator />
 
+        {/* Specimen Info */}
+        {specimen.accessionNo && (
+          <div className="flex items-center gap-4 text-xs text-muted-foreground bg-muted/30 rounded-lg p-3">
+            <span>Accession: <span className="font-mono font-medium text-foreground">{specimen.accessionNo}</span></span>
+            {specimen.collectedAt && <span>เก็บตัวอย่าง: {formatThaiDate(specimen.collectedAt)}</span>}
+            <span className="ml-auto">สถานะ: <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">{reportStatus}</Badge></span>
+          </div>
+        )}
+
         {/* Lab Results Display */}
         <div className="bg-pink-50 border border-pink-100 rounded-xl p-4">
           <p className="text-xs font-semibold text-pink-800 mb-3 flex items-center gap-1.5">
-            <FlaskConical className="h-3.5 w-3.5" /> ผลการตรวจ
+            <FlaskConical className="h-3.5 w-3.5" /> ผลการตรวจ ({observations.length} รายการ)
           </p>
           <div className="space-y-2">
-            <div className="flex items-center justify-between bg-white rounded-lg p-3 border border-pink-100">
-              <div>
-                <p className="font-medium text-sm">HbA1c (น้ำตาลสะสม)</p>
-                <p className="text-xs text-muted-foreground">LOINC: 4548-4</p>
+            {observations.map((obs: any, i: number) => (
+              <div key={i} className="flex items-center justify-between bg-white rounded-lg p-3 border border-pink-100">
+                <div>
+                  <p className="font-medium text-sm">{obs.nameTh || obs.name}</p>
+                  <p className="text-xs text-muted-foreground">LOINC: {obs.loincCode} • {obs.category}</p>
+                </div>
+                <div className="text-right">
+                  <p className={`font-bold text-lg ${obs.interpretation === "normal" ? "text-emerald-700" : "text-pink-700"}`}>
+                    {obs.value}{obs.unit}
+                  </p>
+                  {obs.referenceRange && <p className="text-[10px] text-muted-foreground">ค่าปกติ: {obs.referenceRange}</p>}
+                </div>
               </div>
-              <div className="text-right">
-                <p className="font-bold text-lg text-pink-700">7.4%</p>
-                <p className="text-[10px] text-muted-foreground">ค่าปกติ: 4.0-5.6%</p>
-              </div>
-            </div>
+            ))}
+            {observations.length === 0 && <p className="text-sm text-muted-foreground italic">ไม่มีข้อมูลผลตรวจ</p>}
           </div>
         </div>
 
-        {/* Clinical context */}
-        <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
+        {clinicalNote && (
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+            <p className="text-xs font-semibold text-blue-800 mb-1">หมายเหตุทางคลินิก</p>
+            <p className="text-sm text-blue-900">{clinicalNote}</p>
+          </div>
+        )}
 
-        <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์ผู้สั่งตรวจ" />
+        <PractitionerSection practitioner={orderingPractitioner} role="แพทย์ผู้สั่งตรวจ" />
+        {performedBy?.name && <PractitionerSection practitioner={performedBy} role="นักเทคนิคการแพทย์" />}
         <Separator />
         <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
       </CardContent>
@@ -700,6 +725,16 @@ function LabResultCard({ props }: { props: CredentialRendererProps }) {
 function ImmunizationCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const subject = props.credentialData?.credentialSubject || props.credentialData;
+  const vaccine = subject?.vaccine || {};
+  const administeredBy = subject?.administeredBy || {};
+  const doseNumber = subject?.doseNumber || 1;
+  const route = subject?.route || "";
+  const site = subject?.siteTh || subject?.site || "";
+  const seriesName = subject?.seriesName || "";
+  const nextDoseDate = subject?.nextDoseDate || "";
+  const adverseReaction = subject?.adverseReactionTh || subject?.adverseReaction || "";
+  const administrationDate = subject?.administrationDate || props.issuedAt;
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
@@ -715,20 +750,45 @@ function ImmunizationCard({ props }: { props: CredentialRendererProps }) {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">ชนิดวัคซีน</span>
-              <span className="text-sm">ตามบันทึกของสถานพยาบาล</span>
+              <span className="text-sm font-bold">{vaccine.nameTh || vaccine.name || "—"}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">สถานะ</span>
-              <Badge className="bg-lime-100 text-lime-800 border-lime-200">ฉีดเรียบร้อย</Badge>
+              <span className="text-sm font-medium">ผู้ผลิต</span>
+              <span className="text-sm">{vaccine.manufacturer || "—"}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Lot Number</span>
+              <span className="font-mono text-xs">{vaccine.lotNumber || "—"}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">เข็มที่</span>
+              <Badge className="bg-lime-100 text-lime-800 border-lime-200">เข็มที่ {doseNumber} ({seriesName})</Badge>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">วันที่ฉีด</span>
-              <span className="text-sm">{formatThaiDate(props.issuedAt)}</span>
+              <span className="text-sm">{formatThaiDate(administrationDate)}</span>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">ตำแหน่งที่ฉีด</span>
+              <span className="text-sm">{site} ({route})</span>
+            </div>
+            {nextDoseDate && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">นัดฉีดครั้งถัดไป</span>
+                <span className="text-sm text-blue-700 font-medium">{formatThaiDate(nextDoseDate)}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        <PractitionerSection practitioner={{ name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์ผู้ฉีดวัคซีน" />
+        {adverseReaction && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <p className="text-xs font-semibold text-amber-800 mb-1">อาการข้างเคียง</p>
+            <p className="text-sm text-amber-900">{adverseReaction}</p>
+          </div>
+        )}
+
+        <PractitionerSection practitioner={administeredBy} role="แพทย์ผู้ฉีดวัคซีน" />
         <Separator />
         <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
       </CardContent>
@@ -840,7 +900,20 @@ function MedicationSummaryCard({ props }: { props: CredentialRendererProps }) {
 function ReferralCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
-  const clinical = extractClinicalInfo(props.credentialData);
+  const subject = props.credentialData?.credentialSubject || props.credentialData;
+  const reasonForReferral = subject?.reasonForReferral || subject?.reasonForReferralTh || "";
+  const priority = subject?.priority || "routine";
+  const referringTo = subject?.referringTo || {};
+  const clinicalSummary = subject?.clinicalSummary || "";
+  const referringPractitioner = subject?.referringPractitioner || {};
+  const requestedService = subject?.requestedService || subject?.requestedServiceTh || "";
+
+  const priorityColors: Record<string, string> = {
+    urgent: "bg-red-100 text-red-800 border-red-200",
+    routine: "bg-blue-100 text-blue-800 border-blue-200",
+    stat: "bg-red-200 text-red-900 border-red-300",
+  };
+  const priorityLabels: Record<string, string> = { urgent: "เร่งด่วน", routine: "ปกติ", stat: "ฉุกเฉิน" };
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
@@ -858,19 +931,37 @@ function ReferralCard({ props }: { props: CredentialRendererProps }) {
               <span className="text-muted-foreground">จากสถานพยาบาล</span>
               <span className="font-medium">{renderData.hospital.nameTh}</span>
             </div>
+            {referringTo?.name && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ส่งต่อไปยัง</span>
+                <span className="font-medium">{referringTo.nameTh || referringTo.name}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">เหตุผลการส่งต่อ</span>
-              <span className="font-medium">ต้องการการดูแลเฉพาะทาง</span>
+              <span className="font-medium">{reasonForReferral || "ต้องการการดูแลเฉพาะทาง"}</span>
             </div>
+            {requestedService && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">บริการที่ต้องการ</span>
+                <span className="font-medium">{requestedService}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">ระดับความเร่งด่วน</span>
-              <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200">ปานกลาง</Badge>
+              <Badge variant="outline" className={priorityColors[priority] || priorityColors.routine}>{priorityLabels[priority] || priority}</Badge>
             </div>
           </div>
         </div>
 
-        <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
-        <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์ผู้ส่งต่อ" />
+        {clinicalSummary && (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+            <p className="text-xs font-semibold text-slate-700 mb-1">สรุปทางคลินิก</p>
+            <p className="text-sm">{clinicalSummary}</p>
+          </div>
+        )}
+
+        <PractitionerSection practitioner={referringPractitioner} role="แพทย์ผู้ส่งต่อ" />
         <Separator />
         <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
       </CardContent>
@@ -882,7 +973,21 @@ function ReferralCard({ props }: { props: CredentialRendererProps }) {
 function DischargeSummaryCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
-  const clinical = extractClinicalInfo(props.credentialData);
+  const subject = props.credentialData?.credentialSubject || props.credentialData;
+  const admissionDate = subject?.admissionDate || "";
+  const dischargeDate = subject?.dischargeDate || props.issuedAt;
+  const admittingDiagnosis = subject?.admittingDiagnosis || "";
+  const dischargeDiagnosis = subject?.dischargeDiagnosis || "";
+  const dischargeCondition = subject?.dischargeConditionTh || subject?.dischargeCondition || "";
+  const attendingPhysician = subject?.attendingPhysician || {};
+  const ward = subject?.ward || subject?.wardEn || "";
+  const lengthOfStay = subject?.lengthOfStay || "";
+  const principalProcedure = subject?.principalProcedure || "";
+  const dischargeMedications: any[] = subject?.dischargeMedications || [];
+  const followUpInstructions = subject?.followUpInstructions || "";
+  const followUpDate = subject?.followUpDate || "";
+  const activityRestrictions = subject?.activityRestrictions || "";
+  const dietaryAdvice = subject?.dietaryAdvice || "";
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
@@ -897,18 +1002,76 @@ function DischargeSummaryCard({ props }: { props: CredentialRendererProps }) {
           </p>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">สถานะจำหน่าย</span>
-              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">จำหน่ายกลับบ้าน</Badge>
+              <span className="text-muted-foreground">วันที่รับไว้</span>
+              <span className="font-medium">{admissionDate ? formatThaiDate(admissionDate) : "—"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">วันที่จำหน่าย</span>
-              <span className="font-medium">{formatThaiDate(props.issuedAt)}</span>
+              <span className="font-medium">{formatThaiDate(dischargeDate)}</span>
+            </div>
+            {lengthOfStay && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ระยะเวลานอน</span>
+                <span className="font-medium">{lengthOfStay} วัน</span>
+              </div>
+            )}
+            {ward && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">หอผู้ป่วย</span>
+                <span className="font-medium">{ward}</span>
+              </div>
+            )}
+            {admittingDiagnosis && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">การวินิจฉัยแรกรับ</span>
+                <span className="font-medium">{admittingDiagnosis}</span>
+              </div>
+            )}
+            {dischargeDiagnosis && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">การวินิจฉัยสุดท้าย</span>
+                <span className="font-medium">{dischargeDiagnosis}</span>
+              </div>
+            )}
+            {principalProcedure && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">หัตถการหลัก</span>
+                <span className="font-medium">{principalProcedure}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">สภาพขณะจำหน่าย</span>
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">{dischargeCondition || "ดีขึ้น"}</Badge>
             </div>
           </div>
         </div>
 
-        <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
-        <PractitionerSection practitioner={clinical.practitioner || { name: "พญ. อริสา กลิ่นใจ", licenseNo: "MD-TH-12345" }} role="แพทย์เจ้าของไข้" />
+        {dischargeMedications.length > 0 && (
+          <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+            <p className="text-xs font-semibold text-green-800 mb-2">ยากลับบ้าน</p>
+            <div className="space-y-1.5">
+              {dischargeMedications.map((med: any, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <Pill className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                  <span className="font-medium">{med.name}</span>
+                  {med.instructions && <span className="text-xs text-muted-foreground ml-auto">{med.instructions}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(followUpInstructions || activityRestrictions || dietaryAdvice) && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-2">
+            <p className="text-xs font-semibold text-blue-800">คำแนะนำหลังจำหน่าย</p>
+            {followUpInstructions && <p className="text-sm">{followUpInstructions}</p>}
+            {followUpDate && <p className="text-xs text-blue-700">นัดติดตาม: {formatThaiDate(followUpDate)}</p>}
+            {activityRestrictions && <p className="text-sm">ข้อจำกัดกิจกรรม: {activityRestrictions}</p>}
+            {dietaryAdvice && <p className="text-sm">คำแนะนำอาหาร: {dietaryAdvice}</p>}
+          </div>
+        )}
+
+        <PractitionerSection practitioner={attendingPhysician} role="แพทย์เจ้าของไข้" />
         <Separator />
         <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
       </CardContent>
@@ -920,6 +1083,16 @@ function DischargeSummaryCard({ props }: { props: CredentialRendererProps }) {
 function InsuranceEligibilityCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const subject = props.credentialData?.credentialSubject || props.credentialData;
+  const payer = subject?.payer || {};
+  const planName = subject?.planName || "";
+  const memberId = subject?.memberId || "";
+  const eligStatus = subject?.status || "eligible";
+  const benefits = subject?.benefits || {};
+  const copay = subject?.copay || {};
+  const validFrom = subject?.validFrom || "";
+  const validUntil = subject?.validUntil || "";
+  const preAuthRequired = subject?.preAuthorizationRequired;
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
@@ -935,16 +1108,52 @@ function InsuranceEligibilityCard({ props }: { props: CredentialRendererProps })
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">สถานะสิทธิ์</span>
-              <Badge className="bg-emerald-100 text-emerald-800">ใช้งานได้</Badge>
+              <Badge className={eligStatus === "eligible" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}>
+                {eligStatus === "eligible" ? "ใช้งานได้" : "ไม่มีสิทธิ์"}
+              </Badge>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">ประเภทสิทธิ์</span>
-              <span className="font-medium">ประกันสุขภาพ</span>
+              <span className="text-muted-foreground">บริษัทประกัน</span>
+              <span className="font-medium">{payer.name || "—"}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">ระยะเวลาคุ้มครอง</span>
-              <span className="font-medium">{formatThaiDate(props.issuedAt)} - {props.expiresAt ? formatThaiDate(props.expiresAt) : "ไม่จำกัด"}</span>
+              <span className="text-muted-foreground">แผนประกัน</span>
+              <span className="font-medium">{planName || "—"}</span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">เลขสมาชิก</span>
+              <span className="font-mono text-xs font-medium">{memberId || "—"}</span>
+            </div>
+            {(validFrom || validUntil) && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ระยะเวลาคุ้มครอง</span>
+                <span className="font-medium">{validFrom} — {validUntil}</span>
+              </div>
+            )}
+            {benefits.annualLimit && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">วงเงินคุ้มครองต่อปี</span>
+                <span className="font-bold">{Number(benefits.annualLimit).toLocaleString()} {benefits.annualLimitCurrency || "THB"}</span>
+              </div>
+            )}
+            {copay.percentage && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Copay</span>
+                <span className="font-medium">{copay.percentage}% (สูงสุด {copay.maxPerVisit?.toLocaleString()} บ./ครั้ง)</span>
+              </div>
+            )}
+            {preAuthRequired && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Pre-authorization</span>
+                <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200">ต้องขออนุมัติก่อน</Badge>
+              </div>
+            )}
+            {benefits.directBilling && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Direct Billing</span>
+                <Badge className="bg-emerald-100 text-emerald-800">รองรับ</Badge>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1032,6 +1241,17 @@ function ConsentReceiptCard({ props }: { props: CredentialRendererProps }) {
 function TravelDocumentCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const subject = props.credentialData?.credentialSubject || props.credentialData;
+  const passportNumber = subject?.passportNumber || "";
+  const nationality = subject?.nationality || "";
+  const issuingCountry = subject?.issuingCountry || "";
+  const expiryDate = subject?.expiryDate || "";
+  const verificationStatus = subject?.verificationStatus || "verified";
+  const purposeOfVisit = subject?.purposeOfVisitTh || subject?.purposeOfVisit || "";
+  const visaType = subject?.visaTypeTh || subject?.visaType || "";
+  const verifiedBy = subject?.verifiedByTh || subject?.verifiedBy || "";
+  const mrzLine1 = subject?.mrzLine1 || "";
+  const mrzLine2 = subject?.mrzLine2 || "";
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
@@ -1047,14 +1267,61 @@ function TravelDocumentCard({ props }: { props: CredentialRendererProps }) {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">สถานะการตรวจสอบ</span>
-              <Badge className="bg-emerald-100 text-emerald-800">ผ่านการตรวจสอบ</Badge>
+              <Badge className={verificationStatus === "verified" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}>
+                {verificationStatus === "verified" ? "ผ่านการตรวจสอบ" : "ไม่ผ่าน"}
+              </Badge>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">ประเภท</span>
-              <span className="font-medium">Medical Tourism</span>
-            </div>
+            {passportNumber && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">เลขหนังสือเดินทาง</span>
+                <span className="font-mono font-bold">{passportNumber}</span>
+              </div>
+            )}
+            {nationality && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">สัญชาติ</span>
+                <span className="font-medium">{nationality}</span>
+              </div>
+            )}
+            {issuingCountry && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ประเทศที่ออก</span>
+                <span className="font-medium">{issuingCountry}</span>
+              </div>
+            )}
+            {expiryDate && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">วันหมดอายุ</span>
+                <span className="font-medium">{expiryDate}</span>
+              </div>
+            )}
+            {visaType && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ประเภทวีซ่า</span>
+                <span className="font-medium">{visaType}</span>
+              </div>
+            )}
+            {purposeOfVisit && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">วัตถุประสงค์</span>
+                <span className="font-medium">{purposeOfVisit}</span>
+              </div>
+            )}
+            {verifiedBy && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ตรวจสอบโดย</span>
+                <span className="font-medium">{verifiedBy}</span>
+              </div>
+            )}
           </div>
         </div>
+
+        {(mrzLine1 || mrzLine2) && (
+          <div className="bg-slate-900 rounded-lg p-3 font-mono text-xs text-green-400 space-y-0.5">
+            {mrzLine1 && <p>{mrzLine1}</p>}
+            {mrzLine2 && <p>{mrzLine2}</p>}
+          </div>
+        )}
 
         <Separator />
         <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
@@ -1068,6 +1335,27 @@ function ClaimCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
   const isReceipt = props.type === "claim_receipt";
+  const subject = props.credentialData?.credentialSubject || props.credentialData;
+
+  // Claim Package fields
+  const claimRef = subject?.claimRef || "";
+  const claimStatus = subject?.claimStatus || "submitted";
+  const claimType = subject?.claimType || "opd";
+  const totalAmount = subject?.totalAmount || 0;
+  const currency = subject?.currency || "THB";
+  const serviceItems: any[] = subject?.serviceItems || [];
+  const diagnosisCodes: string[] = subject?.diagnosisCodes || [];
+
+  // Claim Receipt fields
+  const adjudicationOutcome = subject?.adjudicationOutcome || "approved";
+  const totalClaimed = subject?.totalClaimed || 0;
+  const approvedAmount = subject?.approvedAmount || 0;
+  const patientResponsibility = subject?.patientResponsibility || 0;
+  const breakdown: any[] = subject?.breakdown || [];
+  const paymentMethod = subject?.paymentMethod || "";
+  const paymentStatus = subject?.paymentStatus || "";
+  const receiptNo = subject?.receiptNo || "";
+  const invoiceNo = subject?.invoiceNo || "";
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
@@ -1087,16 +1375,96 @@ function ClaimCard({ props }: { props: CredentialRendererProps }) {
             <FileText className="h-3.5 w-3.5" /> {isReceipt ? "ข้อมูลการตอบรับ" : "ข้อมูลเคลม"}
           </p>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">สถานะ</span>
-              <Badge className="bg-emerald-100 text-emerald-800">{isReceipt ? "ตอบรับแล้ว" : "ส่งเรียบร้อย"}</Badge>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">วันที่ดำเนินการ</span>
-              <span className="font-medium">{formatThaiDate(props.issuedAt)}</span>
-            </div>
+            {claimRef && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">เลขอ้างอิงเคลม</span>
+                <span className="font-mono text-xs font-medium">{claimRef}</span>
+              </div>
+            )}
+            {isReceipt ? (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ผลการพิจารณา</span>
+                  <Badge className={adjudicationOutcome === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}>
+                    {adjudicationOutcome === "approved" ? "อนุมัติ" : "ปฏิเสธ"}
+                  </Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ยอดเคลมทั้งหมด</span>
+                  <span className="font-medium">{Number(totalClaimed).toLocaleString()} {currency}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ยอดอนุมัติ</span>
+                  <span className="font-bold text-emerald-700">{Number(approvedAmount).toLocaleString()} {currency}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ส่วนผู้ป่วยรับผิดชอบ</span>
+                  <span className="font-medium text-orange-700">{Number(patientResponsibility).toLocaleString()} {currency}</span>
+                </div>
+                {paymentMethod && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ช่องทางชำระ</span>
+                    <span className="font-medium">{paymentMethod === "direct_billing" ? "Direct Billing" : paymentMethod}</span>
+                  </div>
+                )}
+                {paymentStatus && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">สถานะการชำระ</span>
+                    <Badge className="bg-emerald-100 text-emerald-800">{paymentStatus === "paid" ? "ชำระแล้ว" : paymentStatus}</Badge>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">สถานะ</span>
+                  <Badge className="bg-blue-100 text-blue-800">{claimStatus === "submitted" ? "ส่งแล้ว" : claimStatus}</Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ประเภท</span>
+                  <span className="font-medium">{claimType === "opd" ? "OPD" : claimType === "ipd" ? "IPD" : claimType}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ยอดรวม</span>
+                  <span className="font-bold">{Number(totalAmount).toLocaleString()} {currency}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
+
+        {/* Service Items or Breakdown */}
+        {!isReceipt && serviceItems.length > 0 && (
+          <div className="bg-muted/30 rounded-xl p-4">
+            <p className="text-xs font-semibold text-muted-foreground mb-2">รายการบริการ</p>
+            <div className="space-y-1.5">
+              {serviceItems.map((item: any, i: number) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span>{item.description || item.descriptionEn}</span>
+                  <span className="font-medium">{Number(item.amount).toLocaleString()} {currency}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {isReceipt && breakdown.length > 0 && (
+          <div className="bg-muted/30 rounded-xl p-4">
+            <p className="text-xs font-semibold text-muted-foreground mb-2">รายละเอียดการพิจารณา</p>
+            <div className="space-y-1.5">
+              {breakdown.map((item: any, i: number) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <span>{item.category || item.categoryEn}</span>
+                  <span className="font-medium">
+                    <span className="text-muted-foreground">{Number(item.claimed).toLocaleString()}</span>
+                    {" "}→{" "}
+                    <span className="text-emerald-700">{Number(item.approved).toLocaleString()}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <Separator />
         <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
@@ -1109,6 +1477,15 @@ function ClaimCard({ props }: { props: CredentialRendererProps }) {
 function MpiLinkCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
+  const subject = props.credentialData?.credentialSubject || props.credentialData;
+  const linkStatus = subject?.linkStatus || "active";
+  const goldenRecordId = subject?.goldenRecordId || "";
+  const linkConfidence = subject?.linkConfidence || "high";
+  const crossReferenceCount = subject?.crossReferenceCount || 0;
+  const linkedIdentifiers: any[] = subject?.linkedIdentifiers || [];
+  const matchAlgorithm = subject?.matchAlgorithm || "";
+  const linkedBy = subject?.linkedBy || "";
+  const lastVerifiedAt = subject?.lastVerifiedAt || "";
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
@@ -1124,18 +1501,52 @@ function MpiLinkCard({ props }: { props: CredentialRendererProps }) {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">สถานะ</span>
-              <Badge className="bg-emerald-100 text-emerald-800">เชื่อมโยงสำเร็จ</Badge>
+              <Badge className={linkStatus === "active" ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}>
+                {linkStatus === "active" ? "เชื่อมโยงสำเร็จ" : linkStatus}
+              </Badge>
+            </div>
+            {goldenRecordId && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Golden Record ID</span>
+                <span className="font-mono text-xs font-medium">{goldenRecordId}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">ความเชื่อมั่น</span>
+              <Badge variant="outline" className="bg-cyan-50 text-cyan-800 border-cyan-200">{linkConfidence}</Badge>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">CarePass ID</span>
-              <span className="font-mono text-xs font-medium">{renderData.patient.carepassId || "—"}</span>
+              <span className="text-muted-foreground">จำนวนการอ้างอิงข้าม</span>
+              <span className="font-medium">{crossReferenceCount} รายการ</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">HN ต้นทาง</span>
-              <span className="font-mono text-xs font-medium">{renderData.patient.hn || "—"}</span>
-            </div>
+            {matchAlgorithm && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">วิธีการจับคู่</span>
+                <span className="text-xs">{matchAlgorithm.replace(/_/g, " ")}</span>
+              </div>
+            )}
+            {lastVerifiedAt && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ตรวจสอบล่าสุด</span>
+                <span className="font-medium">{formatThaiDate(lastVerifiedAt)}</span>
+              </div>
+            )}
           </div>
         </div>
+
+        {linkedIdentifiers.length > 0 && (
+          <div className="bg-muted/30 rounded-xl p-4">
+            <p className="text-xs font-semibold text-muted-foreground mb-2">ตัวระบุที่เชื่อมโยง</p>
+            <div className="space-y-1.5">
+              {linkedIdentifiers.map((id: any, i: number) => (
+                <div key={i} className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{id.system?.replace("https://", "")}</span>
+                  <span className="font-mono font-medium">{id.value}{id.isPrimary ? " ★" : ""}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <Separator />
         <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
@@ -1148,8 +1559,8 @@ function MpiLinkCard({ props }: { props: CredentialRendererProps }) {
 function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
-  const clinical = extractClinicalInfo(props.credentialData);
-  
+  const subject = props.credentialData?.credentialSubject || props.credentialData;
+
   const typeConfig: Record<string, { icon: typeof FileText; label: string; color: string }> = {
     sync_receipt: { icon: Activity, label: "ใบตอบรับ Sync ข้อมูล", color: "from-gray-700 to-gray-500" },
     shl_manifest: { icon: FileText, label: "Smart Health Link", color: "from-emerald-700 to-emerald-500" },
@@ -1160,9 +1571,378 @@ function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
     quotation: { icon: CreditCard, label: "ใบเสนอราคา", color: "from-yellow-700 to-yellow-500" },
     guarantee_letter: { icon: Shield, label: "หนังสือค้ำประกัน", color: "from-emerald-800 to-emerald-600" },
   };
-  
+
   const config = typeConfig[props.type] || { icon: FileText, label: props.type.replace(/_/g, " "), color: brand.gradient };
   const Icon = config.icon;
+
+  // Type-specific rendering based on credentialSubject fields
+  const renderTypeSpecificContent = () => {
+    switch (props.type) {
+      case "diagnostic_report": {
+        const reportType = subject?.reportType || "";
+        const conclusion = subject?.conclusionTh || subject?.conclusion || "";
+        const findings: any[] = subject?.findings || [];
+        const imagingModality = subject?.imagingModality || "";
+        const bodyRegion = subject?.bodyRegionTh || subject?.bodyRegion || "";
+        const reportingRadiologist = subject?.reportingRadiologist || {};
+        return (
+          <>
+            <div className="bg-rose-50 border border-rose-100 rounded-xl p-4">
+              <p className="text-xs font-semibold text-rose-800 mb-2 flex items-center gap-1.5">
+                <ClipboardList className="h-3.5 w-3.5" /> รายงานการวินิจฉัย
+              </p>
+              <div className="space-y-2 text-sm">
+                {reportType && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ประเภทรายงาน</span>
+                    <span className="font-medium">{reportType}</span>
+                  </div>
+                )}
+                {imagingModality && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">วิธีตรวจ</span>
+                    <span className="font-medium">{imagingModality}</span>
+                  </div>
+                )}
+                {bodyRegion && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">บริเวณที่ตรวจ</span>
+                    <span className="font-medium">{bodyRegion}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            {findings.length > 0 && (
+              <div className="bg-muted/30 rounded-xl p-4">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">ผลการตรวจ</p>
+                <div className="space-y-1.5">
+                  {findings.map((f: any, i: number) => (
+                    <div key={i} className="flex items-start gap-2 text-sm">
+                      <span className="text-rose-500 mt-0.5">•</span>
+                      <span>{f.descriptionTh || f.description}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {conclusion && (
+              <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+                <p className="text-xs font-semibold text-rose-800 mb-1">สรุปผล</p>
+                <p className="text-sm font-medium">{conclusion}</p>
+              </div>
+            )}
+            {reportingRadiologist?.name && <PractitionerSection practitioner={reportingRadiologist} role="รังสีแพทย์ผู้รายงาน" />}
+          </>
+        );
+      }
+      case "pharmacy_dispense": {
+        const dispensedMedications: any[] = subject?.dispensedMedications || [];
+        const pharmacist = subject?.pharmacist || {};
+        const dispensingDate = subject?.dispensingDate || props.issuedAt;
+        const prescriptionRef = subject?.prescriptionRef || "";
+        const totalItems = subject?.totalItems || dispensedMedications.length;
+        return (
+          <>
+            <div className="bg-teal-50 border border-teal-100 rounded-xl p-4">
+              <p className="text-xs font-semibold text-teal-800 mb-2 flex items-center gap-1.5">
+                <Pill className="h-3.5 w-3.5" /> รายการยาที่จ่าย ({totalItems} รายการ)
+              </p>
+              <div className="space-y-2">
+                {dispensedMedications.map((med: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between bg-white rounded-lg p-3 border border-teal-100">
+                    <div>
+                      <p className="font-medium text-sm">{med.nameTh || med.name}</p>
+                      <p className="text-xs text-muted-foreground">{med.strength} • {med.form}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-sm">{med.quantity} {med.quantityUnit}</p>
+                      {med.instructions && <p className="text-[10px] text-muted-foreground">{med.instructions}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {prescriptionRef && (
+              <div className="text-xs text-muted-foreground">อ้างอิงใบสั่งยา: {prescriptionRef}</div>
+            )}
+            {pharmacist?.name && <PractitionerSection practitioner={pharmacist} role="เภสัชกรผู้จ่ายยา" />}
+          </>
+        );
+      }
+      case "appointment": {
+        const appointmentDate = subject?.appointmentDate || "";
+        const appointmentTime = subject?.appointmentTime || "";
+        const department = subject?.departmentTh || subject?.department || "";
+        const appointmentType = subject?.appointmentTypeTh || subject?.appointmentType || "";
+        const practitioner = subject?.practitioner || {};
+        const appointmentStatus = subject?.appointmentStatus || "booked";
+        const instructions = subject?.instructionsTh || subject?.instructions || "";
+        const location = subject?.locationTh || subject?.location || "";
+        return (
+          <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+            <p className="text-xs font-semibold text-purple-800 mb-2 flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" /> รายละเอียดการนัดหมาย
+            </p>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">สถานะ</span>
+                <Badge className={appointmentStatus === "booked" ? "bg-purple-100 text-purple-800" : "bg-emerald-100 text-emerald-800"}>
+                  {appointmentStatus === "booked" ? "ยืนยัน" : appointmentStatus}
+                </Badge>
+              </div>
+              {appointmentDate && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">วันที่นัด</span>
+                  <span className="font-bold">{formatThaiDate(appointmentDate)}</span>
+                </div>
+              )}
+              {appointmentTime && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">เวลา</span>
+                  <span className="font-bold">{appointmentTime} น.</span>
+                </div>
+              )}
+              {department && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">แผนก</span>
+                  <span className="font-medium">{department}</span>
+                </div>
+              )}
+              {appointmentType && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ประเภท</span>
+                  <span className="font-medium">{appointmentType}</span>
+                </div>
+              )}
+              {location && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">สถานที่</span>
+                  <span className="font-medium">{location}</span>
+                </div>
+              )}
+              {practitioner?.name && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">แพทย์</span>
+                  <span className="font-medium">{practitioner.name}</span>
+                </div>
+              )}
+              {instructions && (
+                <div className="mt-2 pt-2 border-t border-purple-100">
+                  <p className="text-xs text-purple-700">คำแนะนำ: {instructions}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+      case "visa_support_letter": {
+        const treatmentPlan = subject?.treatmentPlanTh || subject?.treatmentPlan || "";
+        const estimatedStay = subject?.estimatedStay || "";
+        const estimatedCost = subject?.estimatedCost || 0;
+        const costCurrency = subject?.costCurrency || "THB";
+        const attendingDoctor = subject?.attendingDoctor || {};
+        const medicalCondition = subject?.medicalConditionTh || subject?.medicalCondition || "";
+        const travelDates = subject?.travelDates || {};
+        const embassy = subject?.targetEmbassy || "";
+        return (
+          <>
+            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+              <p className="text-xs font-semibold text-blue-800 mb-2 flex items-center gap-1.5">
+                <Plane className="h-3.5 w-3.5" /> รายละเอียดหนังสือรับรอง
+              </p>
+              <div className="space-y-2 text-sm">
+                {medicalCondition && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">อาการ/โรค</span>
+                    <span className="font-medium">{medicalCondition}</span>
+                  </div>
+                )}
+                {treatmentPlan && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">แผนการรักษา</span>
+                    <span className="font-medium">{treatmentPlan}</span>
+                  </div>
+                )}
+                {estimatedStay && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ระยะเวลาพักรักษา</span>
+                    <span className="font-medium">{estimatedStay}</span>
+                  </div>
+                )}
+                {estimatedCost > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ค่าใช้จ่ายประมาณการ</span>
+                    <span className="font-bold">{Number(estimatedCost).toLocaleString()} {costCurrency}</span>
+                  </div>
+                )}
+                {travelDates?.from && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ช่วงเวลา</span>
+                    <span className="font-medium">{travelDates.from} — {travelDates.to || ""}</span>
+                  </div>
+                )}
+                {embassy && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">สถานทูต</span>
+                    <span className="font-medium">{embassy}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            {attendingDoctor?.name && <PractitionerSection practitioner={attendingDoctor} role="แพทย์ผู้รับรอง" />}
+          </>
+        );
+      }
+      case "quotation": {
+        const treatmentPackage = subject?.treatmentPackageTh || subject?.treatmentPackage || "";
+        const items: any[] = subject?.items || [];
+        const totalEstimate = subject?.totalEstimate || 0;
+        const qCurrency = subject?.currency || "THB";
+        const validityDays = subject?.validityDays || 30;
+        const paymentTerms = subject?.paymentTermsTh || subject?.paymentTerms || "";
+        const inclusions: string[] = subject?.inclusions || [];
+        const exclusions: string[] = subject?.exclusions || [];
+        return (
+          <>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+              <p className="text-xs font-semibold text-yellow-800 mb-2 flex items-center gap-1.5">
+                <CreditCard className="h-3.5 w-3.5" /> ใบเสนอราคาการรักษา
+              </p>
+              <div className="space-y-2 text-sm">
+                {treatmentPackage && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">แพ็คเกจการรักษา</span>
+                    <span className="font-medium">{treatmentPackage}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ราคารวมประมาณการ</span>
+                  <span className="font-bold text-lg">{Number(totalEstimate).toLocaleString()} {qCurrency}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ใช้ได้ภายใน</span>
+                  <span className="font-medium">{validityDays} วัน</span>
+                </div>
+                {paymentTerms && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">เงื่อนไขการชำระ</span>
+                    <span className="font-medium">{paymentTerms}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            {items.length > 0 && (
+              <div className="bg-muted/30 rounded-xl p-4">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">รายการ</p>
+                <div className="space-y-1.5">
+                  {items.map((item: any, i: number) => (
+                    <div key={i} className="flex justify-between text-sm">
+                      <span>{item.descriptionTh || item.description}</span>
+                      <span className="font-medium">{Number(item.amount).toLocaleString()} {qCurrency}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(inclusions.length > 0 || exclusions.length > 0) && (
+              <div className="grid grid-cols-2 gap-3">
+                {inclusions.length > 0 && (
+                  <div className="bg-emerald-50 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-emerald-800 mb-1">รวม</p>
+                    {inclusions.map((inc, i) => <p key={i} className="text-xs text-emerald-700">✓ {inc}</p>)}
+                  </div>
+                )}
+                {exclusions.length > 0 && (
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-red-800 mb-1">ไม่รวม</p>
+                    {exclusions.map((exc, i) => <p key={i} className="text-xs text-red-700">✗ {exc}</p>)}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        );
+      }
+      case "guarantee_letter": {
+        const guaranteeAmount = subject?.guaranteeAmount || 0;
+        const gCurrency = subject?.currency || "THB";
+        const beneficiary = subject?.beneficiary || {};
+        const guarantor = subject?.guarantor || {};
+        const guaranteeType = subject?.guaranteeTypeTh || subject?.guaranteeType || "";
+        const coverageScope = subject?.coverageScopeTh || subject?.coverageScope || "";
+        const conditions: string[] = subject?.conditions || [];
+        const validFrom = subject?.validFrom || "";
+        const validUntil = subject?.validUntil || "";
+        const authorizedBy = subject?.authorizedBy || {};
+        return (
+          <>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+              <p className="text-xs font-semibold text-emerald-800 mb-2 flex items-center gap-1.5">
+                <Shield className="h-3.5 w-3.5" /> รายละเอียดหนังสือค้ำประกัน
+              </p>
+              <div className="space-y-2 text-sm">
+                {guaranteeType && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ประเภท</span>
+                    <span className="font-medium">{guaranteeType}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">วงเงินค้ำประกัน</span>
+                  <span className="font-bold text-lg text-emerald-800">{Number(guaranteeAmount).toLocaleString()} {gCurrency}</span>
+                </div>
+                {beneficiary?.name && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ผู้รับผลประโยชน์</span>
+                    <span className="font-medium">{beneficiary.name}</span>
+                  </div>
+                )}
+                {guarantor?.name && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ผู้ค้ำประกัน</span>
+                    <span className="font-medium">{guarantor.name}</span>
+                  </div>
+                )}
+                {coverageScope && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ขอบเขตความคุ้มครอง</span>
+                    <span className="font-medium">{coverageScope}</span>
+                  </div>
+                )}
+                {(validFrom || validUntil) && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ระยะเวลา</span>
+                    <span className="font-medium">{validFrom} — {validUntil}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            {conditions.length > 0 && (
+              <div className="bg-muted/30 rounded-xl p-4">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">เงื่อนไข</p>
+                <div className="space-y-1">
+                  {conditions.map((c, i) => <p key={i} className="text-xs text-muted-foreground">{i + 1}. {c}</p>)}
+                </div>
+              </div>
+            )}
+            {authorizedBy?.name && <PractitionerSection practitioner={authorizedBy} role="ผู้อนุมัติ" />}
+          </>
+        );
+      }
+      default:
+        return (
+          <div className="bg-muted/30 border border-border rounded-xl p-4">
+            <div className="flex items-center gap-2 text-sm">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <span className="font-medium">เอกสารนี้ได้รับการรับรองโดย {renderData.hospital.nameTh || brand.logo}</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1.5">
+              ออกเมื่อ {formatThaiDate(props.issuedAt)} — ตรวจสอบความถูกต้องได้ผ่าน QR Code
+            </p>
+          </div>
+        );
+    }
+  };
 
   return (
     <Card className="overflow-hidden border-0 shadow-2xl rounded-2xl">
@@ -1170,26 +1950,8 @@ function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
       <CardContent className="p-6 space-y-4">
         <PatientInfoSection renderData={renderData} />
         <Separator />
-
-        {/* Show clinical info if available */}
-        {(clinical.conditions?.length > 0 || clinical.allergies?.length > 0 || clinical.medicationsList?.length > 0) && (
-          <>
-            <ClinicalSummarySection conditions={clinical.conditions} allergies={clinical.allergies} medications={clinical.medicationsList} />
-            <Separator />
-          </>
-        )}
-
-        {/* Simple status card for generic types */}
-        <div className="bg-muted/30 border border-border rounded-xl p-4">
-          <div className="flex items-center gap-2 text-sm">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            <span className="font-medium">เอกสารนี้ได้รับการรับรองโดย {renderData.hospital.nameTh || brand.logo}</span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1.5">
-            ออกเมื่อ {formatThaiDate(props.issuedAt)} — ตรวจสอบความถูกต้องได้ผ่าน QR Code
-          </p>
-        </div>
-
+        {renderTypeSpecificContent()}
+        <Separator />
         <DocumentFooter issuedAt={props.issuedAt} expiresAt={props.expiresAt} documentNo={renderData.document.no} />
       </CardContent>
     </Card>

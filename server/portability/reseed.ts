@@ -32,6 +32,7 @@ import type { ConsentPurpose, IssuedVc, IssuerProfile, JsonRecord, PortabilityCo
 import { consentReceiptClaims, createPresentation, issueCredential, medicalCertificateClaims, patientSummaryClaims, prescriptionClaims } from "./vc";
 import { generateTrustcareDemoSeed, sourceTruthConnectors, TRUSTCARE_DEMO_HOSPITALS } from "./seedData";
 import { sha256 } from "./utils";
+import { defaultPatientImage, type PersonGender } from "../../shared/personImages";
 
 const SEED_PREFIX = "urn:trustcare:seed";
 const SEED_ISSUED_AT = new Date("2026-07-01T02:00:00.000Z");
@@ -984,6 +985,7 @@ function buildPatientBlock(patient: JsonRecord): import("./vc").PatientBlock {
     hn: String(patient.hn ?? ""),
     phone: String(patient.phone ?? ""),
     email: String(patient.email ?? ""),
+    avatarUrl: defaultPatientImage(String(patient.gender) as PersonGender),
   };
 }
 
@@ -1252,25 +1254,20 @@ function claimsForDocument(document: JsonRecord, patient: JsonRecord, canonical:
       expiresAt: new Date(SEED_ISSUED_AT.getTime() + 180 * 86400000).toISOString(),
     });
   }
-  return {
+
+  // Deterministic pick helpers based on patient+hospital+type
+  const seed = sha256(String(patient.seedId) + String(document.hospitalCode) + type);
+  const pick = <T>(arr: T[]): T => arr[parseInt(seed.slice(0, 4), 16) % arr.length];
+  const pickIdx = (max: number): number => parseInt(seed.slice(4, 8), 16) % max;
+
+  // Shared base fields for all type-specific claims
+  const base = {
     documentType: type,
     documentNo: document.documentNo,
     documentHash: document.documentHash,
     brand: "TrustCare",
-    label: "TrustCare Verified Health Document",
     fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
-    patient: {
-      id: patient.patientRef,
-      holderDid: patient.holderDid,
-      hn: patient.hn,
-      carepassId: patient.carepassId,
-      nameTh: patient.nameTh,
-      nameEn: patient.nameEn,
-      birthDate: patient.birthDate,
-      nationality: patient.nationality,
-    },
     organization: seedOrganization(patient),
-    clinical: clinicalFactsForPatient(patient),
     fhir: {
       resourceType: primaryFhirResource(type),
       bundleHash: canonical.summary.bundleHash,
@@ -1283,6 +1280,629 @@ function claimsForDocument(document: JsonRecord, patient: JsonRecord, canonical:
       canonicalReviewRequired: true,
       dataConsistency: "source-of-truth-bound",
     },
+  };
+
+  // ─── Type-Specific Claims ─────────────────────────────────────────────────
+
+  if (type === "patient_identity") {
+    return {
+      ...base,
+      identityType: "patient_card",
+      idCardNo: patient.thaiIdHash ? `*****${String(patient.thaiIdHash).slice(-4)}` : undefined,
+      passport: patient.passport,
+      nationality: patient.nationality ?? "THA",
+      bloodType: pick(["A+", "B+", "O+", "AB+", "A-", "O-"]),
+      emergencyContact: {
+        name: patient.nationality === "THA" ? "นางสมศรี ใจดี" : "Jane Williams",
+        relationship: patient.nationality === "THA" ? "มารดา" : "Spouse",
+        phone: patient.nationality === "THA" ? "081-234-5678" : "+1-555-0199",
+      },
+      issuedFacility: seedOrganization(patient),
+      practitioner: seedPractitioner(patient.hospitalCode),
+    };
+  }
+
+  if (type === "allergy_alert") {
+    const allergies = (patient.allergies ?? []).map((item: string) => {
+      const severity = item.toLowerCase().includes("severe") ? "high" : item.toLowerCase().includes("moderate") ? "moderate" : "low";
+      const reactionMap: Record<string, string> = { "penicillin": "Anaphylaxis", "sulfonamide": "Skin rash", "nsaid": "Bronchospasm", "iodinated": "Urticaria", "latex": "Contact dermatitis", "aspirin": "GI bleeding" };
+      const substance = item.split(" ")[0];
+      const reaction = Object.entries(reactionMap).find(([k]) => item.toLowerCase().includes(k))?.[1] ?? "Allergic reaction";
+      return {
+        substance,
+        severity,
+        reaction,
+        reactionTh: severity === "high" ? "แพ้รุนแรง" : severity === "moderate" ? "แพ้ปานกลาง" : "แพ้เล็กน้อย",
+        onsetDate: "2020-03-15",
+        verifiedBy: seedPractitioner(patient.hospitalCode).name,
+        clinicalStatus: "active",
+        verificationStatus: "confirmed",
+        category: "medication",
+        criticality: severity === "high" ? "high" : "low",
+      };
+    });
+    return {
+      ...base,
+      alertType: "allergy_intolerance",
+      alertLevel: allergies.some((a: JsonRecord) => a.severity === "high") ? "critical" : "warning",
+      allergies,
+      totalAllergyCount: allergies.length,
+      lastReviewedDate: "2026-06-15",
+      reviewedBy: seedPractitioner(patient.hospitalCode),
+      clinicalNote: allergies.some((a: JsonRecord) => a.severity === "high")
+        ? "ผู้ป่วยมีประวัติแพ้ยารุนแรง กรุณาตรวจสอบก่อนสั่งยาทุกครั้ง"
+        : "ผู้ป่วยมีประวัติแพ้ยา กรุณาระวังการสั่งยาในกลุ่มเดียวกัน",
+    };
+  }
+
+  if (type === "medication_summary") {
+    const medications = (patient.conditions ?? []).map((code: string) => {
+      const medMap: Record<string, { code: string; name: string; nameTh: string; dose: string; frequency: string; route: string }> = {
+        E11: { code: "TMT-MET-500", name: "Metformin 500mg", nameTh: "เมทฟอร์มิน 500 มก.", dose: "500mg", frequency: "วันละ 2 ครั้ง หลังอาหาร", route: "oral" },
+        I10: { code: "TMT-AML-5", name: "Amlodipine 5mg", nameTh: "แอมโลดิปีน 5 มก.", dose: "5mg", frequency: "วันละ 1 ครั้ง เช้า", route: "oral" },
+        J45: { code: "TMT-SAL-INH", name: "Salbutamol inhaler", nameTh: "ซัลบูทามอล สูดพ่น", dose: "2 puffs", frequency: "เมื่อมีอาการ", route: "inhalation" },
+        "M17.1": { code: "TMT-CEL-200", name: "Celecoxib 200mg", nameTh: "เซเลค็อกซิบ 200 มก.", dose: "200mg", frequency: "วันละ 1 ครั้ง", route: "oral" },
+        M16: { code: "TMT-CEL-200", name: "Celecoxib 200mg", nameTh: "เซเลค็อกซิบ 200 มก.", dose: "200mg", frequency: "วันละ 1 ครั้ง", route: "oral" },
+        "N18.2": { code: "TMT-FEB-40", name: "Febuxostat 40mg", nameTh: "เฟบูโซสแตท 40 มก.", dose: "40mg", frequency: "วันละ 1 ครั้ง", route: "oral" },
+        Z23: { code: "TMT-PARA-500", name: "Paracetamol 500mg", nameTh: "พาราเซตามอล 500 มก.", dose: "500mg", frequency: "เมื่อมีไข้", route: "oral" },
+        A09: { code: "TMT-ORS", name: "ORS solution", nameTh: "ผงเกลือแร่", dose: "1 ซอง", frequency: "ทุก 4 ชั่วโมง", route: "oral" },
+      };
+      const med = medMap[code] ?? { code: "TMT-PARA-500", name: "Paracetamol 500mg", nameTh: "พาราเซตามอล 500 มก.", dose: "500mg", frequency: "เมื่อมีอาการ", route: "oral" };
+      return { ...med, status: "active", startDate: "2025-01-15", prescriber: seedPractitioner(patient.hospitalCode).name };
+    });
+    return {
+      ...base,
+      summaryType: "current_medication_list",
+      medications,
+      totalMedicationCount: medications.length,
+      lastReconciledDate: "2026-06-28",
+      reconciledBy: seedPractitioner(patient.hospitalCode),
+      adherenceNote: "ผู้ป่วยรับประทานยาสม่ำเสมอ",
+      nextReviewDate: "2026-09-01",
+    };
+  }
+
+  if (type === "referral_vc") {
+    const departments = ["อายุรกรรม", "ศัลยกรรม", "ออร์โธปิดิกส์", "หู คอ จมูก", "จักษุ", "รังสีวิทยา"];
+    const departmentsEn = ["Internal Medicine", "Surgery", "Orthopedics", "ENT", "Ophthalmology", "Radiology"];
+    const deptIdx = pickIdx(departments.length);
+    const referToHospital = pick(TRUSTCARE_DEMO_HOSPITALS.filter((h) => h.code !== patient.hospitalCode));
+    return {
+      ...base,
+      referralType: "outpatient_referral",
+      priority: pick(["routine", "urgent", "semi-urgent"]),
+      referringPractitioner: seedPractitioner(patient.hospitalCode),
+      referringDepartment: { nameTh: pick(departments), nameEn: pick(departmentsEn) },
+      receivingFacility: {
+        code: referToHospital.code,
+        nameTh: referToHospital.nameTh,
+        nameEn: referToHospital.nameEn,
+        hcode: referToHospital.hcode,
+      },
+      receivingDepartment: { nameTh: departments[deptIdx], nameEn: departmentsEn[deptIdx] },
+      reasonForReferral: diagnosisForPatient(patient),
+      reasonForReferralTh: `ส่งต่อเพื่อรักษาต่อเนื่อง - ${diagnosisForPatient(patient)}`,
+      clinicalSummary: {
+        chiefComplaint: diagnosisForPatient(patient),
+        currentMedications: [{ name: medicationNameForPatient(patient), code: medicationCodeForPatient(patient) }],
+        allergies: patient.allergies ?? [],
+        relevantHistory: `Patient diagnosed with ${diagnosisForPatient(patient)}, currently on ${medicationNameForPatient(patient)}`,
+      },
+      requestedServices: ["Specialist consultation", "Treatment plan review"],
+      referralDate: SEED_ISSUED_AT.toISOString(),
+      validUntil: new Date(SEED_ISSUED_AT.getTime() + 30 * 86400000).toISOString(),
+      transportMode: "self",
+    };
+  }
+
+  if (type === "lab_result") {
+    const labPanels = [
+      { code: "4548-4", name: "HbA1c", nameTh: "ฮีโมโกลบิน เอวันซี", value: "7.4", unit: "%", refRange: "4.0-5.6", interpretation: "high", category: "chemistry" },
+      { code: "2345-7", name: "FBS", nameTh: "น้ำตาลในเลือด (อดอาหาร)", value: "142", unit: "mg/dL", refRange: "70-100", interpretation: "high", category: "chemistry" },
+      { code: "2160-0", name: "Creatinine", nameTh: "ครีเอตินีน", value: "1.8", unit: "mg/dL", refRange: "0.7-1.3", interpretation: "high", category: "chemistry" },
+      { code: "6690-2", name: "WBC", nameTh: "เม็ดเลือดขาว", value: "8200", unit: "cells/uL", refRange: "4500-11000", interpretation: "normal", category: "hematology" },
+      { code: "718-7", name: "Hemoglobin", nameTh: "ฮีโมโกลบิน", value: "13.5", unit: "g/dL", refRange: "12.0-16.0", interpretation: "normal", category: "hematology" },
+      { code: "2093-3", name: "Total Cholesterol", nameTh: "คอเลสเตอรอลรวม", value: "228", unit: "mg/dL", refRange: "<200", interpretation: "high", category: "chemistry" },
+    ];
+    const conditions = patient.conditions ?? [];
+    let selectedLabs = labPanels.slice(3, 5); // default: CBC
+    if (conditions.includes("E11")) selectedLabs = labPanels.slice(0, 2); // HbA1c + FBS
+    if (conditions.includes("N18.2")) selectedLabs = [labPanels[2], labPanels[4]]; // Creatinine + Hb
+    if (conditions.includes("I10")) selectedLabs = [labPanels[5], labPanels[0]]; // Cholesterol + HbA1c
+    return {
+      ...base,
+      reportType: "laboratory_report",
+      specimen: {
+        type: "Venous blood",
+        typeTh: "เลือดดำ",
+        collectedAt: new Date(SEED_ISSUED_AT.getTime() - 2 * 3600000).toISOString(),
+        receivedAt: new Date(SEED_ISSUED_AT.getTime() - 1.5 * 3600000).toISOString(),
+        accessionNo: `LAB-${patient.hospitalCode}-${seed.slice(0, 8).toUpperCase()}`,
+      },
+      observations: selectedLabs.map((lab) => ({
+        loincCode: lab.code,
+        name: lab.name,
+        nameTh: lab.nameTh,
+        value: lab.value,
+        unit: lab.unit,
+        referenceRange: lab.refRange,
+        interpretation: lab.interpretation,
+        category: lab.category,
+        status: "final",
+      })),
+      reportStatus: "final",
+      reportedAt: SEED_ISSUED_AT.toISOString(),
+      performedBy: { name: "นักเทคนิคการแพทย์ ปราณี วงศ์สุข", nameEn: "MT. Pranee Wongsuk", licenseNo: "MT-TH-54321" },
+      verifiedBy: seedPractitioner(patient.hospitalCode),
+      orderingPractitioner: seedPractitioner(patient.hospitalCode),
+      clinicalNote: selectedLabs.some((l) => l.interpretation === "high")
+        ? "พบค่าผิดปกติ กรุณาติดตามผลกับแพทย์"
+        : "ผลตรวจปกติ",
+    };
+  }
+
+  if (type === "diagnostic_report") {
+    const modalities = [
+      { code: "X-RAY", name: "Chest X-ray", nameTh: "เอกซเรย์ทรวงอก", bodyPart: "Chest", bodyPartTh: "ทรวงอก" },
+      { code: "CT", name: "CT Abdomen", nameTh: "ซีทีสแกนช่องท้อง", bodyPart: "Abdomen", bodyPartTh: "ช่องท้อง" },
+      { code: "MRI", name: "MRI Knee", nameTh: "เอ็มอาร์ไอ เข่า", bodyPart: "Knee", bodyPartTh: "เข่า" },
+      { code: "US", name: "Ultrasound Abdomen", nameTh: "อัลตราซาวด์ช่องท้อง", bodyPart: "Abdomen", bodyPartTh: "ช่องท้อง" },
+    ];
+    const conditions = patient.conditions ?? [];
+    let selectedModality = modalities[0];
+    if (conditions.includes("M17.1") || conditions.includes("M16")) selectedModality = modalities[2];
+    if (conditions.includes("N18.2")) selectedModality = modalities[3];
+    if (conditions.includes("J45")) selectedModality = modalities[0];
+    return {
+      ...base,
+      reportType: "diagnostic_imaging_report",
+      modality: selectedModality.code,
+      studyName: selectedModality.name,
+      studyNameTh: selectedModality.nameTh,
+      bodyPart: selectedModality.bodyPart,
+      bodyPartTh: selectedModality.bodyPartTh,
+      studyDate: new Date(SEED_ISSUED_AT.getTime() - 24 * 3600000).toISOString(),
+      accessionNo: `IMG-${patient.hospitalCode}-${seed.slice(0, 8).toUpperCase()}`,
+      findings: `No acute abnormality detected in ${selectedModality.bodyPart.toLowerCase()}. Normal study.`,
+      findingsTh: `ไม่พบความผิดปกติเฉียบพลันใน${selectedModality.bodyPartTh} ผลปกติ`,
+      conclusion: "Normal study. No significant abnormality.",
+      conclusionTh: "ผลการตรวจปกติ ไม่พบความผิดปกติที่สำคัญ",
+      reportingRadiologist: { name: "นพ. เกรียงไกร ศรีสมบูรณ์", nameEn: "Dr. Kriangkrai Srisomboon", licenseNo: "MD-TH-67890" },
+      orderingPractitioner: seedPractitioner(patient.hospitalCode),
+      clinicalIndication: diagnosisForPatient(patient),
+      urgency: "routine",
+    };
+  }
+
+  if (type === "discharge_summary") {
+    const admitDate = new Date(SEED_ISSUED_AT.getTime() - 5 * 86400000);
+    return {
+      ...base,
+      summaryType: "inpatient_discharge",
+      admissionDate: admitDate.toISOString(),
+      dischargeDate: SEED_ISSUED_AT.toISOString(),
+      lengthOfStay: 5,
+      ward: pick(["อายุรกรรมชาย 1", "อายุรกรรมหญิง 2", "ศัลยกรรม 3"]),
+      wardEn: pick(["Male Medicine Ward 1", "Female Medicine Ward 2", "Surgical Ward 3"]),
+      admittingDiagnosis: diagnosisForPatient(patient),
+      dischargeDiagnosis: diagnosisForPatient(patient),
+      principalProcedure: patient.conditions?.includes("E11") ? "Blood glucose monitoring" : "Supportive care",
+      attendingPhysician: seedPractitioner(patient.hospitalCode),
+      dischargeCondition: "improved",
+      dischargeConditionTh: "อาการดีขึ้น",
+      dischargeMedications: [{ name: medicationNameForPatient(patient), code: medicationCodeForPatient(patient), instructions: "รับประทานต่อเนื่องตามแพทย์สั่ง" }],
+      followUpInstructions: "นัดตรวจติดตามอาการ 2 สัปดาห์",
+      followUpInstructionsEn: "Follow-up appointment in 2 weeks",
+      followUpDate: new Date(SEED_ISSUED_AT.getTime() + 14 * 86400000).toISOString(),
+      dietaryAdvice: "รับประทานอาหารอ่อน หลีกเลี่ยงอาหารรสจัด",
+      activityRestrictions: "งดยกของหนักเกิน 5 กก. เป็นเวลา 2 สัปดาห์",
+    };
+  }
+
+  if (type === "immunization") {
+    const vaccines = [
+      { code: "CVX-208", name: "COVID-19 mRNA (Pfizer-BioNTech)", nameTh: "วัคซีนโควิด-19 ไฟเซอร์", manufacturer: "Pfizer-BioNTech", lotNo: "FN7890", doseNumber: 3, series: "Primary + Booster" },
+      { code: "CVX-141", name: "Influenza (Quadrivalent)", nameTh: "วัคซีนไข้หวัดใหญ่ 4 สายพันธุ์", manufacturer: "Sanofi Pasteur", lotNo: "U3456A", doseNumber: 1, series: "Annual" },
+      { code: "CVX-110", name: "Hepatitis B (Recombinant)", nameTh: "วัคซีนตับอักเสบบี", manufacturer: "GSK", lotNo: "AHBV2026", doseNumber: 2, series: "3-dose series" },
+      { code: "CVX-115", name: "Tetanus-Diphtheria (Td)", nameTh: "วัคซีนบาดทะยัก-คอตีบ", manufacturer: "bioCSL", lotNo: "TD2026B", doseNumber: 1, series: "Booster" },
+      { code: "CVX-137", name: "HPV (Gardasil 9)", nameTh: "วัคซีนเอชพีวี 9 สายพันธุ์", manufacturer: "Merck", lotNo: "HPV9-2026", doseNumber: 2, series: "2-dose series" },
+    ];
+    const selectedVaccine = patient.conditions?.includes("Z23") ? vaccines[pickIdx(vaccines.length)] : vaccines[0];
+    return {
+      ...base,
+      immunizationType: "vaccination_record",
+      vaccine: {
+        cvxCode: selectedVaccine.code,
+        name: selectedVaccine.name,
+        nameTh: selectedVaccine.nameTh,
+        manufacturer: selectedVaccine.manufacturer,
+        lotNumber: selectedVaccine.lotNo,
+        expirationDate: "2027-06-30",
+      },
+      doseNumber: selectedVaccine.doseNumber,
+      seriesName: selectedVaccine.series,
+      administrationDate: SEED_ISSUED_AT.toISOString(),
+      site: "Left deltoid",
+      siteTh: "กล้ามเนื้อหัวไหล่ซ้าย",
+      route: "Intramuscular",
+      administeredBy: seedPractitioner(patient.hospitalCode),
+      facility: seedOrganization(patient),
+      nextDoseDate: selectedVaccine.doseNumber < 3 ? new Date(SEED_ISSUED_AT.getTime() + 90 * 86400000).toISOString() : undefined,
+      adverseReaction: "None observed",
+      adverseReactionTh: "ไม่พบอาการข้างเคียง",
+    };
+  }
+
+  if (type === "insurance_eligibility") {
+    const insurers = [
+      { name: "AXA Thailand", memberId: "AXA-TH-2026-001", planName: "AXA SmartCare Executive", payerType: "private_insurance" },
+      { name: "Cigna Thailand", memberId: "CIG-TH-2026-002", planName: "Cigna Global Health", payerType: "private_insurance" },
+      { name: "Pacific Cross", memberId: "PCX-TH-2026-003", planName: "Pacific Cross Premier", payerType: "private_insurance" },
+      { name: "BUPA Thailand", memberId: "BUP-TH-2026-004", planName: "BUPA Platinum", payerType: "private_insurance" },
+      { name: "สำนักงานหลักประกันสุขภาพแห่งชาติ (สปสช.)", memberId: "UCS-TH-2026-005", planName: "บัตรทอง (UC)", payerType: "ucs" },
+      { name: "กรมบัญชีกลาง", memberId: "CSMBS-TH-2026-006", planName: "สวัสดิการข้าราชการ", payerType: "csmbs" },
+    ];
+    const selectedInsurer = patient.nationality !== "THA" ? insurers[pickIdx(4)] : insurers[pickIdx(insurers.length)];
+    return {
+      ...base,
+      eligibilityType: "coverage_verification",
+      payer: {
+        name: selectedInsurer.name,
+        payerType: selectedInsurer.payerType,
+        payerId: `PAYER-${selectedInsurer.payerType.toUpperCase()}-001`,
+      },
+      memberId: selectedInsurer.memberId,
+      planName: selectedInsurer.planName,
+      status: "eligible",
+      checkedAt: SEED_ISSUED_AT.toISOString(),
+      validFrom: "2026-01-01",
+      validUntil: "2026-12-31",
+      preAuthorizationRequired: selectedInsurer.payerType === "private_insurance",
+      benefits: {
+        opd: true,
+        ipd: true,
+        dental: selectedInsurer.payerType === "private_insurance",
+        maternity: selectedInsurer.payerType === "private_insurance",
+        directBilling: selectedInsurer.payerType !== "ucs",
+        annualLimit: selectedInsurer.payerType === "private_insurance" ? 2000000 : undefined,
+        annualLimitCurrency: "THB",
+        remainingLimit: selectedInsurer.payerType === "private_insurance" ? 1750000 : undefined,
+      },
+      copay: selectedInsurer.payerType === "private_insurance" ? { percentage: 20, maxPerVisit: 3000 } : undefined,
+    };
+  }
+
+  if (type === "claim_package") {
+    const serviceItems = [
+      { code: "HC-OPD-CONSULT", description: "ค่าตรวจแพทย์ผู้เชี่ยวชาญ", descriptionEn: "Specialist consultation fee", amount: 1500 },
+      { code: "HC-LAB-PANEL", description: "ค่าตรวจทางห้องปฏิบัติการ", descriptionEn: "Laboratory panel", amount: 2800 },
+      { code: "HC-MED-RX", description: "ค่ายา", descriptionEn: "Medication", amount: 3200 },
+      { code: "HC-PROC-MINOR", description: "ค่าหัตถการ", descriptionEn: "Minor procedure", amount: 5000 },
+    ];
+    const selectedItems = serviceItems.slice(0, 2 + pickIdx(3));
+    const totalAmount = selectedItems.reduce((sum, item) => sum + item.amount, 0);
+    return {
+      ...base,
+      claimType: "opd",
+      claimStatus: "submitted",
+      encounterRef: `VN-${patient.hospitalCode}-20260701-${patient.seedId}`,
+      serviceDate: SEED_ISSUED_AT.toISOString(),
+      diagnosisCodes: patient.conditions ?? ["Z00.0"],
+      procedureCodes: selectedItems.length > 3 ? ["99213"] : [],
+      serviceItems: selectedItems,
+      totalAmount,
+      currency: "THB",
+      submittedAt: SEED_ISSUED_AT.toISOString(),
+      claimRef: `CLM-${patient.hospitalCode}-${seed.slice(0, 10).toUpperCase()}`,
+      attachedEvidence: [
+        { type: "lab_result", credentialRef: `${SEED_PREFIX}:vc:${String(patient.hospitalCode).toLowerCase()}:${String(patient.seedId).toLowerCase()}:lab_result` },
+        { type: "prescription", credentialRef: `${SEED_PREFIX}:vc:${String(patient.hospitalCode).toLowerCase()}:${String(patient.seedId).toLowerCase()}:prescription` },
+      ],
+    };
+  }
+
+  if (type === "claim_receipt") {
+    const totalAmount = 7500 + pickIdx(15) * 500;
+    const approvedAmount = Math.round(totalAmount * 0.8);
+    return {
+      ...base,
+      receiptType: "claim_adjudication_receipt",
+      claimRef: `CLM-${patient.hospitalCode}-${seed.slice(0, 10).toUpperCase()}`,
+      adjudicationDate: new Date(SEED_ISSUED_AT.getTime() + 3 * 86400000).toISOString(),
+      adjudicationOutcome: "approved",
+      totalClaimed: totalAmount,
+      approvedAmount,
+      patientResponsibility: totalAmount - approvedAmount,
+      currency: "THB",
+      paymentMethod: "direct_billing",
+      paymentStatus: "paid",
+      paidAt: new Date(SEED_ISSUED_AT.getTime() + 7 * 86400000).toISOString(),
+      payerRef: `PAY-${patient.hospitalCode}-${seed.slice(10, 18).toUpperCase()}`,
+      invoiceNo: `INV-${patient.hospitalCode}-20260701-${patient.seedId}`,
+      receiptNo: `RCP-${patient.hospitalCode}-20260701-${patient.seedId}`,
+      breakdown: [
+        { category: "ค่าตรวจแพทย์", categoryEn: "Consultation", claimed: 1500, approved: 1500 },
+        { category: "ค่าตรวจทางห้องปฏิบัติการ", categoryEn: "Laboratory", claimed: 2800, approved: 2240 },
+        { category: "ค่ายา", categoryEn: "Medication", claimed: totalAmount - 4300, approved: approvedAmount - 3740 },
+      ],
+    };
+  }
+
+  if (type === "travel_document_verification") {
+    return {
+      ...base,
+      verificationType: "passport_identity_verification",
+      documentType: "passport",
+      passportNumber: patient.passport ?? "X12345678",
+      issuingCountry: patient.nationality ?? "USA",
+      nationality: patient.nationality ?? "USA",
+      verificationStatus: "verified",
+      verifiedAt: SEED_ISSUED_AT.toISOString(),
+      verifiedBy: "TrustCare International Desk",
+      verifiedByTh: "แผนกผู้ป่วยต่างชาติ ทรัสต์แคร์",
+      mrzLine1: `P<${(patient.nationality ?? "USA").slice(0, 3)}${String(patient.nameEn ?? "").replace(/[^A-Z]/gi, "<").toUpperCase().slice(0, 39)}`,
+      mrzLine2: `${patient.passport ?? "X12345678"}${'<'.repeat(30)}`.slice(0, 44),
+      expiryDate: "2030-12-31",
+      visaType: patient.nationality === "USA" ? "Tourist (VOA)" : "Medical (Non-Imm MT)",
+      visaTypeTh: patient.nationality === "USA" ? "ท่องเที่ยว (VOA)" : "รักษาพยาบาล (Non-Imm MT)",
+      purposeOfVisit: "Medical treatment",
+      purposeOfVisitTh: "เข้ารับการรักษาพยาบาล",
+    };
+  }
+
+  if (type === "pharmacy_dispense") {
+    return {
+      ...base,
+      dispenseType: "outpatient_dispense",
+      prescriptionRef: `${SEED_PREFIX}:vc:${String(patient.hospitalCode).toLowerCase()}:${String(patient.seedId).toLowerCase()}:prescription`,
+      dispensedAt: SEED_ISSUED_AT.toISOString(),
+      dispensedItems: [
+        {
+          medicationCode: medicationCodeForPatient(patient),
+          medicationName: medicationNameForPatient(patient),
+          medicationNameTh: patient.conditions?.includes("E11") ? "เมทฟอร์มิน 500 มก." : patient.conditions?.includes("I10") ? "แอมโลดิปีน 5 มก." : patient.conditions?.includes("J45") ? "ซัลบูทามอล สูดพ่น" : "พาราเซตามอล 500 มก.",
+          quantity: 30,
+          unit: patient.conditions?.includes("J45") ? "puffs" : "tablets",
+          daysSupply: 30,
+          lotNumber: `LOT-${seed.slice(0, 6).toUpperCase()}`,
+          expirationDate: "2027-12-31",
+          instructions: "รับประทานหลังอาหารตามแพทย์สั่ง",
+          instructionsEn: "Take after meals as directed",
+        },
+      ],
+      dispenser: { name: "ภก. สุรศักดิ์ เภสัชกร", nameEn: "Pharm. Surasak Pharmacist", licenseNo: "RPH-TH-11111" },
+      verifiedAllergies: true,
+      counselingProvided: true,
+      counselingNotes: "แนะนำวิธีรับประทานยาและอาการข้างเคียงที่ควรระวัง",
+      counselingNotesEn: "Counseled on administration and potential side effects",
+      substitutionMade: false,
+      nextRefillDate: new Date(SEED_ISSUED_AT.getTime() + 28 * 86400000).toISOString(),
+    };
+  }
+
+  if (type === "appointment") {
+    const departments = [
+      { nameTh: "อายุรกรรม", nameEn: "Internal Medicine" },
+      { nameTh: "ศัลยกรรม", nameEn: "Surgery" },
+      { nameTh: "ออร์โธปิดิกส์", nameEn: "Orthopedics" },
+      { nameTh: "จักษุ", nameEn: "Ophthalmology" },
+    ];
+    const selectedDept = departments[pickIdx(departments.length)];
+    const appointmentDate = new Date(SEED_ISSUED_AT.getTime() + (7 + pickIdx(21)) * 86400000);
+    return {
+      ...base,
+      appointmentType: "follow_up",
+      status: "booked",
+      scheduledDate: appointmentDate.toISOString().split("T")[0],
+      scheduledTime: `${9 + pickIdx(8)}:${pickIdx(2) === 0 ? "00" : "30"}`,
+      duration: 30,
+      department: selectedDept,
+      practitioner: seedPractitioner(patient.hospitalCode),
+      location: {
+        building: pick(["อาคาร A", "อาคาร B", "อาคาร C"]),
+        floor: `ชั้น ${2 + pickIdx(5)}`,
+        room: `ห้อง ${pick(["201", "305", "412", "508"])}`,
+      },
+      reasonForVisit: `ติดตามอาการ ${diagnosisForPatient(patient)}`,
+      reasonForVisitEn: `Follow-up: ${diagnosisForPatient(patient)}`,
+      preparationInstructions: "กรุณามาก่อนเวลานัด 15 นาที พร้อมบัตรประชาชนหรือพาสปอร์ต",
+      preparationInstructionsEn: "Please arrive 15 minutes early with your ID or passport",
+      requiredDocuments: ["บัตรประชาชน/พาสปอร์ต", "บัตรนัดพบแพทย์", "ผลตรวจครั้งก่อน (ถ้ามี)"],
+      cancellationPolicy: "กรุณาแจ้งยกเลิกล่วงหน้าอย่างน้อย 24 ชั่วโมง",
+    };
+  }
+
+  if (type === "visa_support_letter") {
+    const treatmentDays = 7 + pickIdx(14);
+    return {
+      ...base,
+      letterType: "medical_visa_support",
+      purpose: "medical_treatment",
+      purposeTh: "เข้ารับการรักษาพยาบาล",
+      patientPassport: patient.passport ?? "X12345678",
+      patientNationality: patient.nationality ?? "USA",
+      visitPeriod: {
+        from: SEED_ISSUED_AT.toISOString().split("T")[0],
+        to: new Date(SEED_ISSUED_AT.getTime() + treatmentDays * 86400000).toISOString().split("T")[0],
+        totalDays: treatmentDays,
+      },
+      receivingDepartment: { nameTh: "แผนกผู้ป่วยต่างชาติ", nameEn: "International Patient Department" },
+      responsiblePhysician: seedPractitioner(patient.hospitalCode),
+      treatmentPlan: {
+        diagnosis: diagnosisForPatient(patient),
+        plannedProcedures: [`Specialist consultation for ${diagnosisForPatient(patient)}`, "Diagnostic workup", "Treatment initiation"],
+        estimatedCost: { amount: 150000 + pickIdx(10) * 50000, currency: "THB" },
+      },
+      hospitalGuarantee: "โรงพยาบาลรับรองว่าผู้ป่วยมีนัดหมายรับการรักษาตามกำหนดข้างต้น",
+      hospitalGuaranteeEn: "The hospital certifies that the patient has a confirmed appointment for the treatment described above.",
+      signatoryTitle: "ผู้อำนวยการโรงพยาบาล",
+      signatoryTitleEn: "Hospital Director",
+    };
+  }
+
+  if (type === "quotation") {
+    const packages = [
+      { nameTh: "ตรวจสุขภาพประจำปี (Executive)", nameEn: "Annual Health Check-up (Executive)", basePrice: 25000 },
+      { nameTh: "ผ่าตัดเปลี่ยนข้อเข่า", nameEn: "Total Knee Replacement", basePrice: 450000 },
+      { nameTh: "ผ่าตัดต้อกระจก", nameEn: "Cataract Surgery (Phaco)", basePrice: 85000 },
+      { nameTh: "ผ่าตัดไส้ติ่ง (ส่องกล้อง)", nameEn: "Laparoscopic Appendectomy", basePrice: 120000 },
+      { nameTh: "ทำฟัน (ครอบฟัน)", nameEn: "Dental Crown", basePrice: 15000 },
+    ];
+    const conditions = patient.conditions ?? [];
+    let selectedPkg = packages[0];
+    if (conditions.includes("M17.1") || conditions.includes("M16")) selectedPkg = packages[1];
+    if (conditions.includes("N18.2")) selectedPkg = packages[0];
+    const lineItems = [
+      { description: "ค่าแพทย์", descriptionEn: "Physician fee", amount: Math.round(selectedPkg.basePrice * 0.2) },
+      { description: "ค่าห้องและอาหาร", descriptionEn: "Room & board", amount: Math.round(selectedPkg.basePrice * 0.25) },
+      { description: "ค่ายาและเวชภัณฑ์", descriptionEn: "Medication & supplies", amount: Math.round(selectedPkg.basePrice * 0.3) },
+      { description: "ค่าหัตถการ/ผ่าตัด", descriptionEn: "Procedure/Surgery", amount: Math.round(selectedPkg.basePrice * 0.25) },
+    ];
+    const estimatedTotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
+    return {
+      ...base,
+      quotationType: "treatment_cost_estimate",
+      packageName: selectedPkg.nameTh,
+      packageNameEn: selectedPkg.nameEn,
+      lineItems,
+      estimatedTotal,
+      currency: "THB",
+      validForDays: 30,
+      validUntil: new Date(SEED_ISSUED_AT.getTime() + 30 * 86400000).toISOString(),
+      exclusions: [
+        "ค่าตรวจเพิ่มเติมนอกเหนือแพ็กเกจ",
+        "ค่ารักษาภาวะแทรกซ้อน",
+        "ค่าอุปกรณ์พิเศษ (ถ้ามี)",
+      ],
+      exclusionsEn: [
+        "Additional tests beyond package",
+        "Complication management",
+        "Special equipment (if required)",
+      ],
+      paymentTerms: "ชำระ 50% ล่วงหน้า ส่วนที่เหลือชำระก่อนจำหน่าย",
+      paymentTermsEn: "50% deposit required, balance due before discharge",
+      preparedBy: seedPractitioner(patient.hospitalCode),
+      approvedBy: { name: "ผู้จัดการฝ่ายการเงิน", nameEn: "Finance Manager" },
+    };
+  }
+
+  if (type === "guarantee_letter") {
+    const insurers = ["AXA Thailand", "Cigna Thailand", "Pacific Cross", "BUPA Thailand", "Allianz Thailand"];
+    const selectedInsurer = pick(insurers);
+    const coveredAmount = 200000 + pickIdx(10) * 50000;
+    return {
+      ...base,
+      guaranteeType: "insurance_guarantee_of_payment",
+      guaranteeRef: `GOP-${patient.hospitalCode}-${seed.slice(0, 10).toUpperCase()}`,
+      payer: {
+        name: selectedInsurer,
+        payerType: "private_insurance",
+        contactRef: `${selectedInsurer.replace(/\s/g, "-").toLowerCase()}-claims@example.com`,
+      },
+      memberId: `MBR-${seed.slice(10, 18).toUpperCase()}`,
+      preAuthorizationNo: `PA-${seed.slice(0, 12).toUpperCase()}`,
+      coveredServices: [
+        { service: "Specialist consultation", serviceTh: "ค่าตรวจแพทย์ผู้เชี่ยวชาญ", covered: true },
+        { service: "Diagnostic imaging", serviceTh: "ค่าตรวจทางรังสีวิทยา", covered: true },
+        { service: "Laboratory tests", serviceTh: "ค่าตรวจทางห้องปฏิบัติการ", covered: true },
+        { service: "Medication", serviceTh: "ค่ายา", covered: true },
+        { service: "Room & board (private)", serviceTh: "ค่าห้องเดี่ยว", covered: patient.nationality !== "THA" },
+      ],
+      approvedLimit: coveredAmount,
+      currency: "THB",
+      validFrom: SEED_ISSUED_AT.toISOString(),
+      validUntil: new Date(SEED_ISSUED_AT.getTime() + 90 * 86400000).toISOString(),
+      conditions: [
+        "ใช้ได้เฉพาะการรักษาที่ระบุในใบอนุมัติ",
+        "ต้องแสดงบัตรประกันทุกครั้งที่เข้ารับบริการ",
+        "หากค่าใช้จ่ายเกินวงเงิน ผู้ป่วยรับผิดชอบส่วนเกิน",
+      ],
+      conditionsEn: [
+        "Valid only for approved treatment",
+        "Insurance card must be presented at each visit",
+        "Patient is responsible for amounts exceeding the approved limit",
+      ],
+      issuedByPayer: true,
+      approvedAt: SEED_ISSUED_AT.toISOString(),
+    };
+  }
+
+  if (type === "mpi_link_certificate") {
+    return {
+      ...base,
+      linkType: "master_patient_index_link",
+      linkedIdentifiers: [
+        { system: "https://trustcare.network/carepass", value: patient.carepassId, isPrimary: true },
+        { system: `https://trustcare.network/hospitals/${patient.hospitalCode}/hn`, value: patient.hn, isPrimary: false },
+        ...(patient.thaiIdHash ? [{ system: "https://dopa.go.th/cid", value: `***${String(patient.thaiIdHash).slice(-4)}`, isPrimary: false, masked: true }] : []),
+        ...(patient.passport ? [{ system: "https://icao.int/passport", value: patient.passport, isPrimary: false }] : []),
+      ],
+      linkStatus: "active",
+      linkConfidence: "high",
+      matchAlgorithm: "deterministic_exact_match",
+      linkedAt: SEED_ISSUED_AT.toISOString(),
+      linkedBy: "TrustCare MPI Service",
+      goldenRecordId: `MPI-GOLDEN-${patient.carepassId}`,
+      crossReferenceCount: patient.passport ? 3 : 2,
+      lastVerifiedAt: SEED_ISSUED_AT.toISOString(),
+    };
+  }
+
+  if (type === "shl_manifest") {
+    const context = patient.tags?.includes("referral") || patient.tags?.includes("cross_border")
+      ? "cross_branch_referral"
+      : patient.tags?.includes("medical_tourist")
+        ? "medical_tourist"
+        : patient.tags?.includes("claim")
+          ? "e_claim"
+          : "patient_summary";
+    const contextDocuments: Record<string, Array<{ documentType: string; title: string; category: string; fhirResource: string }>> = {
+      cross_branch_referral: [
+        { documentType: "referral_vc", title: "Referral document", category: "care_transition", fhirResource: "ServiceRequest" },
+        { documentType: "patient_summary", title: "Patient summary", category: "clinical_summary", fhirResource: "Composition" },
+        { documentType: "lab_result", title: "Laboratory results", category: "diagnostics_and_results", fhirResource: "DiagnosticReport" },
+        { documentType: "consent_receipt", title: "Referral consent", category: "identity_and_access", fhirResource: "Consent" },
+      ],
+      medical_tourist: [
+        { documentType: "travel_document_verification", title: "Passport / travel identity", category: "identity_and_access", fhirResource: "DocumentReference" },
+        { documentType: "patient_summary", title: "Clinical summary", category: "clinical_summary", fhirResource: "Composition" },
+        { documentType: "quotation", title: "Treatment quotation", category: "medical_tourism", fhirResource: "DocumentReference" },
+        { documentType: "guarantee_letter", title: "Guarantee letter", category: "medical_tourism", fhirResource: "DocumentReference" },
+      ],
+      e_claim: [
+        { documentType: "insurance_eligibility", title: "Coverage eligibility", category: "claims_and_finance", fhirResource: "Coverage" },
+        { documentType: "claim_package", title: "Verified claim package", category: "claims_and_finance", fhirResource: "Claim" },
+        { documentType: "claim_receipt", title: "Payment receipt", category: "claims_and_finance", fhirResource: "DocumentReference" },
+      ],
+      patient_summary: [
+        { documentType: "patient_identity", title: "Patient identity", category: "identity_and_access", fhirResource: "Patient" },
+        { documentType: "patient_summary", title: "Patient summary", category: "clinical_summary", fhirResource: "Composition" },
+        { documentType: "allergy_alert", title: "Allergy alerts", category: "clinical_summary", fhirResource: "AllergyIntolerance" },
+        { documentType: "medication_summary", title: "Medication summary", category: "medication_and_pharmacy", fhirResource: "MedicationStatement" },
+      ],
+    };
+    return {
+      ...base,
+      manifestType: "smart_health_link_manifest",
+      context,
+      manifestVersion: 1,
+      bundleId: `shl-bundle-${patient.hospitalCode.toLowerCase()}-${patient.seedId.toLowerCase()}-v1`,
+      documents: contextDocuments[context] ?? contextDocuments.patient_summary,
+      transportStandards: ["SMART Health Links files[]", "HL7 FHIR Bundle", "W3C VC/VP"],
+      accessControl: {
+        passcodeRequired: true,
+        expiresAt: new Date(SEED_ISSUED_AT.getTime() + 30 * 86400000).toISOString(),
+        maxAccessCount: 5,
+      },
+      shlinkLabel: context === "cross_branch_referral" ? "Referral Package" : context === "medical_tourist" ? "Medical Tourism Package" : context === "e_claim" ? "Insurance Claim Package" : "Patient Health Summary",
+      shlinkLabelTh: context === "cross_branch_referral" ? "แพ็กเกจส่งต่อผู้ป่วย" : context === "medical_tourist" ? "แพ็กเกจ Medical Tourism" : context === "e_claim" ? "แพ็กเกจเคลมประกัน" : "สรุปสุขภาพผู้ป่วย",
+    };
+  }
+
+  // Fallback for any unhandled types (should not occur with complete seed)
+  return {
+    ...base,
+    clinical: clinicalFactsForPatient(patient),
     humanDocument: document.humanDocument,
   };
 }

@@ -1074,3 +1074,17 @@
 - [x] Write comprehensive tests for SD-JWT module and endpoints (39 tests)
 - [x] Update docs/API.md with SD-JWT section (v5.42)
 - [x] Push to GitHub, save checkpoint
+
+## v3.42.1 - Batch SD-JWT Migration
+
+- [ ] Create migration script to issue SD-JWT for all existing credentials without sdJwtFull
+- [ ] Run migration and verify all credentials now have sdJwtFull + disclosureMap
+- [ ] Write test to confirm batch migration correctness
+- [ ] Push to GitHub, save checkpoint
+
+## v3.42.2 - Fix Credential Data Context Bug
+- [ ] Investigate: credentialData in VC payloads shows same patient_summary data for all credential types
+- [ ] Fix seed data: each credential type must have type-specific credentialData (appointment→appointment data, quotation→quotation data, etc.)
+- [ ] Fix wallet card detail view: render type-specific fields based on cardType/credentialType
+- [ ] Verify all credential types display correct context-specific data
+- [ ] Run tests, push to GitHub, save checkpoint

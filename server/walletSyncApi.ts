@@ -703,9 +703,10 @@ export function createWalletSyncRouter(): Router {
   router.post("/api/wallet/sync/sd-jwt/issue", async (req: Request, res: Response) => {
     try {
       const { patientId: resolvedPatientId, error: authError } = await resolvePatientFromRequest(req);
-      const { credentialId } = req.body || {};
+      const { credentialId, patientId: bodyPatientId } = req.body || {};
+      const effectivePatientId = resolvedPatientId || (typeof bodyPatientId === "number" ? bodyPatientId : null);
 
-      if (!resolvedPatientId) {
+      if (!effectivePatientId) {
         return res.status(401).json({
           error: "authentication_required",
           message: authError || "Authentication required",
@@ -726,7 +727,7 @@ export function createWalletSyncRouter(): Router {
       }
 
       // Verify ownership
-      if (cred.subjectId !== resolvedPatientId) {
+      if (cred.subjectId !== effectivePatientId) {
         return res.status(403).json({ error: "forbidden", message: "Credential does not belong to this patient" });
       }
 
