@@ -365,7 +365,8 @@ function StaffIdentityCard({ props }: { props: CredentialRendererProps }) {
   const hospitalNameEn = renderData.hospital.nameEn || subject?.hospitalName || "";
   const systemRole = subject?.systemRole || "";
   const employeeId = humanDoc?.renderData?.document?.no || subject?.staffId || "—";
-  const department = subject?.department || "";
+  const deptRaw = subject?.department || "";
+  const department = typeof deptRaw === "object" ? (deptRaw.nameTh || deptRaw.nameEn || "") : deptRaw;
   const email = subject?.email || "";
   const phone = subject?.phone || "";
 
@@ -937,10 +938,10 @@ function ReferralCard({ props }: { props: CredentialRendererProps }) {
               <span className="text-muted-foreground">จากสถานพยาบาล</span>
               <span className="font-medium">{renderData.hospital.nameTh}</span>
             </div>
-            {referringTo?.name && (
+            {(referringTo?.nameTh || referringTo?.nameEn || referringTo?.name) && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">ส่งต่อไปยัง</span>
-                <span className="font-medium">{referringTo.nameTh || referringTo.name}</span>
+                <span className="font-medium">{typeof referringTo === "string" ? referringTo : (referringTo.nameTh || referringTo.nameEn || referringTo.name || "")}</span>
               </div>
             )}
             <div className="flex justify-between">
@@ -1691,12 +1692,14 @@ function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
       case "appointment": {
         const appointmentDate = subject?.appointmentDate || "";
         const appointmentTime = subject?.appointmentTime || "";
-        const department = subject?.departmentTh || subject?.department || "";
+        const deptRawAppt = subject?.departmentTh || subject?.department || "";
+        const department = typeof deptRawAppt === "object" ? (deptRawAppt.nameTh || deptRawAppt.nameEn || "") : deptRawAppt;
         const appointmentType = subject?.appointmentTypeTh || subject?.appointmentType || "";
         const practitioner = subject?.practitioner || {};
         const appointmentStatus = subject?.appointmentStatus || "booked";
         const instructions = subject?.instructionsTh || subject?.instructions || "";
-        const location = subject?.locationTh || subject?.location || "";
+        const locationRaw = subject?.locationTh || subject?.location || "";
+        const location = typeof locationRaw === "object" ? [locationRaw.building, locationRaw.floor, locationRaw.room].filter(Boolean).join(" ") : locationRaw;
         return (
           <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
             <p className="text-xs font-semibold text-purple-800 mb-2 flex items-center gap-1.5">
@@ -1755,14 +1758,19 @@ function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
         );
       }
       case "visa_support_letter": {
-        const treatmentPlan = subject?.treatmentPlanTh || subject?.treatmentPlan || "";
-        const estimatedStay = subject?.estimatedStay || "";
-        const estimatedCost = subject?.estimatedCost || 0;
-        const costCurrency = subject?.costCurrency || "THB";
-        const attendingDoctor = subject?.attendingDoctor || {};
-        const medicalCondition = subject?.medicalConditionTh || subject?.medicalCondition || "";
-        const travelDates = subject?.travelDates || {};
-        const embassy = subject?.targetEmbassy || "";
+        const treatmentPlanRaw = subject?.treatmentPlan;
+        const treatmentPlan = typeof treatmentPlanRaw === "object" && treatmentPlanRaw
+          ? (treatmentPlanRaw.diagnosis || JSON.stringify(treatmentPlanRaw))
+          : (subject?.treatmentPlanTh || treatmentPlanRaw || "");
+        const visitPeriod = subject?.visitPeriod || {};
+        const estimatedStay = subject?.estimatedStay || visitPeriod?.duration || "";
+        const estimatedCostRaw = subject?.estimatedCost || (typeof treatmentPlanRaw === "object" ? treatmentPlanRaw?.estimatedCost : null) || {};
+        const estimatedCost = typeof estimatedCostRaw === "object" ? (estimatedCostRaw?.amount || 0) : estimatedCostRaw;
+        const costCurrency = (typeof estimatedCostRaw === "object" ? estimatedCostRaw?.currency : subject?.costCurrency) || "THB";
+        const attendingDoctor = subject?.attendingDoctor || subject?.responsiblePhysician || {};
+        const medicalCondition = subject?.medicalConditionTh || subject?.medicalCondition || (typeof treatmentPlanRaw === "object" ? treatmentPlanRaw?.diagnosis : "") || "";
+        const travelDates = subject?.travelDates || { from: visitPeriod?.from, to: visitPeriod?.to };
+        const embassy = subject?.targetEmbassy || subject?.targetEmbassyTh || "";
         return (
           <>
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
@@ -1813,11 +1821,11 @@ function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
         );
       }
       case "quotation": {
-        const treatmentPackage = subject?.treatmentPackageTh || subject?.treatmentPackage || "";
-        const items: any[] = subject?.items || [];
-        const totalEstimate = subject?.totalEstimate || 0;
+        const treatmentPackage = subject?.treatmentPackageTh || subject?.treatmentPackage || subject?.packageName || subject?.packageNameTh || "";
+        const items: any[] = subject?.items || subject?.lineItems || [];
+        const totalEstimate = subject?.totalEstimate || subject?.estimatedTotal || 0;
         const qCurrency = subject?.currency || "THB";
-        const validityDays = subject?.validityDays || 30;
+        const validityDays = subject?.validityDays || subject?.validForDays || 30;
         const paymentTerms = subject?.paymentTermsTh || subject?.paymentTerms || "";
         const inclusions: string[] = subject?.inclusions || [];
         const exclusions: string[] = subject?.exclusions || [];
@@ -1856,8 +1864,8 @@ function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
                 <div className="space-y-1.5">
                   {items.map((item: any, i: number) => (
                     <div key={i} className="flex justify-between text-sm">
-                      <span>{item.descriptionTh || item.description}</span>
-                      <span className="font-medium">{Number(item.amount).toLocaleString()} {qCurrency}</span>
+                      <span>{typeof item === "string" ? item : (item.description || item.descriptionTh || item.name || "")}</span>
+                      <span className="font-medium">{Number(item.amount || 0).toLocaleString()} {qCurrency}</span>
                     </div>
                   ))}
                 </div>
@@ -1883,16 +1891,21 @@ function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
         );
       }
       case "guarantee_letter": {
-        const guaranteeAmount = subject?.guaranteeAmount || 0;
+        const guaranteeAmount = subject?.guaranteeAmount || subject?.approvedLimit || 0;
         const gCurrency = subject?.currency || "THB";
-        const beneficiary = subject?.beneficiary || {};
-        const guarantor = subject?.guarantor || {};
+        const payer = subject?.payer || {};
         const guaranteeType = subject?.guaranteeTypeTh || subject?.guaranteeType || "";
         const coverageScope = subject?.coverageScopeTh || subject?.coverageScope || "";
-        const conditions: string[] = subject?.conditions || [];
+        const conditionsRaw: any[] = subject?.conditions || subject?.conditionsEn || [];
+        const conditions: string[] = conditionsRaw.map((c: any) => typeof c === "string" ? c : (c?.nameTh || c?.name || JSON.stringify(c)));
         const validFrom = subject?.validFrom || "";
         const validUntil = subject?.validUntil || "";
-        const authorizedBy = subject?.authorizedBy || {};
+        const authorizedByRaw = subject?.authorizedBy || {};
+        const authorizedBy = typeof authorizedByRaw === "object" && authorizedByRaw?.name && typeof authorizedByRaw.name === "object"
+          ? { ...authorizedByRaw, name: authorizedByRaw.name.nameTh || authorizedByRaw.name.nameEn || "" }
+          : authorizedByRaw;
+        const memberId = subject?.memberId || "";
+        const preAuthNo = subject?.preAuthorizationNo || "";
         return (
           <>
             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
@@ -1910,16 +1923,22 @@ function GenericDocumentCard({ props }: { props: CredentialRendererProps }) {
                   <span className="text-muted-foreground">วงเงินค้ำประกัน</span>
                   <span className="font-bold text-lg text-emerald-800">{Number(guaranteeAmount).toLocaleString()} {gCurrency}</span>
                 </div>
-                {beneficiary?.name && (
+                {payer?.name && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">ผู้รับผลประโยชน์</span>
-                    <span className="font-medium">{beneficiary.name}</span>
+                    <span className="text-muted-foreground">ผู้ค้ำประกัน/ประกัน</span>
+                    <span className="font-medium">{typeof payer.name === "object" ? (payer.name.nameTh || payer.name.nameEn) : payer.name}</span>
                   </div>
                 )}
-                {guarantor?.name && (
+                {memberId && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">ผู้ค้ำประกัน</span>
-                    <span className="font-medium">{guarantor.name}</span>
+                    <span className="text-muted-foreground">เลขสมาชิก</span>
+                    <span className="font-mono text-xs font-medium">{memberId}</span>
+                  </div>
+                )}
+                {preAuthNo && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">เลขอนุมัติล่วงหน้า</span>
+                    <span className="font-mono text-xs font-medium">{preAuthNo}</span>
                   </div>
                 )}
                 {coverageScope && (
