@@ -901,12 +901,12 @@ function ReferralCard({ props }: { props: CredentialRendererProps }) {
   const renderData = extractRenderData(props.credentialData);
   const brand = getHospitalBrand(renderData.hospital.code || props.hospitalCode);
   const subject = props.credentialData?.credentialSubject || props.credentialData;
-  const reasonForReferral = subject?.reasonForReferral || subject?.reasonForReferralTh || "";
+  const reasonForReferral = subject?.reasonForReferralTh || subject?.reasonForReferral || "";
   const priority = subject?.priority || "routine";
-  const referringTo = subject?.referringTo || {};
-  const clinicalSummary = subject?.clinicalSummary || "";
+  const referringTo = subject?.referringTo || subject?.receivingFacility || {};
+  const clinicalSummary: any = subject?.clinicalSummary || "";
   const referringPractitioner = subject?.referringPractitioner || {};
-  const requestedService = subject?.requestedService || subject?.requestedServiceTh || "";
+  const requestedService = subject?.requestedServiceTh || subject?.requestedService || (Array.isArray(subject?.requestedServices) ? subject.requestedServices.join(", ") : "");
 
   const priorityColors: Record<string, string> = {
     urgent: "bg-red-100 text-red-800 border-red-200",
@@ -957,7 +957,20 @@ function ReferralCard({ props }: { props: CredentialRendererProps }) {
         {clinicalSummary && (
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
             <p className="text-xs font-semibold text-slate-700 mb-1">สรุปทางคลินิก</p>
-            <p className="text-sm">{clinicalSummary}</p>
+            {typeof clinicalSummary === "string" ? (
+              <p className="text-sm">{clinicalSummary}</p>
+            ) : (
+              <div className="space-y-1.5 text-sm">
+                {clinicalSummary.chiefComplaint && <p><span className="text-muted-foreground">อาการสำคัญ:</span> {clinicalSummary.chiefComplaint}</p>}
+                {clinicalSummary.relevantHistory && <p><span className="text-muted-foreground">ประวัติ:</span> {String(clinicalSummary.relevantHistory)}</p>}
+                {Array.isArray(clinicalSummary.allergies) && clinicalSummary.allergies.length > 0 && (
+                  <p><span className="text-muted-foreground">การแพ้:</span> {clinicalSummary.allergies.join(", ")}</p>
+                )}
+                {Array.isArray(clinicalSummary.currentMedications) && clinicalSummary.currentMedications.length > 0 && (
+                  <p><span className="text-muted-foreground">ยาปัจจุบัน:</span> {clinicalSummary.currentMedications.map((m: any) => m.name || m.code || String(m)).join(", ")}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
