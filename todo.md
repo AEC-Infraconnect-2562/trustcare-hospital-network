@@ -946,3 +946,15 @@
 - [x] Fixed staff credential reseed to update sdJwtVc on duplicate key
 - [x] All 347 tests passing, 0 TypeScript errors
 - [x] Push to GitHub, save checkpoint
+
+## v3.37.0 - JWKS Endpoint & DID Document Resolution
+
+- [x] Create /.well-known/jwks.json public endpoint (returns network-level + hospital public keys)
+- [x] Create /.well-known/did.json endpoint for did:web:trustcare.network resolution
+- [x] Create /hospital/:code/.well-known/did.json for per-hospital DID resolution
+- [x] Create /.well-known/did-configuration.json (DIF Domain Linkage Credential)
+- [x] Include all active public keys from trust registry in JWKS response (4 keys: network + 3 hospitals)
+- [x] Add Cache-Control headers for JWKS (max-age=3600)
+- [x] Add vitest tests for JWKS and DID endpoints (7 tests passing)
+- [x] All 354 tests passing, 0 TypeScript errors
+- [x] Push to GitHub, save checkpoint

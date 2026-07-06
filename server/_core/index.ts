@@ -9,6 +9,7 @@ import { registerPrepareServiceRoutes } from "./prepareServiceRoutes";
 import { registerShlRoutes } from "./shlRoutes";
 import { registerStorageProxy } from "./storageProxy";
 import { registerUploadRoutes } from "../uploadRoute";
+import { createWellKnownRouter } from "../wellKnownRoutes";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -106,6 +107,9 @@ async function startServer() {
     const { handleWebhookConfigList } = await import("../webhookDocumentImport");
     return handleWebhookConfigList(req, res);
   });
+
+  // Well-Known endpoints (JWKS, DID documents)
+  app.use(createWellKnownRouter());
 
   // External Wallet API (REST endpoints for third-party wallets)
   const { createExternalWalletApiRouter } = await import("../externalWalletApi");
