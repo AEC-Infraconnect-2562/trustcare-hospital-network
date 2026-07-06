@@ -1210,20 +1210,22 @@ function ManifestDocumentBundle({ bundle, compact = false }: { bundle?: any; com
   );
 }
 
-function ObjectLink({ label, value }: { label: string; value?: string | null }) {
+function ObjectLink({ label, value }: { label: string; value?: any }) {
+  const display = value && typeof value === "object" ? (value.url || value.resourceId || value.fileId || value.hash || JSON.stringify(value)) : (value || "pending");
   return (
     <div className="min-w-0 rounded-md border p-2">
       <p className="text-muted-foreground">{label}</p>
-      <p className="mt-1 truncate font-mono text-[11px]">{value || "pending"}</p>
+      <p className="mt-1 truncate font-mono text-[11px]">{String(display)}</p>
     </div>
   );
 }
 
-function ShlFieldLine({ label, value }: { label: string; value: string }) {
+function ShlFieldLine({ label, value }: { label: string; value: any }) {
+  const display = value && typeof value === "object" ? JSON.stringify(value) : (value ?? "");
   return (
     <div className="rounded-md border p-2">
       <p className="text-muted-foreground">{label}</p>
-      <p className="mt-1 break-words font-mono text-[11px]">{value}</p>
+      <p className="mt-1 break-words font-mono text-[11px]">{String(display)}</p>
     </div>
   );
 }

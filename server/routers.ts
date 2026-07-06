@@ -2513,7 +2513,7 @@ export const appRouter = router({
               plaintextHash: d.plaintextHash,
               sourceBundleHash: d.sourceBundleHash,
             },
-            objectLinks: d.objectLinksJson as any,
+            objectLinks: normalizeObjectLinks(d.objectLinksJson as any),
             vcBinding: d.vcBindingJson as any,
             accessBinding: d.accessBindingJson as any,
           })),
@@ -5938,6 +5938,26 @@ function hasStructuredValue(value: unknown): boolean {
   if (value && typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
   if (typeof value === "string") return value.trim().length > 0;
   return false;
+}
+
+/** Flatten objectLinksJson values to strings so React never receives an object as a child. */
+function normalizeObjectLinks(obj: Record<string, unknown> | null | undefined): Record<string, string | undefined> {
+  if (!obj) return {};
+  const result: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v == null) {
+      result[k] = undefined;
+    } else if (typeof v === "string") {
+      result[k] = v;
+    } else if (typeof v === "object") {
+      // Extract the most meaningful string from nested objects
+      const o = v as Record<string, unknown>;
+      result[k] = String(o.url || o.resourceId || o.fileId || o.hash || o.id || JSON.stringify(v));
+    } else {
+      result[k] = String(v);
+    }
+  }
+  return result;
 }
 
 function stableModulo(text: string, modulo: number): number {

@@ -972,3 +972,12 @@
 - [x] Add Discovery endpoints to ApiDocs.tsx (JWKS, DID, DID-Configuration)
 - [x] All 354 tests passing, 0 TypeScript errors
 - [x] Push to GitHub, save checkpoint
+
+## v3.38.1 - Fix SHL /shl page crash (React error #31)
+
+- [x] Root cause: objectLinksJson in shl_manifest_documents contained nested objects instead of flat strings
+- [x] Fixed 83 SHL manifest documents with correct flat-string format via DB update script
+- [x] Added normalizeObjectLinks() backend defense in routers.ts line 5943
+- [x] Frontend ObjectLink/ShlFieldLine already handle objects safely (defensive String() wrapping)
+- [x] All 352 tests passing, 0 TypeScript errors
+- [x] Push to GitHub, save checkpoint
