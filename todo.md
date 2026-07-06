@@ -1060,3 +1060,17 @@
 - [x] Write E2E tests for JWT envelope presence and verify endpoint (18 tests)
 - [x] Update docs/API.md with new verify endpoint documentation (v5.40)
 - [x] Push to GitHub, save checkpoint
+
+## v3.42.0 - SD-JWT Selective Disclosure
+
+- [x] Create SD-JWT issuance module (server/portability/sdJwt.ts) with per-field disclosures
+- [x] Define selectiveDisclosurePolicy per credential type (which fields are always-disclosed vs selectable)
+- [x] Add sdJwtFull + disclosureMap columns to issued_credentials table
+- [x] Update wallet sync response to include selectiveDisclosure metadata for each credential
+- [x] Create POST /api/wallet/sync/present endpoint (wallet selects fields → derived SD-JWT)
+- [x] Create POST /api/wallet/sync/verify-selective endpoint (verifier checks derived SD-JWT)
+- [x] Create POST /api/wallet/sync/sd-jwt/issue endpoint (on-demand SD-JWT generation)
+- [x] Create GET /api/wallet/sync/sd-jwt/policy/:credentialType endpoint
+- [x] Write comprehensive tests for SD-JWT module and endpoints (39 tests)
+- [x] Update docs/API.md with SD-JWT section (v5.42)
+- [x] Push to GitHub, save checkpoint

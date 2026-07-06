@@ -20,6 +20,7 @@ import * as db from "./db";
 import { getHospitalPublicJwk, hospitalDidWeb } from "./portability/did";
 import { verifyCredential, verifyPresentation } from "./portability/vc";
 import { buildTrustRegistryPolicy } from "./portability/trust";
+import { issueSdJwt, createSelectivePresentation, verifySdJwtPresentation, getDisclosurePolicy, decodeDisclosure } from "./portability/sdJwt";
 import { issuedCredentials, issuedPresentations, walletCards, hospitals } from "../drizzle/schema";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { getDb } from "./db";
@@ -60,6 +61,18 @@ interface WalletSyncCredential {
     jwt: string;
     alg: string;
     kid: string;
+  } | null;
+  /** SD-JWT selective disclosure metadata */
+  selectiveDisclosure: {
+    /** Full SD-JWT with all disclosures (for holder storage) */
+    sdJwtFull: string;
+    /** Map of claimName → base64url-encoded disclosure */
+    disclosureMap: Record<string, string>;
+    /** Policy: which fields are always/selectable/never disclosed */
+    policy: {
+      alwaysDisclosed: string[];
+      selectableFields: string[];
+    };
   } | null;
 }
 
@@ -239,6 +252,18 @@ export function createWalletSyncRouter(): Router {
           }
         }
 
+        // Build selective disclosure metadata
+        let selectiveDisclosure: WalletSyncCredential["selectiveDisclosure"] = null;
+        if (cred?.sdJwtFull && cred?.disclosureMap) {
+          const credType = cred.type || card.cardType;
+          const policy = getDisclosurePolicy(credType);
+          selectiveDisclosure = {
+            sdJwtFull: cred.sdJwtFull,
+            disclosureMap: cred.disclosureMap as Record<string, string>,
+            policy: { alwaysDisclosed: policy.alwaysDisclosed, selectableFields: policy.selectableFields },
+          };
+        }
+
         return {
           id: card.id,
           cardType: card.cardType,
@@ -260,6 +285,7 @@ export function createWalletSyncRouter(): Router {
           lastPresentedAt: card.lastPresentedAt?.toISOString() || null,
           pinned: card.isPinned || false,
           proof,
+          selectiveDisclosure,
         };
       });
 
@@ -286,6 +312,16 @@ export function createWalletSyncRouter(): Router {
               proof = { type: "jwt", jwt: jwtToken, alg: "ES256", kid: `${credIssuerDid}#vc-signing-key` };
             }
           }
+          // Build selective disclosure for non-card credentials
+          let selectiveDisclosure: WalletSyncCredential["selectiveDisclosure"] = null;
+          if (cred.sdJwtFull && cred.disclosureMap) {
+            const policy = getDisclosurePolicy(cred.type);
+            selectiveDisclosure = {
+              sdJwtFull: cred.sdJwtFull,
+              disclosureMap: cred.disclosureMap as Record<string, string>,
+              policy: { alwaysDisclosed: policy.alwaysDisclosed, selectableFields: policy.selectableFields },
+            };
+          }
           syncCredentials.push({
             id: cred.id + 100000, // offset to avoid collision
             cardType: cred.type,
@@ -307,6 +343,7 @@ export function createWalletSyncRouter(): Router {
             lastPresentedAt: null,
             pinned: false,
             proof,
+            selectiveDisclosure,
           });
         }
       }
@@ -518,6 +555,251 @@ export function createWalletSyncRouter(): Router {
       console.error("[WalletSync:DIDResolve] Error:", err.message);
       res.status(500).json({ error: "internal_error", message: err.message });
     }
+  });
+
+  /**
+   * POST /api/wallet/sync/present
+   * Create a selective disclosure presentation from an SD-JWT.
+   * The wallet selects which fields to reveal.
+   *
+   * Request body:
+   *   - sdJwtFull: string (the full SD-JWT with all disclosures)
+   *   - selectedFields: string[] (claim names to disclose)
+   *
+   * Response:
+   *   - presentation: string (derived SD-JWT with only selected disclosures)
+   *   - disclosedFields: string[]
+   *   - withheldFields: string[]
+   */
+  router.post("/api/wallet/sync/present", async (req: Request, res: Response) => {
+    try {
+      const { sdJwtFull, selectedFields } = req.body || {};
+
+      if (!sdJwtFull || typeof sdJwtFull !== "string") {
+        return res.status(400).json({
+          error: "missing_sd_jwt_full",
+          message: "sdJwtFull field is required (the full SD-JWT with all disclosures)",
+        });
+      }
+
+      if (!selectedFields || !Array.isArray(selectedFields) || selectedFields.length === 0) {
+        return res.status(400).json({
+          error: "missing_selected_fields",
+          message: "selectedFields array is required (claim names to disclose)",
+        });
+      }
+
+      // Validate the SD-JWT format (must have ~ separators)
+      if (!sdJwtFull.includes("~")) {
+        return res.status(400).json({
+          error: "invalid_sd_jwt_format",
+          message: "sdJwtFull must be in SD-JWT format: JWT~disclosure1~disclosure2~...~",
+        });
+      }
+
+      const result = createSelectivePresentation(sdJwtFull, selectedFields);
+
+      res.json({
+        presentation: result.presentation,
+        disclosedFields: result.disclosedFields,
+        withheldFields: result.withheldFields,
+        totalDisclosures: result.disclosedFields.length + result.withheldFields.length,
+      });
+    } catch (err: any) {
+      console.error("[WalletSync:Present] Error:", err.message);
+      res.status(500).json({ error: "presentation_failed", message: err.message });
+    }
+  });
+
+  /**
+   * POST /api/wallet/sync/verify-selective
+   * Verify a selective disclosure presentation (derived SD-JWT).
+   * Checks signature validity and disclosed claim integrity.
+   *
+   * Request body:
+   *   - presentation: string (the derived SD-JWT from /present endpoint)
+   *
+   * Response:
+   *   - verified: boolean
+   *   - trustLevel: "green" | "yellow" | "red"
+   *   - disclosedClaims: Record<string, unknown>
+   *   - withheldFields: string[]
+   *   - issuer: string | null
+   *   - credentialType: string | null
+   *   - warnings: string[]
+   *   - errors: string[]
+   */
+  router.post("/api/wallet/sync/verify-selective", async (req: Request, res: Response) => {
+    try {
+      const { presentation } = req.body || {};
+
+      if (!presentation || typeof presentation !== "string") {
+        return res.status(400).json({
+          error: "missing_presentation",
+          message: "presentation field is required (the derived SD-JWT)",
+        });
+      }
+
+      // Build trusted issuers from trust registry
+      const entries = await db.listTrustRegistry({ isActive: true });
+      const trustedIssuers = entries.map((e: any) => e.issuerDid).filter(Boolean);
+
+      const result = await verifySdJwtPresentation(presentation, { trustedIssuers });
+
+      // Cross-check credential status in DB if we can identify it
+      let dbStatus: string | null = null;
+      if (result.verified) {
+        try {
+          // Extract credentialId from JWT payload (jti claim)
+          const jwtPart = presentation.split("~")[0];
+          const payloadB64 = jwtPart.split(".")[1];
+          const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString());
+          const credentialId = payload.jti;
+          if (credentialId) {
+            const credRow = await db.getIssuedCredentialByCredentialId(credentialId);
+            if (credRow && credRow.status !== "active") {
+              dbStatus = credRow.status;
+              result.verified = false;
+              result.trustLevel = "red";
+              result.errors.push(`Credential status is '${credRow.status}' in the issuer registry.`);
+            }
+          }
+        } catch {
+          result.warnings.push("Could not cross-check credential status with issuer registry.");
+          if (result.trustLevel === "green") result.trustLevel = "yellow";
+        }
+      }
+
+      res.json({
+        verified: result.verified,
+        trustLevel: result.trustLevel,
+        disclosedClaims: result.disclosedClaims,
+        withheldFields: result.withheldFields,
+        issuer: result.issuer,
+        credentialType: result.credentialType,
+        dbStatus,
+        warnings: result.warnings,
+        errors: result.errors,
+      });
+    } catch (err: any) {
+      console.error("[WalletSync:VerifySelective] Error:", err.message);
+      res.status(500).json({
+        error: "verification_failed",
+        message: err.message,
+        verified: false,
+        trustLevel: "red",
+        warnings: [],
+        errors: [err.message],
+      });
+    }
+  });
+
+  /**
+   * POST /api/wallet/sync/sd-jwt/issue
+   * Generate SD-JWT for an existing credential (on-demand).
+   * Used when a credential doesn't have sdJwtFull yet.
+   * Requires authentication.
+   */
+  router.post("/api/wallet/sync/sd-jwt/issue", async (req: Request, res: Response) => {
+    try {
+      const { patientId: resolvedPatientId, error: authError } = await resolvePatientFromRequest(req);
+      const { credentialId } = req.body || {};
+
+      if (!resolvedPatientId) {
+        return res.status(401).json({
+          error: "authentication_required",
+          message: authError || "Authentication required",
+        });
+      }
+
+      if (!credentialId || typeof credentialId !== "string") {
+        return res.status(400).json({
+          error: "missing_credential_id",
+          message: "credentialId field is required",
+        });
+      }
+
+      // Find the credential
+      const cred = await db.getIssuedCredentialByCredentialId(credentialId);
+      if (!cred) {
+        return res.status(404).json({ error: "credential_not_found", message: "Credential not found" });
+      }
+
+      // Verify ownership
+      if (cred.subjectId !== resolvedPatientId) {
+        return res.status(403).json({ error: "forbidden", message: "Credential does not belong to this patient" });
+      }
+
+      // If already has SD-JWT, return it
+      if (cred.sdJwtFull && cred.disclosureMap) {
+        const policy = getDisclosurePolicy(cred.type);
+        return res.json({
+          credentialId: cred.credentialId,
+          sdJwtFull: cred.sdJwtFull,
+          disclosureMap: cred.disclosureMap,
+          policy: { alwaysDisclosed: policy.alwaysDisclosed, selectableFields: policy.selectableFields },
+          cached: true,
+        });
+      }
+
+      // Generate SD-JWT on demand
+      const credData = cred.credentialData as Record<string, unknown> | null;
+      if (!credData) {
+        return res.status(422).json({ error: "no_credential_data", message: "Credential has no data to create SD-JWT from" });
+      }
+
+      // Extract claims from credentialSubject
+      const credentialSubject = (credData as any)?.credentialSubject || credData;
+      const hospital = await db.getHospitalById(cred.issuerHospitalId);
+      const issuerDid = hospital?.code ? hospitalDidWeb(hospital.code) : "did:web:trustcare.network";
+
+      const sdResult = await issueSdJwt({
+        credentialId: cred.credentialId,
+        credentialType: cred.type,
+        issuerDid,
+        subjectDid: `did:trustcare:patient:${cred.subjectId}`,
+        claims: credentialSubject as Record<string, unknown>,
+        vcEnvelope: credData as any,
+        hospitalCode: hospital?.code,
+      });
+
+      // Store the SD-JWT in the database for future use
+      const database = await getDb();
+      if (database) {
+        await database.update(issuedCredentials)
+          .set({
+            sdJwtFull: sdResult.sdJwtFull,
+            disclosureMap: sdResult.disclosureMap,
+          })
+          .where(eq(issuedCredentials.id, cred.id));
+      }
+
+      const policy = getDisclosurePolicy(cred.type);
+      res.json({
+        credentialId: cred.credentialId,
+        sdJwtFull: sdResult.sdJwtFull,
+        disclosureMap: sdResult.disclosureMap,
+        policy: { alwaysDisclosed: policy.alwaysDisclosed, selectableFields: policy.selectableFields },
+        cached: false,
+      });
+    } catch (err: any) {
+      console.error("[WalletSync:SdJwtIssue] Error:", err.message);
+      res.status(500).json({ error: "sd_jwt_issue_failed", message: err.message });
+    }
+  });
+
+  /**
+   * GET /api/wallet/sync/sd-jwt/policy/:credentialType
+   * Get the selective disclosure policy for a credential type.
+   * Public endpoint.
+   */
+  router.get("/api/wallet/sync/sd-jwt/policy/:credentialType", async (req: Request, res: Response) => {
+    const { credentialType } = req.params;
+    const policy = getDisclosurePolicy(credentialType);
+    res.json({
+      credentialType,
+      policy,
+    });
   });
 
   return router;

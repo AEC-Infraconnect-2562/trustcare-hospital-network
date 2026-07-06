@@ -106,6 +106,10 @@ export const issuedCredentials = mysqlTable("issued_credentials", {
   status: mysqlEnum("status", ["active", "revoked", "expired", "suspended"]).default("active").notNull(),
   credentialData: json("credentialData"),
   sdJwtVc: mediumtext("sdJwtVc"),
+  /** Full SD-JWT with all disclosures appended (JWT~d1~d2~...~) for selective disclosure */
+  sdJwtFull: mediumtext("sdJwtFull"),
+  /** JSON map of claimName → base64url-encoded disclosure for selective disclosure */
+  disclosureMap: json("disclosureMap"),
   documentCategory: varchar("documentCategory", { length: 64 }),
   documentSubcategory: varchar("documentSubcategory", { length: 64 }),
   storageKey: varchar("storageKey", { length: 500 }),

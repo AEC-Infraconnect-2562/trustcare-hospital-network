@@ -1,6 +1,6 @@
 # TrustCare Hospital Network — API Reference
 
-**Version:** 5.30 (Wallet Sync API, DID Shortcut Routes, VP Context Mapping)  
+**Version:** 5.42 (SD-JWT Selective Disclosure, Wallet Sync API, DID Shortcut Routes, VP Context Mapping)  
 **Last updated:** 2026-07-06  
 **Base URL:** `https://trustcarehealth.live`
 
@@ -10,10 +10,12 @@
 
 1. [Authentication](#1-authentication)
 2. [Wallet Sync API](#2-wallet-sync-api)
-3. [DID Resolution Endpoints](#3-did-resolution-endpoints)
-4. [Well-Known Endpoints](#4-well-known-endpoints)
-5. [External Wallet API (v1)](#5-external-wallet-api-v1)
-6. [Error Handling](#6-error-handling)
+3. [Credential Verification API](#3-credential-verification-api)
+4. [SD-JWT Selective Disclosure](#4-sd-jwt-selective-disclosure)
+5. [DID Resolution Endpoints](#5-did-resolution-endpoints)
+6. [Well-Known Endpoints](#6-well-known-endpoints)
+7. [External Wallet API (v1)](#7-external-wallet-api-v1)
+8. [Error Handling](#8-error-handling)
 
 ---
 
@@ -226,7 +228,160 @@ If a credential does not have a signed JWT (legacy data), `proof` will be `null`
 
 ---
 
-## 4. DID Resolution Endpoints
+## 4. SD-JWT Selective Disclosure
+
+SD-JWT (Selective Disclosure JWT) allows wallets to present only selected fields from a credential without revealing the full payload. This follows the IETF SD-JWT specification (draft-ietf-oauth-selective-disclosure-jwt).
+
+### 4.1 Disclosure Policy
+
+**`GET /api/wallet/sync/sd-jwt/policy/:credentialType`** (Public)
+
+Returns the selective disclosure policy for a credential type.
+
+**Response:**
+```json
+{
+  "credentialType": "patient_identity",
+  "policy": {
+    "alwaysDisclosed": ["documentType", "brand", "label"],
+    "selectableFields": ["patient", "clinical", "organization"],
+    "neverDisclosed": ["trustcareSubjectId", "fontPolicy", "documentHash"]
+  }
+}
+```
+
+| Policy Category | Description |
+|----------------|-------------|
+| `alwaysDisclosed` | Fields always visible in any presentation (metadata) |
+| `selectableFields` | Fields the holder can choose to reveal or withhold |
+| `neverDisclosed` | Internal fields never included in presentations |
+
+### 4.2 Issue SD-JWT On-Demand
+
+**`POST /api/wallet/sync/sd-jwt/issue`** (Authenticated)
+
+Generates an SD-JWT for an existing credential. If already generated, returns the cached version.
+
+**Request:**
+```json
+{
+  "credentialId": "urn:uuid:tcc-appt-416-1"
+}
+```
+
+**Response:**
+```json
+{
+  "credentialId": "urn:uuid:tcc-appt-416-1",
+  "sdJwtFull": "eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOi...~WyJzYWx0IiwicGF0aWVudF9uYW1lIiwiU29tY2hhaSJd~...",
+  "disclosureMap": {
+    "patient_name": "WyJzYWx0IiwicGF0aWVudF9uYW1lIiwiU29tY2hhaSJd",
+    "date_of_birth": "WyJzYWx0IiwiZGF0ZV9vZl9iaXJ0aCIsIjE5OTAtMDEtMTUiXQ"
+  },
+  "policy": {
+    "alwaysDisclosed": ["documentType", "brand"],
+    "selectableFields": ["patient", "clinical"]
+  },
+  "cached": false
+}
+```
+
+### 4.3 Create Selective Presentation
+
+**`POST /api/wallet/sync/present`** (Public)
+
+The wallet selects which fields to reveal and receives a derived SD-JWT containing only those disclosures.
+
+**Request:**
+```json
+{
+  "sdJwtFull": "eyJhbGciOiJFUzI1NiJ9...~disc1~disc2~disc3~",
+  "selectedFields": ["patient_name", "date_of_birth"]
+}
+```
+
+**Response:**
+```json
+{
+  "presentation": "eyJhbGciOiJFUzI1NiJ9...~disc1~disc2~",
+  "disclosedFields": ["patient_name", "date_of_birth"],
+  "withheldFields": ["thai_id", "blood_type"],
+  "totalDisclosures": 4
+}
+```
+
+### 4.4 Verify Selective Presentation
+
+**`POST /api/wallet/sync/verify-selective`** (Public)
+
+Verifier submits a derived SD-JWT to check signature validity and disclosed claim integrity.
+
+**Request:**
+```json
+{
+  "presentation": "eyJhbGciOiJFUzI1NiJ9...~disc1~disc2~"
+}
+```
+
+**Response:**
+```json
+{
+  "verified": true,
+  "trustLevel": "green",
+  "disclosedClaims": {
+    "patient_name": "สมชาย ใจดี",
+    "date_of_birth": "1990-01-15"
+  },
+  "withheldFields": ["thai_id", "blood_type"],
+  "issuer": "did:web:trustcare.network:hospital:TCC",
+  "credentialType": "patient_identity",
+  "dbStatus": null,
+  "warnings": [],
+  "errors": []
+}
+```
+
+| Trust Level | Meaning |
+|-------------|--------|
+| `green` | Signature valid, issuer trusted, credential active |
+| `yellow` | Signature valid but with warnings (e.g., HMAC signing) |
+| `red` | Signature invalid, issuer untrusted, or credential revoked/suspended |
+
+### 4.5 Sync Response — selectiveDisclosure Field
+
+When syncing credentials via `POST /api/wallet/sync`, each credential now includes a `selectiveDisclosure` field:
+
+```json
+{
+  "selectiveDisclosure": {
+    "sdJwtFull": "eyJhbGciOiJFUzI1NiJ9...~disc1~disc2~...",
+    "disclosureMap": {
+      "patient_name": "WyJzYWx0IiwicGF0aWVudF9uYW1lIiwiU29tY2hhaSJd"
+    },
+    "policy": {
+      "alwaysDisclosed": ["documentType"],
+      "selectableFields": ["patient", "clinical"]
+    }
+  }
+}
+```
+
+If the credential does not have an SD-JWT yet, `selectiveDisclosure` will be `null`. Use the `/sd-jwt/issue` endpoint to generate one on demand.
+
+### 4.6 Full Flow Example
+
+```
+1. Wallet syncs credentials → POST /api/wallet/sync
+2. Wallet checks policy      → GET /api/wallet/sync/sd-jwt/policy/patient_identity
+3. Wallet issues SD-JWT       → POST /api/wallet/sync/sd-jwt/issue (if not cached)
+4. Patient selects fields     → UI shows selectable fields from policy
+5. Wallet creates presentation→ POST /api/wallet/sync/present
+6. Verifier checks            → POST /api/wallet/sync/verify-selective
+7. Verifier sees only selected fields + trust level
+```
+
+---
+## 5. DID Resolution Endpoints
 
 These endpoints provide standard W3C DID Web Method resolution for external verifiers and wallets.
 
@@ -327,7 +482,7 @@ Standard W3C DID Web Method resolution path for per-hospital DIDs. Same response
 
 ---
 
-## 5. Well-Known Endpoints
+## 6. Well-Known Endpoints
 
 ### 5.1 GET /.well-known/jwks.json
 
@@ -347,7 +502,7 @@ Returns a DIF Domain Linkage Credential proving that `trustcarehealth.live` is c
 
 ---
 
-## 6. External Wallet API (v1)
+## 7. External Wallet API (v1)
 
 The External Wallet API provides REST endpoints for third-party wallet applications under `/api/v1/`. Authentication uses API keys with scope-based authorization.
 
@@ -369,7 +524,7 @@ For detailed documentation, visit the interactive API docs at `/docs/api`.
 
 ---
 
-## 7. Error Handling
+## 8. Error Handling
 
 All API endpoints return consistent error responses:
 
