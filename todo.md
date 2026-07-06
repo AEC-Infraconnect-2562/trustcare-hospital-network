@@ -994,17 +994,17 @@
 
 ## v3.39.0 - VC/VP Schema Alignment with External Wallet + Per-Hospital Keys
 
-- [ ] Generate per-hospital ES256 signing key pairs (TCC, TCP, TCM) stored in DB/config
-- [ ] Refactor buildCredentialEnvelope: @context wallet-medical-document/v1, issuer.nameTh, TrustCareStatusList2026
-- [ ] Refactor createPresentation: add trustcare metadata block, validUntil, context
-- [ ] Create wallet-compatible document type definitions catalog (25 types with metadata)
-- [ ] Enrich credentialSubject with type-specific realistic clinical data for all 25 types
-- [ ] Add documentReference into credentialSubject for all types
-- [ ] Move humanDocument into credentialSubject
-- [ ] Replace trustcareSeed with trustcare metadata block (schemaVersion, documentType, credentialType, category, sensitivity, shareDefault, tags, display)
-- [ ] Enrich evidence with fhirResources, documentReferenceId, resource
-- [ ] Run reseed to rebuild all 400+ credentials with new schema
-- [ ] Rebuild all VP JWTs with trustcare metadata
-- [ ] Verify all records match Wallet expected format
-- [ ] All tests passing
-- [ ] Push to GitHub, save checkpoint
+- [x] Generate per-hospital ES256 signing key pairs (TCC, TCP, TCM) stored in did.ts
+- [x] Refactor buildCredentialEnvelope: @context wallet-medical-document/v1, issuer.nameTh, TrustCareStatusList2026
+- [x] Refactor createPresentation: add trustcare metadata block, validUntil, context
+- [x] Create wallet-compatible document type definitions catalog (26 types with metadata in WALLET_DOCUMENT_CATALOG)
+- [x] Enrich credentialSubject with type-specific realistic clinical data for all 25 types
+- [x] Add documentReference into credentialSubject for all types
+- [x] Move humanDocument into credentialSubject
+- [x] Replace trustcareSeed with trustcare metadata block (schemaVersion, documentType, credentialType, category, sensitivity, shareDefault, tags, display)
+- [x] Enrich evidence with fhirResources, documentReferenceId, resource
+- [x] Run reseed to rebuild all 400 credentials with new schema (completed successfully)
+- [x] Rebuild all 6 VP JWTs with trustcare metadata
+- [x] Verify all records match Wallet expected format (0 null credentialData, all have trustcare+documentReference+humanDocument)
+- [x] All 352 tests passing
+- [x] Push to GitHub (e08fa9c), save checkpoint
