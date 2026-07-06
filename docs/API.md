@@ -152,7 +152,7 @@ Check sync availability and statistics for the authenticated patient.
 
 ---
 
-### 2.3 POST /api/wallet/sync/did-resolve
+### 2.5 POST /api/wallet/sync/did-resolve
 
 Resolve a DID and return the public keys for credential verification. This endpoint is **public** (no authentication required) to enable any wallet to verify issuer keys.
 
@@ -205,11 +205,32 @@ Resolve a DID and return the public keys for credential verification. This endpo
 
 ---
 
-## 3. DID Resolution Endpoints
+## 3. Credential Verification API
+
+The verification flow for external wallets is:
+
+1. **Sync** credentials via `POST /api/wallet/sync` — each credential includes a `proof` object with the signed JWT
+2. **Verify** the JWT locally using the public key from `POST /api/wallet/sync/did-resolve` or `GET /hospital/:code/did/jwks.json`
+3. **Confirm** with the issuer via `POST /api/wallet/sync/verify` for real-time revocation/suspension checks
+
+The `proof` field in each synced credential contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | Always `"jwt"` |
+| `jwt` | string | The complete signed SD-JWT-VC (ES256) |
+| `alg` | string | Signing algorithm (from JWT header) |
+| `kid` | string | Key ID (from JWT header) |
+
+If a credential does not have a signed JWT (legacy data), `proof` will be `null`.
+
+---
+
+## 4. DID Resolution Endpoints
 
 These endpoints provide standard W3C DID Web Method resolution for external verifiers and wallets.
 
-### 3.1 GET /hospital/:code/did.json
+### 4.1 GET /hospital/:code/did.json
 
 **Shortcut route** for per-hospital DID resolution. Equivalent to `/hospital/:code/.well-known/did.json` but with a simpler URL for wallet integration.
 
@@ -264,7 +285,7 @@ These endpoints provide standard W3C DID Web Method resolution for external veri
 
 ---
 
-### 3.2 GET /hospital/:code/did/jwks.json
+### 4.2 GET /hospital/:code/did/jwks.json
 
 Per-hospital JWKS endpoint. Returns the public signing key(s) for a specific hospital. External wallets use this to verify VC signatures from a specific issuer without resolving the full DID document.
 
@@ -300,15 +321,15 @@ Per-hospital JWKS endpoint. Returns the public signing key(s) for a specific hos
 
 ---
 
-### 3.3 GET /hospital/:code/.well-known/did.json
+### 4.3 GET /hospital/:code/.well-known/did.json
 
 Standard W3C DID Web Method resolution path for per-hospital DIDs. Same response as `/hospital/:code/did.json`.
 
 ---
 
-## 4. Well-Known Endpoints
+## 5. Well-Known Endpoints
 
-### 4.1 GET /.well-known/jwks.json
+### 5.1 GET /.well-known/jwks.json
 
 Returns a JSON Web Key Set containing all active public keys in the TrustCare network, including the network-level signing key and per-hospital keys.
 
@@ -316,17 +337,17 @@ Returns a JSON Web Key Set containing all active public keys in the TrustCare ne
 - Network-level key: `did:web:trustcare.network#vc-signing-key-1`
 - Per-hospital keys: `did:web:trustcare.network:hospital:<code>#vc-signing-key`
 
-### 4.2 GET /.well-known/did.json
+### 5.2 GET /.well-known/did.json
 
 Returns the DID Document for `did:web:trustcare.network` (the network-level identity).
 
-### 4.3 GET /.well-known/did-configuration.json
+### 5.3 GET /.well-known/did-configuration.json
 
 Returns a DIF Domain Linkage Credential proving that `trustcarehealth.live` is controlled by `did:web:trustcare.network`.
 
 ---
 
-## 5. External Wallet API (v1)
+## 6. External Wallet API (v1)
 
 The External Wallet API provides REST endpoints for third-party wallet applications under `/api/v1/`. Authentication uses API keys with scope-based authorization.
 
@@ -348,7 +369,7 @@ For detailed documentation, visit the interactive API docs at `/docs/api`.
 
 ---
 
-## 6. Error Handling
+## 7. Error Handling
 
 All API endpoints return consistent error responses:
 

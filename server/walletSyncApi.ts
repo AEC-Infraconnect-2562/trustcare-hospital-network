@@ -18,6 +18,8 @@
 import { Router, Request, Response } from "express";
 import * as db from "./db";
 import { getHospitalPublicJwk, hospitalDidWeb } from "./portability/did";
+import { verifyCredential, verifyPresentation } from "./portability/vc";
+import { buildTrustRegistryPolicy } from "./portability/trust";
 import { issuedCredentials, issuedPresentations, walletCards, hospitals } from "../drizzle/schema";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { getDb } from "./db";
@@ -52,6 +54,13 @@ interface WalletSyncCredential {
   createdAt: string;
   lastPresentedAt: string | null;
   pinned: boolean;
+  /** Signed SD-JWT-VC (ES256) — wallet can verify this cryptographically */
+  proof: {
+    type: "jwt";
+    jwt: string;
+    alg: string;
+    kid: string;
+  } | null;
 }
 
 interface WalletSyncPresentation {
@@ -212,6 +221,24 @@ export function createWalletSyncRouter(): Router {
         const hospital = cred ? hospitalMap.get(cred.issuerHospitalId) : null;
         const issuerDid = card.issuerDid || (hospital?.code ? hospitalDidWeb(hospital.code) : null);
 
+        // Extract JWT proof from sdJwtVc field
+        const jwtToken = cred?.sdJwtVc || null;
+        let proof: WalletSyncCredential["proof"] = null;
+        if (jwtToken) {
+          try {
+            const headerB64 = jwtToken.split(".")[0];
+            const header = JSON.parse(Buffer.from(headerB64, "base64url").toString());
+            proof = {
+              type: "jwt",
+              jwt: jwtToken,
+              alg: header.alg || "ES256",
+              kid: header.kid || `${issuerDid}#vc-signing-key`,
+            };
+          } catch {
+            proof = { type: "jwt", jwt: jwtToken, alg: "ES256", kid: `${issuerDid}#vc-signing-key` };
+          }
+        }
+
         return {
           id: card.id,
           cardType: card.cardType,
@@ -224,7 +251,7 @@ export function createWalletSyncRouter(): Router {
           credentialType: cred?.type || card.cardType,
           issuerHospitalName: card.issuerHospitalName || hospital?.name || null,
           issuerDid,
-          holderDid: null, // Will be populated from credentialData if available
+          holderDid: null,
           patientId,
           sourceSystem: "trustcare_portal",
           issuedAt: cred?.issuedAt?.toISOString() || null,
@@ -232,6 +259,7 @@ export function createWalletSyncRouter(): Router {
           createdAt: card.createdAt?.toISOString() || new Date().toISOString(),
           lastPresentedAt: card.lastPresentedAt?.toISOString() || null,
           pinned: card.isPinned || false,
+          proof,
         };
       });
 
@@ -240,6 +268,24 @@ export function createWalletSyncRouter(): Router {
       for (const cred of credentials) {
         if (!cardCredIds.has(cred.id)) {
           const hospital = hospitalMap.get(cred.issuerHospitalId);
+          const credIssuerDid = hospital?.code ? hospitalDidWeb(hospital.code) : null;
+          // Extract JWT proof
+          const jwtToken = cred.sdJwtVc || null;
+          let proof: WalletSyncCredential["proof"] = null;
+          if (jwtToken) {
+            try {
+              const headerB64 = jwtToken.split(".")[0];
+              const header = JSON.parse(Buffer.from(headerB64, "base64url").toString());
+              proof = {
+                type: "jwt",
+                jwt: jwtToken,
+                alg: header.alg || "ES256",
+                kid: header.kid || `${credIssuerDid}#vc-signing-key`,
+              };
+            } catch {
+              proof = { type: "jwt", jwt: jwtToken, alg: "ES256", kid: `${credIssuerDid}#vc-signing-key` };
+            }
+          }
           syncCredentials.push({
             id: cred.id + 100000, // offset to avoid collision
             cardType: cred.type,
@@ -251,7 +297,7 @@ export function createWalletSyncRouter(): Router {
             credentialData: cred.credentialData as Record<string, unknown> | null,
             credentialType: cred.type,
             issuerHospitalName: hospital?.name || null,
-            issuerDid: hospital?.code ? hospitalDidWeb(hospital.code) : null,
+            issuerDid: credIssuerDid,
             holderDid: null,
             patientId,
             sourceSystem: "trustcare_portal",
@@ -260,6 +306,7 @@ export function createWalletSyncRouter(): Router {
             createdAt: cred.createdAt?.toISOString() || new Date().toISOString(),
             lastPresentedAt: null,
             pinned: false,
+            proof,
           });
         }
       }
@@ -341,6 +388,93 @@ export function createWalletSyncRouter(): Router {
     } catch (err: any) {
       console.error("[WalletSync:Status] Error:", err.message);
       res.status(500).json({ error: "internal_error", message: err.message });
+    }
+  });
+
+  /**
+   * POST /api/wallet/sync/verify
+   * Verify a credential or presentation JWT cryptographically.
+   * Returns green/yellow/red trust level.
+   * Public endpoint — no authentication required.
+   */
+  router.post("/api/wallet/sync/verify", async (req: Request, res: Response) => {
+    try {
+      const { jwt, kind } = req.body || {};
+      if (!jwt || typeof jwt !== "string") {
+        return res.status(400).json({
+          error: "missing_jwt",
+          message: "jwt field is required (the signed VC or VP token)",
+        });
+      }
+
+      // Determine if this is a credential or presentation
+      const verifyKind = kind === "presentation" ? "presentation" : "credential";
+
+      // Build trust policy from the registry
+      const [entries, revokedCredentialIds, revokedStatus] = await Promise.all([
+        db.listTrustRegistry({ isActive: true }),
+        db.listRevokedCredentialIds(),
+        db.listRevokedCredentialStatus(),
+      ]);
+      const trustPolicy = buildTrustRegistryPolicy({
+        entries: entries as any[],
+        mode: "advisory",
+        revokedCredentialIds: [...revokedCredentialIds, ...revokedStatus.credentialIds],
+        revokedStatusIndexes: [...revokedStatus.statusListIndexes],
+      });
+
+      let result: any;
+      if (verifyKind === "presentation") {
+        result = await verifyPresentation({ jwt, trustPolicy });
+      } else {
+        result = await verifyCredential({ jwt, trustPolicy });
+      }
+
+      // Cross-check credential status in the database (revoked/suspended/expired)
+      // This catches cases where the JWT is cryptographically valid but the credential
+      // has been administratively suspended or revoked after issuance.
+      let dbStatus: string | null = null;
+      if (result.credentialId && result.verified) {
+        try {
+          const credRow = await db.getIssuedCredentialByCredentialId(result.credentialId);
+          if (credRow && credRow.status !== "active") {
+            dbStatus = credRow.status;
+            result.verified = false;
+            result.trustLevel = "red";
+            result.errors.push(`Credential status is '${credRow.status}' in the issuer registry.`);
+          }
+        } catch {
+          // DB lookup failed — don't block verification, just note it
+          result.warnings.push("Could not cross-check credential status with issuer registry.");
+          if (result.trustLevel === "green") result.trustLevel = "yellow";
+        }
+      }
+
+      res.json({
+        verified: result.verified,
+        trustLevel: result.trustLevel,
+        issuer: result.issuer || null,
+        credentialId: result.credentialId || null,
+        credentialType: result.credentialType || null,
+        kid: result.kid || null,
+        alg: result.alg || null,
+        issuedAt: result.credential?.issuance_date || result.credential?.issuedAt || null,
+        expiresAt: result.credential?.expiration_date || result.credential?.expiresAt || null,
+        dbStatus,
+        warnings: result.warnings || [],
+        errors: result.errors || [],
+        credential: result.verified ? result.credential : undefined,
+      });
+    } catch (err: any) {
+      console.error("[WalletSync:Verify] Error:", err.message);
+      res.status(500).json({
+        error: "verification_failed",
+        message: err.message,
+        verified: false,
+        trustLevel: "red",
+        warnings: [],
+        errors: [err.message],
+      });
     }
   });
 

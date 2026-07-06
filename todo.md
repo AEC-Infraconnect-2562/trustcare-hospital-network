@@ -1051,3 +1051,12 @@
 - [x] Update Architecture documentation (docs/ARCHITECTURE.md) with new modules
 - [x] Run all tests (unit + E2E) and verify 0 failures (445 tests, 35 files, 0 failures)
 - [x] Push to GitHub, save checkpoint
+
+## v3.41.0 - Cryptographic Proof in Wallet Sync (JWT Envelope + Verify Endpoint)
+
+- [x] Add JWT envelope (signed SD-JWT-VC) to each credential in /api/wallet/sync response
+- [x] Create POST /api/wallet/sync/verify endpoint (wallet sends JWT, gets green/yellow/red trust result)
+- [x] Verify endpoint checks: signature validity, issuer trust registry, expiry, revocation status + DB cross-check
+- [x] Write E2E tests for JWT envelope presence and verify endpoint (18 tests)
+- [x] Update docs/API.md with new verify endpoint documentation (v5.40)
+- [x] Push to GitHub, save checkpoint
