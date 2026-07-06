@@ -39,6 +39,60 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // ─── CORS for External Wallet (GitHub Pages + localhost) ───────────────────
+  const WALLET_CORS_ORIGINS = [
+    "https://aec-infraconnect-2562.github.io",
+    /^http:\/\/localhost(:\d+)?$/,
+    /^http:\/\/127\.0\.0\.1(:\d+)?$/,
+  ];
+  const WALLET_CORS_PATHS = [
+    "/api/auth/demo-login",
+    "/api/wallet/sync",
+    "/api/wallet/sync/status",
+    "/api/wallet/sync/verify",
+    "/api/wallet/sync/verify-selective",
+    "/api/wallet/sync/present",
+    "/api/wallet/sync/did-resolve",
+    "/api/wallet/sync/sd-jwt/issue",
+    "/api/wallet/sync/sd-jwt/policy",
+    "/api/v1/",
+    "/.well-known/",
+    "/hospital/",
+  ];
+
+  function isAllowedOrigin(origin: string | undefined): string | null {
+    if (!origin) return null;
+    for (const allowed of WALLET_CORS_ORIGINS) {
+      if (typeof allowed === "string" && origin === allowed) return origin;
+      if (allowed instanceof RegExp && allowed.test(origin)) return origin;
+    }
+    return null;
+  }
+
+  function isWalletPath(path: string): boolean {
+    return WALLET_CORS_PATHS.some(p => path.startsWith(p));
+  }
+
+  // CORS middleware — must be before route handlers
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    const matchedOrigin = isAllowedOrigin(origin);
+    if (matchedOrigin && isWalletPath(req.path)) {
+      res.setHeader("Access-Control-Allow-Origin", matchedOrigin);
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Max-Age", "86400");
+
+      // Handle preflight
+      if (req.method === "OPTIONS") {
+        return res.status(204).end();
+      }
+    }
+    next();
+  });
+
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerClaimRoutes(app);

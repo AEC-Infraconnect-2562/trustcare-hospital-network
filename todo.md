@@ -1083,8 +1083,17 @@
 - [ ] Push to GitHub, save checkpoint
 
 ## v3.42.2 - Fix Credential Data Context Bug
-- [ ] Investigate: credentialData in VC payloads shows same patient_summary data for all credential types
-- [ ] Fix seed data: each credential type must have type-specific credentialData (appointment→appointment data, quotation→quotation data, etc.)
-- [ ] Fix wallet card detail view: render type-specific fields based on cardType/credentialType
-- [ ] Verify all credential types display correct context-specific data
-- [ ] Run tests, push to GitHub, save checkpoint
+- [x] Investigate: credentialData in VC payloads shows same patient_summary data for all credential types
+- [x] Fix seed data: each credential type must have type-specific credentialData (appointment→appointment data, quotation→quotation data, etc.)
+- [x] Fix wallet card detail view: render type-specific fields based on cardType/credentialType
+- [x] Verify all credential types display correct context-specific data
+- [x] Run tests, push to GitHub, save checkpoint
+
+## v3.43.0 - CORS Fix for External Wallet Sync
+
+- [ ] Add CORS middleware allowing GitHub Pages + localhost origins for wallet sync endpoints
+- [ ] Ensure OPTIONS preflight returns correct headers (POST, GET, OPTIONS; content-type, authorization)
+- [ ] Verify demo-login endpoint accepts `{ "openId": "..." }` body format and returns bearer token
+- [ ] Verify /api/wallet/sync accepts Authorization: Bearer header and returns full credential data
+- [ ] Test CORS headers with curl preflight simulation
+- [ ] Push to GitHub, save checkpoint
