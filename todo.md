@@ -912,15 +912,14 @@
 ## v3.34.0 - Cross-Device QR Code Scanning Fix
 
 ### Research
-- [ ] Study RU_VC project QR scanning implementation (cross-device approach)
-- [ ] Identify the pattern used for real-time QR verification across devices
+- [x] Study RU_VC project QR scanning implementation (cross-device approach)
+- [x] Identify the pattern used for real-time QR verification across devices
 
 ### Implementation
-- [ ] Implement server-side QR session management (generate session, poll status)
-- [ ] Update QR code generation to embed session-based verification URL
-- [ ] Implement real-time status polling/WebSocket for cross-device verification
-- [ ] Update Verifier page to support cross-device QR scanning workflow
-- [ ] Update Wallet QR presentation to work with session-based approach
-- [ ] Write tests for QR cross-device flow
-- [ ] Fix Verifier page camera not opening for QR scanning
-- [ ] Push to GitHub, save checkpoint
+- [x] Rewrite QRScanner component with autoStart prop (like RU_VC pattern)
+- [x] Create public /verify page (no login required) for cross-device scanning
+- [x] Update QR URL generation to use /verify (public) instead of /verifier (auth-required)
+- [x] Add autoStart to Verifier page camera tab
+- [x] Add autoStart to ServiceVerify page
+- [x] Fix Verifier page camera not opening for QR scanning
+- [x] Push to GitHub, save checkpoint
