@@ -169,6 +169,7 @@ export const walletCards = mysqlTable("wallet_cards", {
   displayName: varchar("displayName", { length: 255 }).notNull(),
   displayNameEn: varchar("displayNameEn", { length: 255 }),
   issuerHospitalName: varchar("issuerHospitalName", { length: 255 }),
+  issuerDid: varchar("issuerDid", { length: 512 }),
   documentCategory: varchar("documentCategory", { length: 64 }),
   cardColor: varchar("cardColor", { length: 7 }).default("#2563eb"),
   isPinned: boolean("isPinned").default(false).notNull(),

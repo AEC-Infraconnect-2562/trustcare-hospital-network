@@ -148,6 +148,13 @@
       "when": 1783172878752,
       "tag": "0020_easy_the_professor",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1783336703641,
+      "tag": "0021_bright_white_queen",
+      "breakpoints": true
     }
   ]
 }

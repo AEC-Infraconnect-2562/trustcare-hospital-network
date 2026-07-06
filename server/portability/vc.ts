@@ -11,9 +11,13 @@ import type {
   TrustcareCredentialType,
 } from "./types";
 import { addDays, isoNow, sha256, stableStringify, stripUndefined, urnUuid } from "./utils";
+import { getHospitalKeyPair, getAllHospitalPublicKeys } from "./did";
+import { getDocumentDefinition, WALLET_DOCUMENT_CATALOG, type WalletDocumentDefinition } from "./labels";
 
 const DEFAULT_AUDIENCE = "https://trustcare.network/verifier";
 const DEFAULT_STATUS_LIST = "https://trustcare.network/status/revocation-list";
+const SCHEMA_VERSION = "2026.07.complete-seed.v1";
+const RENDERER_VERSION = "trustcare-wallet-document-renderer-2026.07";
 
 interface VerificationOptions {
   trustedIssuers?: string[];
@@ -27,18 +31,68 @@ interface VerificationOptions {
   trustPolicy?: TrustRegistryVerificationPolicy;
 }
 
+/** Patient block for humanDocument and credentialSubject */
+export interface PatientBlock {
+  fullNameTh: string;
+  fullNameEn: string;
+  birthDate: string;
+  gender: string;
+  nationality: string;
+  carepassId?: string;
+  hn?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  avatarUrl?: string;
+}
+
+/** Extended issueCredential options for wallet-compatible output */
+export interface IssueCredentialInput {
+  type: TrustcareCredentialType;
+  issuer: IssuerProfile;
+  subjectId: string;
+  subjectDid?: string;
+  claims: JsonRecord;
+  evidence?: JsonRecord[];
+  validDays?: number;
+  audience?: string;
+  now?: Date;
+  credentialId?: string;
+  /** Document type (cardType) for wallet catalog lookup */
+  documentType?: string;
+  /** Patient demographics for humanDocument */
+  patient?: PatientBlock;
+  /** Hospital code for per-hospital signing (TCC, TCP, TCM) */
+  hospitalCode?: string;
+}
+
 function signingSecret(): Uint8Array {
   const secret = process.env.TRUSTCARE_VC_SIGNING_SECRET ?? process.env.JWT_SECRET ?? "trustcare-dev-vc-secret-change-me";
   return new TextEncoder().encode(secret);
 }
 
-async function resolveSigningMaterial(issuerDid: string, purpose: "vc" | "vp"): Promise<{
+async function resolveSigningMaterial(issuerDid: string, purpose: "vc" | "vp", hospitalCode?: string): Promise<{
   alg: string;
   kid: string;
   key: unknown;
   keyMode: IssuedVc["keyMode"];
   publicJwk?: JsonRecord;
 }> {
+  // Per-hospital key for seed/demo mode
+  if (hospitalCode) {
+    const hospitalKey = getHospitalKeyPair(hospitalCode);
+    const alg = "ES256";
+    const kid = hospitalKey.kid;
+    return {
+      alg,
+      kid,
+      key: await importJWK(hospitalKey.privateJwk as any, alg),
+      keyMode: "asymmetric",
+      publicJwk: hospitalKey.publicJwk,
+    };
+  }
+
+  // Production env-based key
   const privateJwk = parseJwk(process.env.TRUSTCARE_VC_SIGNING_PRIVATE_JWK);
   if (privateJwk) {
     const alg = process.env.TRUSTCARE_VC_SIGNING_ALG ?? String(privateJwk.alg ?? "ES256");
@@ -62,39 +116,39 @@ async function resolveSigningMaterial(issuerDid: string, purpose: "vc" | "vp"): 
 }
 
 export async function localIssuerJwks(issuerDid = "did:web:trustcare.network"): Promise<JsonRecord> {
+  // Include all hospital keys for network-level JWKS
+  const allKeys = getAllHospitalPublicKeys();
+
   const privateJwk = parseJwk(process.env.TRUSTCARE_VC_SIGNING_PRIVATE_JWK);
   const publicJwk = parseJwk(process.env.TRUSTCARE_VC_SIGNING_PUBLIC_JWK) ?? (privateJwk ? toPublicJwk(privateJwk) : undefined);
-  if (!publicJwk) {
+  if (publicJwk) {
+    const alg = process.env.TRUSTCARE_VC_SIGNING_ALG ?? String(publicJwk.alg ?? "ES256");
+    const kid = process.env.TRUSTCARE_VC_KEY_ID ?? String(publicJwk.kid ?? `${issuerDid}#vc-signing-key`);
+    allKeys.push({ ...publicJwk, alg, kid, use: publicJwk.use ?? "sig" });
+  }
+
+  if (allKeys.length === 0) {
     return {
       keys: [],
       issuer: issuerDid,
       warning: "No asymmetric public JWK configured. Set TRUSTCARE_VC_SIGNING_PRIVATE_JWK and TRUSTCARE_VC_SIGNING_PUBLIC_JWK before production.",
     };
   }
-  const alg = process.env.TRUSTCARE_VC_SIGNING_ALG ?? String(publicJwk.alg ?? "ES256");
-  const kid = process.env.TRUSTCARE_VC_KEY_ID ?? String(publicJwk.kid ?? `${issuerDid}#vc-signing-key`);
+
   return {
-    keys: [{ ...publicJwk, alg, kid, use: publicJwk.use ?? "sig" }],
+    keys: allKeys,
     issuer: issuerDid,
   };
 }
 
-export async function issueCredential(input: {
-  type: TrustcareCredentialType;
-  issuer: IssuerProfile;
-  subjectId: string;
-  subjectDid?: string;
-  claims: JsonRecord;
-  evidence?: JsonRecord[];
-  validDays?: number;
-  audience?: string;
-  now?: Date;
-  credentialId?: string;
-}): Promise<IssuedVc> {
+export async function issueCredential(input: IssueCredentialInput): Promise<IssuedVc> {
   const now = input.now ?? new Date();
   const expiresAt = addDays(now, input.validDays ?? 365);
   const id = input.credentialId ?? urnUuid();
-  const signingMaterial = await resolveSigningMaterial(input.issuer.did, "vc");
+  const signingMaterial = await resolveSigningMaterial(input.issuer.did, "vc", input.hospitalCode);
+
+  const docDef = input.documentType ? getDocumentDefinition(input.documentType) : undefined;
+
   const credential = stripUndefined(buildCredentialEnvelope({
     id,
     type: input.type,
@@ -105,6 +159,10 @@ export async function issueCredential(input: {
     evidence: input.evidence,
     issuedAt: now.toISOString(),
     expiresAt: expiresAt.toISOString(),
+    documentType: input.documentType,
+    patient: input.patient,
+    hospitalCode: input.hospitalCode ?? input.issuer.hospitalCode,
+    docDef,
   }));
   const disclosureDigests = buildDisclosureDigests(stripUndefined(input.claims));
   const digest = sha256(credential);
@@ -221,20 +279,46 @@ export async function createPresentation(input: {
   validMinutes?: number;
   now?: Date;
   presentationId?: string;
+  /** Hospital code for per-hospital signing */
+  hospitalCode?: string;
+  /** Consent context for trustcare VP metadata */
+  context?: string;
+  /** Document types included in this VP */
+  documentTypes?: string[];
+  /** Document references for each credential */
+  documentReferences?: JsonRecord[];
 }): Promise<PresentationPackage> {
   const now = input.now ?? new Date();
   const expiresAt = new Date(now.getTime() + (input.validMinutes ?? 10) * 60_000);
   const id = input.presentationId ?? urnUuid();
   const credentialIds = input.credentials.map((credential) => credential.id);
-  const signingMaterial = await resolveSigningMaterial(input.holderDid, "vp");
+  const signingMaterial = await resolveSigningMaterial(input.holderDid, "vp", input.hospitalCode);
+
+  // Build VP payload hash for integrity
+  const vpPayloadForHash = {
+    credentialIds,
+    purpose: input.purpose,
+    holderDid: input.holderDid,
+    issuedAt: now.toISOString(),
+  };
+  const payloadHash = `sha256:${sha256(vpPayloadForHash)}`;
+
   const jwt = await new SignJWT({
     vp: {
-      "@context": ["https://www.w3.org/ns/credentials/v2"],
+      "@context": ["https://www.w3.org/ns/credentials/v2", "https://trustcare.network/contexts/share-package/v1"],
       id,
       type: ["VerifiablePresentation", "TrustcarePatientPresentation"],
       holder: input.holderDid,
-      verifiableCredential: input.credentials.map((credential) => credential.jwt),
       purpose: input.purpose,
+      validUntil: expiresAt.toISOString(),
+      verifiableCredential: input.credentials.map((credential) => credential.jwt),
+      trustcare: {
+        mode: "TrustcarePatientPresentation",
+        context: input.context ?? purposeToContext(input.purpose),
+        documentTypes: input.documentTypes ?? input.credentials.map(c => documentTypeFromCredentialType(c.type)),
+        documentReferences: input.documentReferences ?? [],
+        payloadHash,
+      },
     },
     trustcare_credential_ids: credentialIds,
   })
@@ -416,6 +500,8 @@ export function prescriptionClaims(input: {
   };
 }
 
+// ─── Internal Helpers ────────────────────────────────────────────────────────
+
 function buildCredentialEnvelope(input: {
   id: string;
   type: TrustcareCredentialType;
@@ -426,14 +512,40 @@ function buildCredentialEnvelope(input: {
   evidence?: JsonRecord[];
   issuedAt: string;
   expiresAt: string;
+  documentType?: string;
+  patient?: PatientBlock;
+  hospitalCode?: string;
+  docDef?: WalletDocumentDefinition;
 }): JsonRecord {
+  const docDef = input.docDef;
+  const hospitalCode = input.hospitalCode ?? input.issuer.hospitalCode ?? "TCC";
+
+  // Build humanDocument if patient info available
+  const humanDocument = input.patient && docDef ? buildHumanDocument({
+    docDef,
+    issuer: input.issuer,
+    patient: input.patient,
+    issuedAt: input.issuedAt,
+    expiresAt: input.expiresAt,
+  }) : undefined;
+
+  // Build documentReference if docDef available
+  const documentReference = docDef ? buildDocumentReference({
+    docDef,
+    credentialId: input.id,
+    patient: input.patient,
+    issuer: input.issuer,
+    issuedAt: input.issuedAt,
+  }) : undefined;
+
   return {
-    "@context": ["https://www.w3.org/ns/credentials/v2", "https://trustcare.network/contexts/health/v1"],
+    "@context": ["https://www.w3.org/ns/credentials/v2", "https://trustcare.network/contexts/wallet-medical-document/v1"],
     id: input.id,
     type: ["VerifiableCredential", input.type],
     issuer: {
       id: input.issuer.did,
       name: input.issuer.name,
+      nameTh: input.issuer.nameTh ?? input.issuer.name,
       trustDomain: input.issuer.trustDomain ?? "trustcare-network",
       country: input.issuer.country ?? "TH",
     },
@@ -443,16 +555,203 @@ function buildCredentialEnvelope(input: {
       id: input.subjectDid ?? input.subjectId,
       trustcareSubjectId: input.subjectId,
       ...input.claims,
+      ...(input.patient ? { patient: input.patient } : {}),
+      ...(documentReference ? { documentReference } : {}),
+      ...(humanDocument ? { humanDocument } : {}),
     },
-    evidence: input.evidence ?? [],
+    evidence: input.evidence && input.evidence.length > 0 ? input.evidence : buildDefaultEvidence(input.id, docDef, hospitalCode, input.issuedAt),
     credentialStatus: {
-      id: `${statusListCredential()}/${statusListIndex(input.id)}`,
-      type: "BitstringStatusListEntry",
+      id: `${statusListCredential()}#${statusListIndex(input.id)}`,
+      type: "TrustCareStatusList2026",
       statusPurpose: "revocation",
       statusListIndex: statusListIndex(input.id),
       statusListCredential: statusListCredential(),
+      status: "active",
+    },
+    trustcare: {
+      schemaVersion: SCHEMA_VERSION,
+      documentType: input.documentType ?? documentTypeFromCredentialType(input.type),
+      credentialType: input.type,
+      documentCategory: docDef?.documentCategory ?? "clinical_summary",
+      sensitivity: docDef?.sensitivity ?? "normal",
+      shareDefault: docDef?.shareDefault ?? "ask",
+      tags: docDef?.tags ?? [],
+      issuerHospitalCode: hospitalCode,
+      holderDid: input.subjectDid ?? input.subjectId,
+      sourceSystem: docDef?.sourceSystem ?? "EMR",
+      selectiveDisclosureRecommendedFields: docDef?.selectiveDisclosureRecommendedFields ?? [
+        "credentialSubject.patient.fullNameTh",
+        "credentialSubject.patient.birthDate",
+        "issuer",
+        "validUntil",
+      ],
+      display: {
+        cardAccent: docDef?.accentColor ?? "slate",
+        documentLayout: docDef?.layout ?? "generic_document",
+        watermark: "DEMO ONLY",
+        patientFacingTitleTh: docDef?.displayNameTh ?? input.type,
+        patientFacingTitleEn: docDef?.displayNameEn ?? input.type,
+      },
     },
   };
+}
+
+function buildHumanDocument(input: {
+  docDef: WalletDocumentDefinition;
+  issuer: IssuerProfile;
+  patient: PatientBlock;
+  issuedAt: string;
+  expiresAt: string;
+}): JsonRecord {
+  const { docDef, issuer, patient, issuedAt, expiresAt } = input;
+  return {
+    rendererVersion: RENDERER_VERSION,
+    layout: docDef.layout,
+    audience: "patient_and_partner_verifier",
+    titleTh: docDef.displayNameTh,
+    titleEn: docDef.displayNameEn,
+    issuer: {
+      code: issuer.hospitalCode ?? "TCC",
+      nameTh: issuer.nameTh ?? issuer.name,
+      nameEn: issuer.name,
+      did: issuer.did,
+    },
+    patient: {
+      fullNameTh: patient.fullNameTh,
+      fullNameEn: patient.fullNameEn,
+      birthDate: patient.birthDate,
+      gender: patient.gender,
+      nationality: patient.nationality,
+      hn: patient.hn,
+      carepassId: patient.carepassId,
+      phone: patient.phone,
+      email: patient.email,
+      address: patient.address,
+      photoUrl: patient.avatarUrl,
+    },
+    issuedAt,
+    expiresAt,
+    sections: docDef.sections,
+    sourceSystem: docDef.sourceSystem,
+    fhirResources: docDef.fhirResources,
+    noPortrait: docDef.noPortrait,
+    visualHints: {
+      accent: docDef.accentColor,
+      priority: docDef.sensitivity === "critical" ? "high" : "normal",
+      tableDocument: ["medication_reconciliation_table", "laboratory_report"].includes(docDef.layout),
+      warningDocument: ["critical_alert_sheet"].includes(docDef.layout),
+    },
+  };
+}
+
+function buildDocumentReference(input: {
+  docDef: WalletDocumentDefinition;
+  credentialId: string;
+  patient?: PatientBlock;
+  issuer: IssuerProfile;
+  issuedAt: string;
+}): JsonRecord {
+  const { docDef, credentialId, patient, issuer, issuedAt } = input;
+  const hospitalCode = issuer.hospitalCode ?? "TCC";
+  return {
+    resourceType: "DocumentReference",
+    id: `${docDef.cardType}-${credentialId.replace(/[^a-zA-Z0-9]/g, "").slice(-12)}`,
+    status: "current",
+    docStatus: "final",
+    type: {
+      coding: [{
+        system: "https://trustcare.network/fhir/CodeSystem/document-type",
+        code: docDef.cardType,
+        display: docDef.displayNameEn,
+      }],
+      text: docDef.displayNameTh,
+    },
+    category: [{
+      coding: [{
+        system: "https://trustcare.network/fhir/CodeSystem/document-category",
+        code: docDef.documentCategory,
+        display: docDef.documentCategory,
+      }],
+    }],
+    subject: {
+      reference: `Patient/${patient?.carepassId ?? "unknown"}`,
+      display: patient?.fullNameEn ?? "Patient",
+    },
+    date: issuedAt,
+    author: [{
+      reference: `Organization/${hospitalCode}`,
+      display: issuer.name,
+    }],
+    authenticator: {
+      reference: `Organization/${hospitalCode}`,
+      display: issuer.name,
+    },
+    custodian: {
+      reference: `Organization/${hospitalCode}`,
+      display: issuer.name,
+    },
+    content: [{
+      attachment: {
+        contentType: "application/vc+jwt",
+        language: "th-TH",
+        title: docDef.displayNameTh,
+        creation: issuedAt,
+      },
+      format: {
+        system: "https://trustcare.network/fhir/CodeSystem/document-format",
+        code: docDef.layout,
+        display: `TrustCare ${docDef.displayNameEn} Layout`,
+      },
+    }],
+    context: {
+      related: [{
+        reference: `Credential/${credentialId}`,
+      }],
+    },
+  };
+}
+
+function buildDefaultEvidence(credentialId: string, docDef: WalletDocumentDefinition | undefined, hospitalCode: string, issuedAt: string): JsonRecord[] {
+  if (!docDef) return [];
+  return [{
+    type: "FHIRR4DocumentReferenceEvidence",
+    sourceSystem: docDef.sourceSystem,
+    fhirResources: docDef.fhirResources,
+    documentReferenceId: `${docDef.cardType}-${credentialId.replace(/[^a-zA-Z0-9]/g, "").slice(-12)}`,
+    resource: {
+      resourceType: docDef.fhirResources[0] ?? "DocumentReference",
+      status: "current",
+      issued: issuedAt,
+    },
+    attachment: {
+      contentType: "application/vc+jwt",
+      creation: issuedAt,
+    },
+  }];
+}
+
+function purposeToContext(purpose: ConsentPurpose): string {
+  const map: Record<string, string> = {
+    treatment: "treatment",
+    referral: "referral",
+    insurance_claim: "insurance",
+    emergency: "emergency",
+    research: "research",
+    public_health: "public_health",
+    pharmacy: "pharmacy",
+    second_opinion: "second_opinion",
+    patient_request: "patient_request",
+  };
+  return map[purpose] ?? purpose;
+}
+
+function documentTypeFromCredentialType(credType: string): string {
+  // Reverse lookup: find cardType from credentialType
+  for (const [cardType, def] of Object.entries(WALLET_DOCUMENT_CATALOG)) {
+    if (def.credentialType === credType) return cardType;
+  }
+  // Fallback: convert PascalCase to snake_case
+  return credType.replace(/Credential$/, "").replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "");
 }
 
 async function resolveVerificationKey(input: {

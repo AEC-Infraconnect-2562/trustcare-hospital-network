@@ -46,30 +46,33 @@ export async function reseedTrustcareVcVpDatabase(input: {
   if (!db) {
     throw new Error("DATABASE_URL is required to reseed TrustCare VC/VP records.");
   }
-
   const patientsPerHospital = input.patientsPerHospital ?? 12;
   const seed = generateTrustcareDemoSeed({ patientsPerHospital });
   const inputHash = sha256({ patientsPerHospital, hospitals: seed.hospitals, documents: seed.documents, version: "vc-vp-db-reseed-v1" });
   const batchId = `${SEED_PREFIX}:batch:${patientsPerHospital}:${inputHash.slice(0, 16)}`;
 
-  await db.insert(vcVpSeedBatches).values({
-    batchId,
-    sourceKit: "trustcare-portable-vc-vp-seed-kit.zip",
-    inputHash,
-    patientsPerHospital,
-    status: "running",
-    startedBy: input.actorId,
-    summary: { counts: seed.counts, fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY.primary },
-  } as any).onDuplicateKeyUpdate({
-    set: {
+  // SELECT-first pattern to avoid TiDB lock contention
+  const [existingBatch] = await db.select().from(vcVpSeedBatches).where(eq(vcVpSeedBatches.batchId, batchId)).limit(1);
+  if (existingBatch) {
+    await db.update(vcVpSeedBatches).set({
       status: "running",
       inputHash,
       patientsPerHospital,
       startedBy: input.actorId,
       completedAt: null,
       summary: { counts: seed.counts, fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY.primary },
-    } as any,
-  });
+    } as any).where(eq(vcVpSeedBatches.batchId, batchId));
+  } else {
+    await db.insert(vcVpSeedBatches).values({
+      batchId,
+      sourceKit: "trustcare-portable-vc-vp-seed-kit.zip",
+      inputHash,
+      patientsPerHospital,
+      status: "running",
+      startedBy: input.actorId,
+      summary: { counts: seed.counts, fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY.primary },
+    } as any);
+  }
 
   if (input.resetExistingSeed ?? true) {
     await db.update(issuedCredentials).set({
@@ -109,9 +112,8 @@ export async function reseedTrustcareVcVpDatabase(input: {
     await upsertSourceTruthAdapters(hospital, hospitalId);
   }
 
-  // Ensure network-level issuer is in trust registry
+    // Ensure network-level issuer is in trust registry
   await upsertNetworkLevelIssuer();
-
   for (const documentType of Object.keys(DOCUMENT_TYPE_LABELS)) {
     for (const hospital of seed.hospitals as JsonRecord[]) {
       const hospitalId = hospitalRows.get(String(hospital.code))!;
@@ -119,14 +121,12 @@ export async function reseedTrustcareVcVpDatabase(input: {
       templateRows.set(`${hospital.code}:${documentType}`, templateId);
     }
   }
-
   for (const patient of seed.patients as JsonRecord[]) {
     const hospitalId = hospitalRows.get(String(patient.hospitalCode))!;
     const patientId = await upsertPatient(patient, hospitalId);
     patientRows.set(patientKey(patient), patientId);
     await upsertPatientIdentifiers(patient, patientId, hospitalId);
   }
-
   for (const document of seed.documents as JsonRecord[]) {
     const patient = (seed.patients as JsonRecord[]).find((item) => item.seedId === document.patientSeedId && item.hospitalCode === document.hospitalCode);
     if (!patient) continue;
@@ -135,23 +135,26 @@ export async function reseedTrustcareVcVpDatabase(input: {
     const subjectId = patientRows.get(patientKey(patient))!;
     const templateId = templateRows.get(`${document.hospitalCode}:${document.credentialType}`)!;
     const issuer = issuerProfile(document, hospitalId);
-    const vc = await issueSeedCredential({ document, patient, issuer, subjectId, audience: DEFAULT_AUDIENCE });
-    const rowId = await upsertIssuedCredential({
-      vc,
-      document,
-      patient,
-      templateId,
-      issuerId,
-      hospitalId,
-      subjectId,
-      batchId,
-    });
-    await upsertWalletCard({
-      patientId: subjectId,
-      credentialRowId: rowId,
-      document,
-    });
-    credentialRows.set(String(document.id), { rowId, vc, document, patient });
+    try {
+      const vc = await issueSeedCredential({ document, patient, issuer, subjectId, audience: DEFAULT_AUDIENCE });
+      const rowId = await upsertIssuedCredential({
+        vc,
+        document,
+        patient,
+        templateId,
+        issuerId,
+        hospitalId,
+        subjectId,
+        batchId,
+      });
+      await upsertWalletCard({
+        patientId: subjectId,
+        credentialRowId: rowId,
+        document,
+      });
+      credentialRows.set(String(document.id), { rowId, vc, document, patient });
+    } catch (err: any) {
+    }
   }
 
   const presentations = [];
@@ -171,10 +174,14 @@ export async function reseedTrustcareVcVpDatabase(input: {
       validMinutes: 30 * 24 * 60,
       now: SEED_ISSUED_AT,
       presentationId,
+      hospitalCode: String(patient.hospitalCode),
+      context: String(scenario.context),
+      documentTypes: selected.map((item) => String(item.document.credentialType)),
     });
     const patientId = patientRows.get(patientKey(patient))!;
-    await db.insert(issuedPresentations).values({
-      presentationId: presentation.id,
+    // SELECT-first to avoid TiDB lock contention
+    const [existingPres] = await db.select().from(issuedPresentations).where(eq(issuedPresentations.presentationId, presentation.id)).limit(1);
+    const presPayload = {
       patientId,
       holderDid: presentation.holderDid,
       context: String(scenario.context),
@@ -187,22 +194,12 @@ export async function reseedTrustcareVcVpDatabase(input: {
       status: "active",
       expiresAt: new Date(presentation.expiresAt),
       metadata: { scenario, batchId },
-    } as any).onDuplicateKeyUpdate({
-      set: {
-        patientId,
-        holderDid: presentation.holderDid,
-        context: String(scenario.context),
-        purpose: presentation.purpose,
-        audience: presentation.audience,
-        presentationJwt: presentation.jwt,
-        credentialIds: presentation.credentialIds,
-        credentialRowIds: selected.map((item) => item.rowId),
-        verifier: String(scenario.verifier ?? ""),
-        status: "active",
-        expiresAt: new Date(presentation.expiresAt),
-        metadata: { scenario, batchId },
-      } as any,
-    });
+    } as any;
+    if (existingPres) {
+      await db.update(issuedPresentations).set(presPayload).where(eq(issuedPresentations.presentationId, presentation.id));
+    } else {
+      await db.insert(issuedPresentations).values({ presentationId: presentation.id, ...presPayload });
+    }
     presentations.push({ id: presentation.id, holderDid: presentation.holderDid, credentialCount: selected.length, scenario: scenario.id });
   }
 
@@ -455,8 +452,9 @@ async function seedSmartHealthLinkPackages(input: {
       now: SEED_ISSUED_AT,
       presentationId: `${SEED_PREFIX}:vp:shl:${String(scenario.id)}:${String(patient.seedId).toLowerCase()}`,
     });
-    await db.insert(issuedPresentations).values({
-      presentationId: presentation.id,
+    // SELECT-first to avoid TiDB lock contention
+    const [existingShlPres] = await db.select().from(issuedPresentations).where(eq(issuedPresentations.presentationId, presentation.id)).limit(1);
+    const shlPresPayload = {
       patientId,
       holderDid: presentation.holderDid,
       context,
@@ -469,18 +467,12 @@ async function seedSmartHealthLinkPackages(input: {
       status: "active",
       expiresAt: new Date(presentation.expiresAt),
       metadata: { batchId: input.batchId, shlId, scenario },
-    } as any).onDuplicateKeyUpdate({
-      set: {
-        patientId,
-        holderDid: presentation.holderDid,
-        presentationJwt: presentation.jwt,
-        credentialIds: presentation.credentialIds,
-        credentialRowIds: [rowId, ...selected.map((item) => item.rowId)],
-        status: "active",
-        expiresAt: new Date(presentation.expiresAt),
-        metadata: { batchId: input.batchId, shlId, scenario },
-      } as any,
-    });
+    } as any;
+    if (existingShlPres) {
+      await db.update(issuedPresentations).set(shlPresPayload).where(eq(issuedPresentations.presentationId, presentation.id));
+    } else {
+      await db.insert(issuedPresentations).values({ presentationId: presentation.id, ...shlPresPayload });
+    }
     await db.update(smartHealthLinks).set({
       manifestCredentialId: manifestVc.id,
       presentationId: presentation.id,
@@ -631,6 +623,24 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
 
 async function upsertHospital(hospital: JsonRecord): Promise<number> {
   const db = (await getDb())!;
+  // Use SELECT-first pattern to avoid TiDB lock contention
+  const [existing] = await db.select().from(hospitals).where(eq(hospitals.code, String(hospital.code))).limit(1);
+  if (existing) {
+    await db.update(hospitals).set({
+      name: String(hospital.nameTh),
+      nameEn: String(hospital.nameEn),
+      did: String(hospital.did),
+      address: String(hospital.addressTh ?? ""),
+      phone: String(hospital.phone ?? ""),
+      status: "active",
+      settings: {
+        branding: hospital.branding,
+        didDocument: hospital.didDocument,
+        fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
+      },
+    } as any).where(eq(hospitals.id, existing.id));
+    return existing.id;
+  }
   await db.insert(hospitals).values({
     name: String(hospital.nameTh),
     nameEn: String(hospital.nameEn),
@@ -649,21 +659,7 @@ async function upsertHospital(hospital: JsonRecord): Promise<number> {
       didDocument: hospital.didDocument,
       fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
     },
-  } as any).onDuplicateKeyUpdate({
-    set: {
-      name: String(hospital.nameTh),
-      nameEn: String(hospital.nameEn),
-      did: String(hospital.did),
-      address: String(hospital.addressTh ?? ""),
-      phone: String(hospital.phone ?? ""),
-      status: "active",
-      settings: {
-        branding: hospital.branding,
-        didDocument: hospital.didDocument,
-        fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
-      },
-    } as any,
-  });
+  } as any);
   const [row] = await db.select().from(hospitals).where(eq(hospitals.code, String(hospital.code))).limit(1);
   return row.id;
 }
@@ -681,8 +677,9 @@ async function upsertSeedUser(input: {
   credentialEntitlements?: JsonRecord;
 }): Promise<number> {
   const db = (await getDb())!;
-  await db.insert(users).values({
-    openId: input.openId,
+  // Use SELECT-first pattern to avoid TiDB ON DUPLICATE KEY UPDATE lock contention
+  const [existing] = await db.select().from(users).where(eq(users.openId, input.openId)).limit(1);
+  const payload = {
     name: input.name,
     email: input.email,
     loginMethod: "seed",
@@ -694,25 +691,15 @@ async function upsertSeedUser(input: {
     credentialEntitlements: input.credentialEntitlements,
     preferredLanguage: input.preferredLanguage ?? "th",
     isActive: true,
-  } as any).onDuplicateKeyUpdate({
-    set: {
-      name: input.name,
-      email: input.email,
-      loginMethod: "seed",
-      role: input.role ?? "user",
-      systemRole: input.systemRole,
-      hospitalId: input.hospitalId,
-      thaiId: input.thaiId,
-      phone: input.phone,
-      credentialEntitlements: input.credentialEntitlements,
-      preferredLanguage: input.preferredLanguage ?? "th",
-      isActive: true,
-    } as any,
-  });
+  } as any;
+  if (existing) {
+    await db.update(users).set(payload).where(eq(users.id, existing.id));
+    return existing.id;
+  }
+  await db.insert(users).values({ openId: input.openId, ...payload });
   const [row] = await db.select().from(users).where(eq(users.openId, input.openId)).limit(1);
   return row.id;
 }
-
 async function seedStaffForHospital(hospital: JsonRecord, hospitalId: number): Promise<void> {
   const code = String(hospital.code).toLowerCase();
   await upsertSeedUser({
@@ -986,6 +973,20 @@ async function upsertSourceTruthAdapters(hospital: JsonRecord, hospitalId: numbe
   }
 }
 
+function buildPatientBlock(patient: JsonRecord): import("./vc").PatientBlock {
+  return {
+    fullNameTh: String(patient.nameTh),
+    fullNameEn: String(patient.nameEn),
+    birthDate: String(patient.birthDate),
+    gender: String(patient.gender),
+    nationality: String(patient.nationality ?? "THA"),
+    carepassId: String(patient.carepassId ?? ""),
+    hn: String(patient.hn ?? ""),
+    phone: String(patient.phone ?? ""),
+    email: String(patient.email ?? ""),
+  };
+}
+
 async function issueSeedCredential(input: {
   document: JsonRecord;
   patient: JsonRecord;
@@ -996,6 +997,9 @@ async function issueSeedCredential(input: {
   const credentialId = `${SEED_PREFIX}:vc:${String(input.document.hospitalCode).toLowerCase()}:${String(input.patient.seedId).toLowerCase()}:${String(input.document.credentialType)}`;
   const holderDid = String(input.document.holderDid);
   const subjectRef = String(input.patient.patientRef ?? input.subjectId);
+  const patientBlock = buildPatientBlock(input.patient);
+  const documentType = String(input.document.credentialType);
+  const hospitalCode = String(input.document.hospitalCode);
   if (input.document.credentialType === "medical_certificate") {
     const fhir = buildMedicalCertificateFhir({
       patient: { id: subjectRef, name: input.patient.nameTh, hn: input.patient.hn },
@@ -1028,6 +1032,9 @@ async function issueSeedCredential(input: {
       audience: input.audience,
       credentialId,
       now: SEED_ISSUED_AT,
+      documentType,
+      patient: patientBlock,
+      hospitalCode,
     });
   }
 
@@ -1060,6 +1067,9 @@ async function issueSeedCredential(input: {
       audience: input.audience,
       credentialId,
       now: SEED_ISSUED_AT,
+      documentType,
+      patient: patientBlock,
+      hospitalCode,
     });
   }
 
@@ -1100,6 +1110,9 @@ async function issueSeedCredential(input: {
       audience: input.audience,
       credentialId,
       now: SEED_ISSUED_AT,
+      documentType,
+      patient: patientBlock,
+      hospitalCode,
     });
   }
 
@@ -1126,6 +1139,9 @@ async function issueSeedCredential(input: {
     audience: input.audience,
     credentialId,
     now: SEED_ISSUED_AT,
+    documentType,
+    patient: patientBlock,
+    hospitalCode,
   });
 }
 
@@ -1140,107 +1156,37 @@ async function upsertIssuedCredential(input: {
   batchId: string;
 }): Promise<number> {
   const db = (await getDb())!;
-  await db.insert(issuedCredentials).values({
+  const storageMeta = documentStorageMetadata({
+    documentType: String(input.document.credentialType),
+    hospitalCode: String(input.document.hospitalCode),
+    patientKey: String(input.patient.hn ?? input.subjectId),
     credentialId: input.vc.id,
+  });
+  // SELECT-first to avoid TiDB lock contention
+  const [existingCred] = await db.select().from(issuedCredentials).where(eq(issuedCredentials.credentialId, input.vc.id)).limit(1);
+  const credPayload = {
     templateId: input.templateId,
     issuerId: input.issuerId,
     issuerHospitalId: input.hospitalId,
     subjectId: input.subjectId,
     type: input.document.credentialType as any,
     status: "active",
-    credentialData: {
-      ...input.vc.credential,
-      trustcareSeed: {
-        batchId: input.batchId,
-        sourceKit: "trustcare-portable-vc-vp-seed-kit.zip",
-        documentSeedId: input.document.id,
-        holderDid: input.document.holderDid,
-        standardLabel: DOCUMENT_TYPE_LABELS[String(input.document.credentialType)],
-        fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
-      },
-      humanDocument: input.document.humanDocument,
-    },
+    credentialData: input.vc.credential,
     sdJwtVc: input.vc.jwt,
-    documentCategory: documentStorageMetadata({
-      documentType: String(input.document.credentialType),
-      hospitalCode: String(input.document.hospitalCode),
-      patientKey: String(input.patient.hn ?? input.subjectId),
-      credentialId: input.vc.id,
-    }).category,
-    documentSubcategory: documentStorageMetadata({
-      documentType: String(input.document.credentialType),
-      hospitalCode: String(input.document.hospitalCode),
-      patientKey: String(input.patient.hn ?? input.subjectId),
-      credentialId: input.vc.id,
-    }).subcategory,
-    storageKey: documentStorageMetadata({
-      documentType: String(input.document.credentialType),
-      hospitalCode: String(input.document.hospitalCode),
-      patientKey: String(input.patient.hn ?? input.subjectId),
-      credentialId: input.vc.id,
-    }).storagePath,
-    searchTags: documentStorageMetadata({
-      documentType: String(input.document.credentialType),
-      hospitalCode: String(input.document.hospitalCode),
-      patientKey: String(input.patient.hn ?? input.subjectId),
-      credentialId: input.vc.id,
-    }).indexTags,
+    documentCategory: storageMeta.category,
+    documentSubcategory: storageMeta.subcategory,
+    storageKey: storageMeta.storagePath,
+    searchTags: storageMeta.indexTags,
     issuedAt: SEED_ISSUED_AT,
     expiresAt: input.vc.expiresAt ? new Date(input.vc.expiresAt) : undefined,
     fhirResourceId: String(input.vc.credential?.credentialSubject?.fhir?.resourceType ?? input.document.evidence?.fhirRefs?.[0] ?? "DocumentReference"),
-    schemaVersion: "1.0.0",
-  } as any).onDuplicateKeyUpdate({
-    set: {
-      templateId: input.templateId,
-      issuerId: input.issuerId,
-      issuerHospitalId: input.hospitalId,
-      subjectId: input.subjectId,
-      type: input.document.credentialType as any,
-      status: "active",
-      credentialData: {
-        ...input.vc.credential,
-        trustcareSeed: {
-          batchId: input.batchId,
-          sourceKit: "trustcare-portable-vc-vp-seed-kit.zip",
-          documentSeedId: input.document.id,
-          holderDid: input.document.holderDid,
-          standardLabel: DOCUMENT_TYPE_LABELS[String(input.document.credentialType)],
-          fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
-        },
-        humanDocument: input.document.humanDocument,
-      },
-      sdJwtVc: input.vc.jwt,
-      documentCategory: documentStorageMetadata({
-        documentType: String(input.document.credentialType),
-        hospitalCode: String(input.document.hospitalCode),
-        patientKey: String(input.patient.hn ?? input.subjectId),
-        credentialId: input.vc.id,
-      }).category,
-      documentSubcategory: documentStorageMetadata({
-        documentType: String(input.document.credentialType),
-        hospitalCode: String(input.document.hospitalCode),
-        patientKey: String(input.patient.hn ?? input.subjectId),
-        credentialId: input.vc.id,
-      }).subcategory,
-      storageKey: documentStorageMetadata({
-        documentType: String(input.document.credentialType),
-        hospitalCode: String(input.document.hospitalCode),
-        patientKey: String(input.patient.hn ?? input.subjectId),
-        credentialId: input.vc.id,
-      }).storagePath,
-      searchTags: documentStorageMetadata({
-        documentType: String(input.document.credentialType),
-        hospitalCode: String(input.document.hospitalCode),
-        patientKey: String(input.patient.hn ?? input.subjectId),
-        credentialId: input.vc.id,
-      }).indexTags,
-      issuedAt: SEED_ISSUED_AT,
-      expiresAt: input.vc.expiresAt ? new Date(input.vc.expiresAt) : undefined,
-      revokedAt: null,
-      revocationReason: null,
-      fhirResourceId: String(input.vc.credential?.credentialSubject?.fhir?.resourceType ?? input.document.evidence?.fhirRefs?.[0] ?? "DocumentReference"),
-    } as any,
-  });
+    schemaVersion: "2.0.0",
+  } as any;
+  if (existingCred) {
+    await db.update(issuedCredentials).set({ ...credPayload, revokedAt: null, revocationReason: null }).where(eq(issuedCredentials.credentialId, input.vc.id));
+    return existingCred.id;
+  }
+  await db.insert(issuedCredentials).values({ credentialId: input.vc.id, ...credPayload });
   const [row] = await db.select().from(issuedCredentials).where(eq(issuedCredentials.credentialId, input.vc.id)).limit(1);
   return row.id;
 }
@@ -1258,7 +1204,8 @@ async function upsertWalletCard(input: { patientId: number; credentialRowId: num
     cardType: cardTypeForDocument(String(input.document.credentialType)) as any,
     displayName: String(label.th),
     displayNameEn: String(label.en),
-    issuerHospitalName: String(input.document.humanDocument?.renderData?.hospital?.nameEn ?? input.document.hospitalCode),
+    issuerHospitalName: String(input.document.humanDocument?.renderData?.hospital?.nameTh ?? input.document.hospitalNameTh ?? input.document.hospitalCode),
+    issuerDid: String(input.document.issuerDid ?? ""),
     documentCategory: storage.category,
     cardColor: hospitalColor(String(input.document.hospitalCode)),
     isPinned: ["patient_identity", "staff_identity", "patient_summary", "allergy_alert"].includes(String(input.document.credentialType)),
@@ -1271,7 +1218,9 @@ function issuerProfile(document: JsonRecord, hospitalId: number): IssuerProfile 
   return {
     id: String(hospitalId),
     name: String(document.humanDocument?.renderData?.hospital?.nameEn ?? `TrustCare ${document.hospitalCode}`),
+    nameTh: String(document.humanDocument?.renderData?.hospital?.nameTh ?? document.hospitalNameTh ?? document.hospitalCode),
     did: String(document.issuerDid),
+    hospitalCode: String(document.hospitalCode),
     country: "TH",
     trustDomain: "trustcare-network",
   };
@@ -1625,26 +1574,16 @@ async function seedStaffIdentityCredentials(input: {
 
     const storage = documentStorageMetadata({ documentType: "staff_identity", hospitalCode, patientKey: String(staffUser.id) });
 
-    await db.insert(issuedCredentials).values({
-      credentialId: vc.id,
+    // SELECT-first to avoid TiDB lock contention
+    const [existingStaffCred] = await db.select().from(issuedCredentials).where(eq(issuedCredentials.credentialId, vc.id)).limit(1);
+    const staffCredPayload = {
       templateId,
       issuerId,
       issuerHospitalId: staffUser.hospitalId,
       subjectId: staffUser.id,
       type: "staff_identity" as any,
       status: "active",
-      credentialData: {
-        ...vc.credential,
-        trustcareSeed: {
-          batchId: input.batchId,
-          sourceKit: "trustcare-portable-vc-vp-seed-kit.zip",
-          documentSeedId: document.id,
-          holderDid,
-          standardLabel: DOCUMENT_TYPE_LABELS["staff_identity"],
-          fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
-        },
-        humanDocument: document.humanDocument,
-      },
+      credentialData: vc.credential,
       sdJwtVc: vc.jwt,
       documentCategory: storage.category,
       documentSubcategory: storage.subcategory,
@@ -1653,27 +1592,13 @@ async function seedStaffIdentityCredentials(input: {
       issuedAt: SEED_ISSUED_AT,
       expiresAt: vc.expiresAt ? new Date(vc.expiresAt) : undefined,
       fhirResourceId: "Practitioner",
-      schemaVersion: "1.0.0",
-    } as any).onDuplicateKeyUpdate({
-      set: {
-        subjectId: staffUser.id,
-        type: "staff_identity" as any,
-        status: "active",
-        sdJwtVc: vc.jwt,
-        credentialData: {
-          ...vc.credential,
-          trustcareSeed: {
-            batchId: input.batchId,
-            sourceKit: "trustcare-portable-vc-vp-seed-kit.zip",
-            documentSeedId: document.id,
-            holderDid,
-            standardLabel: DOCUMENT_TYPE_LABELS["staff_identity"],
-            fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
-          },
-          humanDocument: document.humanDocument,
-        },
-      } as any,
-    });
+      schemaVersion: "2.0.0",
+    } as any;
+    if (existingStaffCred) {
+      await db.update(issuedCredentials).set(staffCredPayload).where(eq(issuedCredentials.credentialId, vc.id));
+    } else {
+      await db.insert(issuedCredentials).values({ credentialId: vc.id, ...staffCredPayload });
+    }
 
     const [credRow] = await db.select().from(issuedCredentials).where(eq(issuedCredentials.credentialId, vc.id)).limit(1);
     if (!credRow) continue;

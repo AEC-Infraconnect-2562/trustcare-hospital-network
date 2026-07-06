@@ -3,6 +3,109 @@ import { sha256 } from "./utils";
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
+/**
+ * Pre-generated deterministic ES256 key pairs for each hospital.
+ * These are demo/seed keys — production uses env-based TRUSTCARE_VC_SIGNING_PRIVATE_JWK.
+ * Generated using jose generateKeyPair("ES256") then stored as constants for reproducibility.
+ */
+export interface HospitalKeyPair {
+  hospitalCode: string;
+  did: string;
+  kid: string;
+  publicJwk: JsonRecord;
+  privateJwk: JsonRecord;
+}
+
+const HOSPITAL_KEYS: Record<string, HospitalKeyPair> = {
+  TCC: {
+    hospitalCode: "TCC",
+    did: "did:web:trustcare.network:hospital:tcc",
+    kid: "did:web:trustcare.network:hospital:tcc#vc-signing-key",
+    publicJwk: {
+      kty: "EC",
+      crv: "P-256",
+      x: "L9NBcc2q5_9NgppWVHMhif6HRQCN9DvmK17UCok6udo",
+      y: "AZT-yBTrctZyxSfql6iyuHM4xE6-Le51NC1vEqFdqOs",
+      kid: "did:web:trustcare.network:hospital:tcc#vc-signing-key",
+      use: "sig",
+      alg: "ES256",
+    },
+    privateJwk: {
+      kty: "EC",
+      crv: "P-256",
+      x: "L9NBcc2q5_9NgppWVHMhif6HRQCN9DvmK17UCok6udo",
+      y: "AZT-yBTrctZyxSfql6iyuHM4xE6-Le51NC1vEqFdqOs",
+      d: "ZVOWH-VF95mF-AxgALpV_i_hOdo5DsB8FYzKTMjWB98",
+      kid: "did:web:trustcare.network:hospital:tcc#vc-signing-key",
+      use: "sig",
+      alg: "ES256",
+    },
+  },
+  TCP: {
+    hospitalCode: "TCP",
+    did: "did:web:trustcare.network:hospital:tcp",
+    kid: "did:web:trustcare.network:hospital:tcp#vc-signing-key",
+    publicJwk: {
+      kty: "EC",
+      crv: "P-256",
+      x: "DQu6z6E4a5TkDqZtSdGsxR619vBjK2DzPn1t2D7U2fg",
+      y: "9pMRAVE-ByGMFblgWQCgR3SPaNwp0VIwA0-WHzbUD5w",
+      kid: "did:web:trustcare.network:hospital:tcp#vc-signing-key",
+      use: "sig",
+      alg: "ES256",
+    },
+    privateJwk: {
+      kty: "EC",
+      crv: "P-256",
+      x: "DQu6z6E4a5TkDqZtSdGsxR619vBjK2DzPn1t2D7U2fg",
+      y: "9pMRAVE-ByGMFblgWQCgR3SPaNwp0VIwA0-WHzbUD5w",
+      d: "-R1CaVOUNgqW12uAxcuW_aFihmQn7TGBsd2QNZ54pbU",
+      kid: "did:web:trustcare.network:hospital:tcp#vc-signing-key",
+      use: "sig",
+      alg: "ES256",
+    },
+  },
+  TCM: {
+    hospitalCode: "TCM",
+    did: "did:web:trustcare.network:hospital:tcm",
+    kid: "did:web:trustcare.network:hospital:tcm#vc-signing-key",
+    publicJwk: {
+      kty: "EC",
+      crv: "P-256",
+      x: "sDv5tqIS8x8plIE9r-xsbhr41F8KG4PBKnRFPNut89k",
+      y: "hADCcgeZwYtmCnvd9RF6PLlEX5ySHR-CPDknPeBCuJI",
+      kid: "did:web:trustcare.network:hospital:tcm#vc-signing-key",
+      use: "sig",
+      alg: "ES256",
+    },
+    privateJwk: {
+      kty: "EC",
+      crv: "P-256",
+      x: "sDv5tqIS8x8plIE9r-xsbhr41F8KG4PBKnRFPNut89k",
+      y: "hADCcgeZwYtmCnvd9RF6PLlEX5ySHR-CPDknPeBCuJI",
+      d: "s5ocnPj1DEhvkk-SXxJOzM1xnPYZ-3_vXZlL0Vj47UQ",
+      kid: "did:web:trustcare.network:hospital:tcm#vc-signing-key",
+      use: "sig",
+      alg: "ES256",
+    },
+  },
+};
+
+/** Get the key pair for a hospital code. Falls back to TCC if unknown. */
+export function getHospitalKeyPair(hospitalCode: string): HospitalKeyPair {
+  return HOSPITAL_KEYS[hospitalCode.toUpperCase()] ?? HOSPITAL_KEYS.TCC;
+}
+
+/** Get all hospital key pairs for JWKS endpoint */
+export function getAllHospitalPublicKeys(): JsonRecord[] {
+  return Object.values(HOSPITAL_KEYS).map(k => k.publicJwk);
+}
+
+/** Get public JWK for a specific hospital */
+export function getHospitalPublicJwk(hospitalCode: string): JsonRecord {
+  return getHospitalKeyPair(hospitalCode).publicJwk;
+}
+
 export function hospitalDidWeb(hospitalCode: string, domain = "trustcare.network"): string {
   return `did:web:${domain}:hospital:${hospitalCode.toLowerCase()}`;
 }
@@ -25,6 +128,7 @@ export function didWebDocument(input: {
 }): JsonRecord {
   const did = hospitalDidWeb(input.hospitalCode, input.domain);
   const keyId = `${did}#vc-signing-key`;
+  const hospitalKey = getHospitalKeyPair(input.hospitalCode);
   return {
     "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/jwk/v1"],
     id: did,
@@ -34,7 +138,7 @@ export function didWebDocument(input: {
         id: keyId,
         type: "JsonWebKey2020",
         controller: did,
-        publicKeyJwk: input.publicJwk ?? demoPublicJwk(input.hospitalCode),
+        publicKeyJwk: input.publicJwk ?? hospitalKey.publicJwk,
       },
     ],
     assertionMethod: [keyId],
@@ -79,16 +183,9 @@ export function didKeyDocument(input: { seed: string; patientRef?: string; carep
   };
 }
 
-function demoPublicJwk(hospitalCode: string): JsonRecord {
-  return {
-    kty: "EC",
-    crv: "P-256",
-    kid: `${hospitalDidWeb(hospitalCode)}#vc-signing-key`,
-    x: base64Url(hexToBytes(sha256(`${hospitalCode}:x`)).slice(0, 32)),
-    y: base64Url(hexToBytes(sha256(`${hospitalCode}:y`)).slice(0, 32)),
-    use: "sig",
-    alg: "ES256",
-  };
+/** @deprecated Use getHospitalPublicJwk instead */
+export function demoPublicJwk(hospitalCode: string): JsonRecord {
+  return getHospitalPublicJwk(hospitalCode);
 }
 
 function hexToBytes(hex: string): Uint8Array {

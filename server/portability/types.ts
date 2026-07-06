@@ -131,7 +131,9 @@ export interface PolicyDecision {
 export interface IssuerProfile {
   id: string;
   name: string;
+  nameTh?: string;
   did: string;
+  hospitalCode?: string;
   country?: string;
   trustDomain?: string;
 }

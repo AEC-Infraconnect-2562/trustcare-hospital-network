@@ -1,0 +1,1 @@
+ALTER TABLE `wallet_cards` ADD `issuerDid` varchar(512);

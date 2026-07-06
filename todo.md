@@ -990,4 +990,21 @@
 - [x] Each credential type shows its own unique data (e.g., Consent shows scopes/purpose, PatientSummary shows conditions/allergies/meds, Referral shows documentNo/FHIR resource)
 - [x] Verified with 3 different VP types: referral (15 creds), pharmacy (3 creds), insurance (2 creds) - all show correct context
 - [x] All 352 tests passing, 0 TypeScript errors
+- [x] Push to GitHub, save checkpoint
+
+## v3.39.0 - VC/VP Schema Alignment with External Wallet + Per-Hospital Keys
+
+- [ ] Generate per-hospital ES256 signing key pairs (TCC, TCP, TCM) stored in DB/config
+- [ ] Refactor buildCredentialEnvelope: @context wallet-medical-document/v1, issuer.nameTh, TrustCareStatusList2026
+- [ ] Refactor createPresentation: add trustcare metadata block, validUntil, context
+- [ ] Create wallet-compatible document type definitions catalog (25 types with metadata)
+- [ ] Enrich credentialSubject with type-specific realistic clinical data for all 25 types
+- [ ] Add documentReference into credentialSubject for all types
+- [ ] Move humanDocument into credentialSubject
+- [ ] Replace trustcareSeed with trustcare metadata block (schemaVersion, documentType, credentialType, category, sensitivity, shareDefault, tags, display)
+- [ ] Enrich evidence with fhirResources, documentReferenceId, resource
+- [ ] Run reseed to rebuild all 400+ credentials with new schema
+- [ ] Rebuild all VP JWTs with trustcare metadata
+- [ ] Verify all records match Wallet expected format
+- [ ] All tests passing
 - [ ] Push to GitHub, save checkpoint

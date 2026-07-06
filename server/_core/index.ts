@@ -92,6 +92,8 @@ async function startServer() {
     }
   });
 
+
+
   // Scheduled handlers
   app.post("/api/scheduled/consentExpiryReminder", async (req, res) => {
     const { consentExpiryReminderHandler } = await import("../scheduledHandlers/consentExpiry");
