@@ -934,3 +934,15 @@
 - [x] Add code examples in multiple languages (cURL, JavaScript, Python)
 - [x] Support dark/light theme
 - [x] Push to GitHub, save checkpoint
+
+## v3.36.0 - Production-grade Asymmetric Key Signing (ES256/EdDSA)
+
+- [x] Generate ES256 (P-256) key pair and configure env vars (TRUSTCARE_VC_SIGNING_PRIVATE_JWK, TRUSTCARE_VC_SIGNING_PUBLIC_JWK, TRUSTCARE_VC_SIGNING_ALG, TRUSTCARE_VC_KEY_ID)
+- [x] resolveSigningMaterial() uses asymmetric key when env var is set (already supported, just needed configuration)
+- [x] VC issuance signs with ES256 private key (green badge verified)
+- [x] VP creation signs with ES256 private key (green badge verified)
+- [x] Verification logic resolves public keys via localIssuerJwks() (already supported)
+- [x] Re-signed all 389 credentials + 49 presentations from HS256 to ES256 (0 HS256 remaining)
+- [x] Fixed staff credential reseed to update sdJwtVc on duplicate key
+- [x] All 347 tests passing, 0 TypeScript errors
+- [x] Push to GitHub, save checkpoint

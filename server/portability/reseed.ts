@@ -1659,6 +1659,19 @@ async function seedStaffIdentityCredentials(input: {
         subjectId: staffUser.id,
         type: "staff_identity" as any,
         status: "active",
+        sdJwtVc: vc.jwt,
+        credentialData: {
+          ...vc.credential,
+          trustcareSeed: {
+            batchId: input.batchId,
+            sourceKit: "trustcare-portable-vc-vp-seed-kit.zip",
+            documentSeedId: document.id,
+            holderDid,
+            standardLabel: DOCUMENT_TYPE_LABELS["staff_identity"],
+            fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
+          },
+          humanDocument: document.humanDocument,
+        },
       } as any,
     });
 
