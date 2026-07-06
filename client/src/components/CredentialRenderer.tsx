@@ -59,51 +59,57 @@ function getHospitalBrand(code?: string) {
 // Extract from humanDocument.renderData (preferred) or fallback to credentialSubject
 function extractRenderData(credentialData: any) {
   const subject = credentialData?.credentialSubject || credentialData;
-  const renderData = subject?.humanDocument?.renderData;
+  // humanDocument may contain renderData nested, or fields directly
+  const hd = subject?.humanDocument;
+  const renderData = hd?.renderData || hd;
   
-  if (renderData) {
+  if (renderData?.patient || renderData?.issuer || renderData?.hospital) {
+    // renderData.hospital may be under .issuer in humanDocument (issuer block has hospital info)
+    const hospital = renderData.hospital || renderData.issuer || {};
+    const patient = renderData.patient || {};
+    const document = renderData.document || {};
     return {
       hospital: {
-        code: renderData.hospital?.code || "",
-        nameTh: renderData.hospital?.nameTh || "",
-        nameEn: renderData.hospital?.nameEn || "",
-        hcode: renderData.hospital?.hcode || "",
+        code: hospital.code || "",
+        nameTh: hospital.nameTh || "",
+        nameEn: hospital.nameEn || "",
+        hcode: hospital.hcode || hospital.code || "",
       },
       patient: {
-        fullNameTh: renderData.patient?.fullNameTh || "",
-        fullNameEn: renderData.patient?.fullNameEn || "",
-        hn: renderData.patient?.hn || "",
-        carepassId: renderData.patient?.carepassId || "",
+        fullNameTh: patient.fullNameTh || "",
+        fullNameEn: patient.fullNameEn || "",
+        hn: patient.hn || "",
+        carepassId: patient.carepassId || "",
       },
       document: {
-        no: renderData.document?.no || "",
-        hashShort: renderData.document?.hashShort || "",
-        qrLabel: renderData.document?.qrLabel || "",
+        no: document.no || "",
+        hashShort: document.hashShort || "",
+        qrLabel: document.qrLabel || "",
       },
       issuer: {
-        did: renderData.issuer?.did || "",
+        did: (renderData.issuer?.did || hospital.did || ""),
       },
     };
   }
   
-  // Fallback to credentialSubject fields
+  // Fallback to credentialSubject.patient block (top-level patient in credentialSubject)
   const patient = subject?.patient || {};
-  const org = subject?.organization || {};
+  const org = subject?.organization || subject?.issuer || {};
   return {
     hospital: {
-      code: org.code || org.id || "",
-      nameTh: org.name || "",
-      nameEn: org.nameEn || "",
-      hcode: org.id || "",
+      code: org.code || org.hospitalCode || org.id || "",
+      nameTh: org.nameTh || org.name || "",
+      nameEn: org.nameEn || org.name || "",
+      hcode: org.hcode || org.id || "",
     },
     patient: {
-      fullNameTh: patient.nameTh || patient.name || "",
-      fullNameEn: patient.nameEn || "",
+      fullNameTh: patient.fullNameTh || patient.nameTh || patient.name || "",
+      fullNameEn: patient.fullNameEn || patient.nameEn || "",
       hn: patient.hn || "",
       carepassId: patient.carepassId || "",
     },
     document: { no: "", hashShort: "", qrLabel: "" },
-    issuer: { did: subject?.id || "" },
+    issuer: { did: subject?.id || org.did || "" },
   };
 }
 
