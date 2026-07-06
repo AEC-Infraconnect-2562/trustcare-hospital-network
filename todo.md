@@ -1030,4 +1030,12 @@
 - [x] Wallet display: show only latest VP per cardType (deduplicate same-type credentials)
 - [x] Move superseded/older VPs to "ประวัติ (Superseded)" tab sorted by date
 - [x] Write vitest tests for wallet sync and VP deduplication logic
-- [ ] Push to GitHub, save checkpoint
+- [x] Push to GitHub, save checkpoint
+
+## v3.40.1 - Fix Wallet Display (Production Data Cleanup)
+
+- [x] Identify and delete old VC/VP credentials that don't match current schema (no proper credentialData)
+- [x] Fix dedup logic to work correctly - ensure only latest VP per cardType+issuer shown in Health Cards
+- [x] Ensure old/duplicate VPs are properly moved to Superseded tab sorted by date
+- [x] Verify wallet display on dev shows correct forms for all card types (no generic fallback)
+- [ ] Push to GitHub, save checkpoint, and publish

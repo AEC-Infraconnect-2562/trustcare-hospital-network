@@ -1139,7 +1139,7 @@ export const appRouter = router({
       const latestByTypeIssuer = new Map<string, any>();
       const supersededCards: any[] = [];
       for (const card of sortedByDate) {
-        if (card.credentialStatus === 'revoked' || card.credentialStatus === 'expired') {
+        if (card.credentialStatus === 'revoked' || card.credentialStatus === 'expired' || card.credentialStatus === 'suspended') {
           supersededCards.push(card);
           continue;
         }
