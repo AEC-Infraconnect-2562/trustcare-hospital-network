@@ -123,3 +123,240 @@
   @apply shadow-lg;
   transform: translateY(-2px);
 }
+
+/* ─── Hospital Document VP Styles (Printer-Friendly) ─────────────────────── */
+.vp-document {
+  font-family: "Sarabun", "IBM Plex Sans Thai", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1a1a1a;
+  background: #fff;
+  max-width: 210mm;
+  margin: 0 auto;
+  position: relative;
+}
+
+.vp-document .doc-header {
+  border-bottom: 2px solid #1a1a1a;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.vp-document .doc-header-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vp-document .doc-header-logo .hospital-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+  color: #fff;
+}
+
+.vp-document .doc-title {
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  margin: 16px 0 12px;
+  letter-spacing: 0.05em;
+}
+
+.vp-document .doc-subtitle {
+  font-size: 13px;
+  text-align: center;
+  color: #555;
+  margin-bottom: 16px;
+}
+
+.vp-document .doc-section {
+  margin-bottom: 16px;
+}
+
+.vp-document .doc-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.vp-document .doc-field-grid {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+
+.vp-document .doc-field-label {
+  color: #555;
+  font-weight: 500;
+}
+
+.vp-document .doc-field-value {
+  font-weight: 400;
+  color: #1a1a1a;
+}
+
+.vp-document .doc-field-value.bold {
+  font-weight: 600;
+}
+
+.vp-document .doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.vp-document .doc-table th {
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.vp-document .doc-table td {
+  border: 1px solid #ddd;
+  padding: 5px 8px;
+}
+
+.vp-document .doc-table tr:nth-child(even) td {
+  background: #fafafa;
+}
+
+.vp-document .doc-table .amount-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-document .doc-footer {
+  border-top: 1px solid #ccc;
+  padding-top: 12px;
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #666;
+}
+
+.vp-document .doc-signature {
+  margin-top: 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 48px;
+}
+
+.vp-document .doc-signature-block {
+  text-align: center;
+  min-width: 160px;
+}
+
+.vp-document .doc-signature-line {
+  border-bottom: 1px solid #333;
+  height: 40px;
+  margin-bottom: 4px;
+}
+
+.vp-document .doc-signature-name {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.vp-document .doc-signature-role {
+  font-size: 11px;
+  color: #555;
+}
+
+.vp-document .doc-patient-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.vp-document .doc-patient-photo {
+  width: 60px;
+  height: 75px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.vp-document .doc-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.vp-document .doc-badge-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.vp-document .doc-badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.vp-document .doc-badge-danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.vp-document .doc-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-30deg);
+  font-size: 5rem;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.04);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 1;
+  letter-spacing: 0.2em;
+}
+
+/* Print-specific styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .vp-document,
+  .vp-document * {
+    visibility: visible !important;
+  }
+  .vp-document {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+    padding: 15mm 20mm;
+    font-size: 12pt;
+  }
+  .vp-document .doc-watermark {
+    color: rgba(0, 0, 0, 0.03);
+  }
+  .vp-document .no-print {
+    display: none !important;
+  }
+}

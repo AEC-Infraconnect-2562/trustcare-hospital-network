@@ -1023,7 +1023,7 @@ async function issueSeedCredential(input: {
         organization: seedOrganization(input.patient),
         diagnosisText: diagnosisForPatient(input.patient),
         fitnessForWork: "restricted",
-        recommendations: ["พักผ่อนตามแพทย์สั่ง", "ใช้เอกสารนี้คู่กับ QR/VP สำหรับตรวจสอบความถูกต้อง"],
+        recommendations: ["พักผ่อนตามแพทย์สั่ง", "งดออกกำลังกายหนัก 7 วัน", "ใช้เอกสารนี้คู่กับ QR/VP สำหรับตรวจสอบความถูกต้อง"],
         validFrom: SEED_ISSUED_AT.toISOString(),
         validUntil: new Date(SEED_ISSUED_AT.getTime() + 7 * 86400000).toISOString(),
         fhirComposition: fhir.composition,
@@ -1046,7 +1046,7 @@ async function issueSeedCredential(input: {
       prescriber: seedPractitioner(input.document.hospitalCode),
       organization: seedOrganization(input.patient),
       authoredOn: SEED_ISSUED_AT.toISOString(),
-      medications: [{ code: medicationCodeForPatient(input.patient), name: medicationNameForPatient(input.patient), instructions: "รับประทานหลังอาหารตามแพทย์สั่ง", daysSupply: 30 }],
+      medications: medicationsForPatient(input.patient),
     });
     return issueCredential({
       type: "PrescriptionCredential",
@@ -1405,10 +1405,11 @@ function claimsForDocument(document: JsonRecord, patient: JsonRecord, canonical:
       { code: "2093-3", name: "Total Cholesterol", nameTh: "คอเลสเตอรอลรวม", value: "228", unit: "mg/dL", refRange: "<200", interpretation: "high", category: "chemistry" },
     ];
     const conditions = patient.conditions ?? [];
-    let selectedLabs = labPanels.slice(3, 5); // default: CBC
-    if (conditions.includes("E11")) selectedLabs = labPanels.slice(0, 2); // HbA1c + FBS
-    if (conditions.includes("N18.2")) selectedLabs = [labPanels[2], labPanels[4]]; // Creatinine + Hb
-    if (conditions.includes("I10")) selectedLabs = [labPanels[5], labPanels[0]]; // Cholesterol + HbA1c
+    // Give each patient a full panel of 5-6 results for realism
+    let selectedLabs = [labPanels[3], labPanels[4], labPanels[0], labPanels[5]]; // default: CBC + HbA1c + Cholesterol
+    if (conditions.includes("E11")) selectedLabs = [labPanels[0], labPanels[1], labPanels[5], labPanels[2], labPanels[3], labPanels[4]]; // Full DM panel
+    if (conditions.includes("N18.2")) selectedLabs = [labPanels[2], labPanels[4], labPanels[3], labPanels[0], labPanels[1]]; // Renal panel
+    if (conditions.includes("I10")) selectedLabs = [labPanels[5], labPanels[0], labPanels[1], labPanels[3], labPanels[4]]; // Cardio panel
     return {
       ...base,
       reportType: "laboratory_report",
@@ -1490,7 +1491,9 @@ function claimsForDocument(document: JsonRecord, patient: JsonRecord, canonical:
       attendingPhysician: seedPractitioner(patient.hospitalCode),
       dischargeCondition: "improved",
       dischargeConditionTh: "อาการดีขึ้น",
-      dischargeMedications: [{ name: medicationNameForPatient(patient), code: medicationCodeForPatient(patient), instructions: "รับประทานต่อเนื่องตามแพทย์สั่ง" }],
+      vitalSignsAtAdmission: { bp: "158/92 mmHg", hr: "92 bpm", temp: "37.8°C", rr: "22/min", spo2: "96%", weight: "72 kg" },
+      vitalSignsAtDischarge: { bp: "128/78 mmHg", hr: "76 bpm", temp: "36.6°C", rr: "18/min", spo2: "98%", weight: "71 kg" },
+      dischargeMedications: medicationsForPatient(patient).map(m => ({ name: m.name, code: m.code, instructions: m.instructions, dose: m.dose, frequency: m.frequency })),
       followUpInstructions: "นัดตรวจติดตามอาการ 2 สัปดาห์",
       followUpInstructionsEn: "Follow-up appointment in 2 weeks",
       followUpDate: new Date(SEED_ISSUED_AT.getTime() + 14 * 86400000).toISOString(),
@@ -2053,6 +2056,31 @@ function medicationNameForPatient(patient: JsonRecord): string {
   if (first === "I10") return "Amlodipine 5mg";
   if (first === "J45") return "Salbutamol inhaler";
   return "Paracetamol 500mg";
+}
+
+/** Returns a realistic multi-medication list for prescription VC */
+function medicationsForPatient(patient: JsonRecord): Array<{ code: string; name: string; instructions: string; daysSupply: number; dose?: string; frequency?: string; route?: string }> {
+  const first = (patient.conditions ?? [])[0];
+  if (first === "E11") return [
+    { code: "TMT-MET-500", name: "Metformin 500mg", dose: "500mg", frequency: "วันละ 2 ครั้ง เช้า-เย็น", route: "รับประทาน", instructions: "รับประทานหลังอาหาร เช้าและเย็น", daysSupply: 30 },
+    { code: "TMT-GLI-5", name: "Glipizide 5mg", dose: "5mg", frequency: "วันละ 1 ครั้ง ก่อนอาหารเช้า", route: "รับประทาน", instructions: "รับประทานก่อนอาหารเช้า 30 นาที", daysSupply: 30 },
+    { code: "TMT-ATOR-20", name: "Atorvastatin 20mg", dose: "20mg", frequency: "วันละ 1 ครั้ง ก่อนนอน", route: "รับประทาน", instructions: "รับประทานก่อนนอน", daysSupply: 30 },
+    { code: "TMT-ASA-81", name: "Aspirin 81mg (enteric-coated)", dose: "81mg", frequency: "วันละ 1 ครั้ง หลังอาหารเช้า", route: "รับประทาน", instructions: "รับประทานหลังอาหารเช้า", daysSupply: 30 },
+  ];
+  if (first === "I10") return [
+    { code: "TMT-AML-5", name: "Amlodipine 5mg", dose: "5mg", frequency: "วันละ 1 ครั้ง เช้า", route: "รับประทาน", instructions: "รับประทานหลังอาหารเช้า", daysSupply: 30 },
+    { code: "TMT-ENA-10", name: "Enalapril 10mg", dose: "10mg", frequency: "วันละ 1 ครั้ง เช้า", route: "รับประทาน", instructions: "รับประทานหลังอาหารเช้า", daysSupply: 30 },
+    { code: "TMT-HCTZ-25", name: "Hydrochlorothiazide 25mg", dose: "25mg", frequency: "วันละ 1 ครั้ง เช้า", route: "รับประทาน", instructions: "รับประทานหลังอาหารเช้า", daysSupply: 30 },
+  ];
+  if (first === "J45") return [
+    { code: "TMT-SAL-INH", name: "Salbutamol MDI 100mcg/puff", dose: "2 puffs", frequency: "เมื่อมีอาการ (prn)", route: "สูดพ่น", instructions: "สูดพ่น 2 ครั้ง เมื่อมีอาการหอบ", daysSupply: 90 },
+    { code: "TMT-BUD-INH", name: "Budesonide/Formoterol 160/4.5mcg", dose: "1 puff", frequency: "วันละ 2 ครั้ง เช้า-เย็น", route: "สูดพ่น", instructions: "สูดพ่น 1 ครั้ง เช้าและเย็น ทุกวัน", daysSupply: 30 },
+    { code: "TMT-MONT-10", name: "Montelukast 10mg", dose: "10mg", frequency: "วันละ 1 ครั้ง ก่อนนอน", route: "รับประทาน", instructions: "รับประทานก่อนนอน", daysSupply: 30 },
+  ];
+  return [
+    { code: "TMT-PARA-500", name: "Paracetamol 500mg", dose: "500mg", frequency: "ทุก 4-6 ชม. เมื่อมีอาการ", route: "รับประทาน", instructions: "รับประทานเมื่อมีอาการปวดหรือไข้ ไม่เกิน 4 เม็ดต่อวัน", daysSupply: 7 },
+    { code: "TMT-IBU-400", name: "Ibuprofen 400mg", dose: "400mg", frequency: "วันละ 3 ครั้ง หลังอาหาร", route: "รับประทาน", instructions: "รับประทานหลังอาหาร ทันที", daysSupply: 7 },
+  ];
 }
 
 function checkCount(name: string, expected: number, actual: number) {

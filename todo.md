@@ -1097,3 +1097,11 @@
 - [x] Verify /api/wallet/sync accepts Authorization: Bearer header and returns full credential data
 - [x] Test CORS headers with curl preflight simulation
 - [x] Push to GitHub, save checkpoint
+
+## v3.44.0 - Deep Research: Rich Claims & Printer-Friendly VP
+
+- [ ] Research real Thai hospital document formats (OPD card, lab report, prescription, referral, discharge summary, medical certificate, etc.)
+- [ ] Enrich claims builders in reseed.ts with realistic medical data fields from research
+- [ ] Redesign VP renderer (CredentialRenderer) to look like real hospital documents (printer-friendly, professional layout)
+- [ ] Re-run reseed, verify all types render correctly without crashes
+- [ ] Push to GitHub, save checkpoint

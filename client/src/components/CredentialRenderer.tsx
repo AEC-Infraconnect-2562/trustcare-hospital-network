@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { DocumentRenderer, A4_DOCUMENT_TYPES } from "@/components/DocumentRenderer";
 import {
   Building2,
   Calendar,
@@ -2021,24 +2022,17 @@ function CopyWatermark() {
 export function CredentialRenderer(props: CredentialRendererProps) {
   const { type } = props;
 
+  // A4 document types use the new printer-friendly DocumentRenderer
+  if (A4_DOCUMENT_TYPES.includes(type)) {
+    return <DocumentRenderer {...props} />;
+  }
+
+  // Card/Slip format types keep the existing card-style renderer
   let content: React.ReactNode;
   switch (type) {
     case "patient_identity": content = <PatientIdentityCard props={props} />; break;
     case "staff_identity": content = <StaffIdentityCard props={props} />; break;
-    case "medical_certificate": content = <MedicalCertificateCard props={props} />; break;
-    case "prescription": content = <PrescriptionCard props={props} />; break;
-    case "lab_result": content = <LabResultCard props={props} />; break;
-    case "immunization": content = <ImmunizationCard props={props} />; break;
-    case "patient_summary": content = <PatientSummaryCard props={props} />; break;
-    case "allergy_alert": content = <AllergyAlertCard props={props} />; break;
-    case "medication_summary": content = <MedicationSummaryCard props={props} />; break;
-    case "referral_vc": content = <ReferralCard props={props} />; break;
-    case "discharge_summary": content = <DischargeSummaryCard props={props} />; break;
     case "insurance_eligibility": content = <InsuranceEligibilityCard props={props} />; break;
-    case "consent_receipt": content = <ConsentReceiptCard props={props} />; break;
-    case "travel_document_verification": content = <TravelDocumentCard props={props} />; break;
-    case "claim_package":
-    case "claim_receipt": content = <ClaimCard props={props} />; break;
     case "mpi_link_certificate": content = <MpiLinkCard props={props} />; break;
     default: content = <GenericDocumentCard props={props} />; break;
   }

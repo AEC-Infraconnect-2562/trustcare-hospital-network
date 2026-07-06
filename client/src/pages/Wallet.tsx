@@ -837,7 +837,7 @@ export default function Wallet() {
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent
-          className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden"
+          className="max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {selectedCard && !qrMode && (
