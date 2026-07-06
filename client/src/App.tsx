@@ -45,6 +45,7 @@ const PatientNotifications = lazy(() => import("./pages/PatientNotifications"));
 const ContractAdmin = lazy(() => import("./pages/ContractAdmin"));
 const ContractHub = lazy(() => import("./pages/ContractHub"));
 const PublicVerify = lazy(() => import("./pages/PublicVerify"));
+const ApiDocs = lazy(() => import("./pages/ApiDocs"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 function PageLoader() {
@@ -100,6 +101,7 @@ function Router() {
         <Route path="/settings" component={Settings} />
         <Route path="/contract-admin" component={ContractAdmin} />
         <Route path="/contract-hub" component={ContractHub} />
+        <Route path="/docs/api" component={ApiDocs} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

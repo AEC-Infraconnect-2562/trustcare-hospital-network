@@ -923,3 +923,14 @@
 - [x] Add autoStart to ServiceVerify page
 - [x] Fix Verifier page camera not opening for QR scanning
 - [x] Push to GitHub, save checkpoint
+
+## v3.35.0 - Interactive API Documentation Page
+
+- [x] Create /docs/api route (public, no login required)
+- [x] Build interactive API docs page with endpoint explorer
+- [x] Include authentication flow documentation
+- [x] Include all External Wallet API endpoints with request/response examples
+- [x] Add "Try it" interactive panels for each endpoint
+- [x] Add code examples in multiple languages (cURL, JavaScript, Python)
+- [x] Support dark/light theme
+- [x] Push to GitHub, save checkpoint
