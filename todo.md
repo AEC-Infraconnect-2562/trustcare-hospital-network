@@ -1091,9 +1091,9 @@
 
 ## v3.43.0 - CORS Fix for External Wallet Sync
 
-- [ ] Add CORS middleware allowing GitHub Pages + localhost origins for wallet sync endpoints
-- [ ] Ensure OPTIONS preflight returns correct headers (POST, GET, OPTIONS; content-type, authorization)
-- [ ] Verify demo-login endpoint accepts `{ "openId": "..." }` body format and returns bearer token
-- [ ] Verify /api/wallet/sync accepts Authorization: Bearer header and returns full credential data
-- [ ] Test CORS headers with curl preflight simulation
-- [ ] Push to GitHub, save checkpoint
+- [x] Add CORS middleware allowing GitHub Pages + localhost origins for wallet sync endpoints
+- [x] Ensure OPTIONS preflight returns correct headers (POST, GET, OPTIONS; content-type, authorization)
+- [x] Verify demo-login endpoint accepts `{ "openId": "..." }` body format and returns bearer token
+- [x] Verify /api/wallet/sync accepts Authorization: Bearer header and returns full credential data
+- [x] Test CORS headers with curl preflight simulation
+- [x] Push to GitHub, save checkpoint
