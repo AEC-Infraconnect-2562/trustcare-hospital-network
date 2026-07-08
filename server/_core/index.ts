@@ -10,6 +10,7 @@ import { registerShlRoutes } from "./shlRoutes";
 import { registerStorageProxy } from "./storageProxy";
 import { registerUploadRoutes } from "../uploadRoute";
 import { createWellKnownRouter } from "../wellKnownRoutes";
+import { createShareGatewayRouter } from "../shareGatewayApi";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -56,6 +57,7 @@ async function startServer() {
     "/api/wallet/sync/did-resolve",
     "/api/wallet/sync/sd-jwt/issue",
     "/api/wallet/sync/sd-jwt/policy",
+    "/api/share-gateway",
     "/api/v1/",
     "/.well-known/",
     "/hospital/",
@@ -183,6 +185,9 @@ async function startServer() {
   // Wallet Sync API (credential pull for external wallets)
   const { createWalletSyncRouter } = await import("../walletSyncApi");
   app.use(createWalletSyncRouter());
+
+  // Share Gateway API (persistent VP/SHL resolver for external wallet QR flows)
+  app.use(createShareGatewayRouter());
 
   // tRPC API
   app.use(

@@ -266,6 +266,36 @@ export const issuedPresentations = mysqlTable("issued_presentations", {
 export type IssuedPresentation = typeof issuedPresentations.$inferSelect;
 export type InsertIssuedPresentation = typeof issuedPresentations.$inferInsert;
 
+export const shareGatewayArtifacts = mysqlTable("share_gateway_artifacts", {
+  id: int("id").autoincrement().primaryKey(),
+  artifactId: varchar("artifactId", { length: 255 }).notNull(),
+  kind: varchar("kind", { length: 64 }).notNull(),
+  contentType: varchar("contentType", { length: 120 }).notNull(),
+  payloadJson: json("payloadJson").notNull(),
+  signedJwt: mediumtext("signedJwt"),
+  payloadHash: varchar("payloadHash", { length: 128 }).notNull(),
+  ownerUserId: varchar("ownerUserId", { length: 128 }),
+  holderDid: varchar("holderDid", { length: 512 }),
+  context: varchar("context", { length: 64 }),
+  purpose: varchar("purpose", { length: 255 }),
+  recipient: varchar("recipient", { length: 255 }),
+  publicUrl: text("publicUrl"),
+  qrPayload: text("qrPayload"),
+  accessPolicyJson: json("accessPolicyJson"),
+  trustcareJson: json("trustcareJson"),
+  status: varchar("status", { length: 32 }).default("active").notNull(),
+  expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => ([
+  uniqueIndex("uq_share_gateway_artifact_kind").on(table.artifactId, table.kind),
+  index("idx_sga_kind").on(table.kind),
+  index("idx_sga_status").on(table.status),
+  index("idx_sga_expires").on(table.expiresAt),
+]));
+export type ShareGatewayArtifact = typeof shareGatewayArtifacts.$inferSelect;
+export type InsertShareGatewayArtifact = typeof shareGatewayArtifacts.$inferInsert;
+
 // ============================================================
 // CONSENT MANAGEMENT
 // ============================================================

@@ -2812,3 +2812,49 @@ All DID resolution endpoints are public (no authentication required) and only ex
 | `tao-consent.test.ts` | 10 | TAO trust registry + wallet categories |
 | Other test files | 328 | All other system features |
 | **Total** | **445** | **35 test files, 0 failures** |
+
+---
+
+## 53. Share Gateway API
+
+### 53.1 Overview
+
+The Share Gateway API provides the production resolver backend for external wallet QR flows. Wallet applications publish a VP or SHL artifact to Portal first, then QR-encode the resolver URL returned by Portal. This keeps large or sensitive payloads out of QR codes and lets cross-device verifiers fetch a stable HTTPS artifact.
+
+### 53.2 Endpoints
+
+The router is implemented in `server/shareGatewayApi.ts` and mounted in `server/_core/index.ts`.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/share-gateway/artifacts` | Publish a VP, SHL manifest, SHL file, or certified SHL support artifact |
+| `GET /api/share-gateway/presentations/:artifactId.jwt` | Resolve a Portal-signed `vp+JWT` |
+| `GET /api/share-gateway/manifests/:artifactId.json` | Resolve a standard or certified SHL manifest |
+| `GET /api/share-gateway/manifest-vps/:artifactId.json` | Resolve the certified SHL Manifest VP support artifact |
+| `GET /api/share-gateway/manifest-credentials/:artifactId.json` | Resolve the certified SHL Manifest VC support artifact |
+| `GET /api/share-gateway/holder-authorizations/:artifactId.json` | Resolve the holder authorization support artifact |
+| `GET /api/share-gateway/files/:artifactId` | Resolve an SHL file artifact |
+| `GET /api/share-gateway/.well-known/jwks.json` | Publish the gateway public verification key |
+
+### 53.3 Data Model
+
+`share_gateway_artifacts` stores the artifact body, resolver URL, payload hash, optional signed VP JWT, access policy, and TrustCare metadata. The unique key is `(artifactId, kind)` so a certified SHL package can publish the manifest and its support artifacts under the same logical package ID.
+
+### 53.4 Signing and Verification
+
+VP artifacts are signed by Portal as `vp+JWT` with ES256. The JWT protected header includes `kid` and `jku`, where `jku` points to `/api/share-gateway/.well-known/jwks.json`. Deployments must configure `TRUSTCARE_SHARE_GATEWAY_PRIVATE_JWK` or reuse `TRUSTCARE_VC_SIGNING_PRIVATE_JWK`; the gateway fails with a visible configuration error instead of falling back to a demo key when signing material is missing.
+
+SHL manifests remain SHL transport artifacts. Portal stores and resolves them as JSON, but does not convert the SHL itself into a VP QR. Certified SHL support artifacts are published separately through the same gateway.
+
+### 53.5 CORS
+
+`/api/share-gateway` is included in the external wallet CORS allowlist alongside wallet sync endpoints. Allowed origins are GitHub Pages wallet deployment and localhost/127.0.0.1 development origins.
+
+### 53.6 Files
+
+| File | Purpose |
+| --- | --- |
+| `server/shareGatewayApi.ts` | Share Gateway Express router and signer |
+| `server/shareGatewayApi.test.ts` | Unit tests for publish validation, VP signing, SHL manifest behavior, and route registration |
+| `drizzle/schema.ts` | `share_gateway_artifacts` table |
+| `drizzle/0023_share_gateway_artifacts.sql` | Migration SQL |
