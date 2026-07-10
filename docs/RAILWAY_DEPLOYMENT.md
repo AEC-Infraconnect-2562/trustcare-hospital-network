@@ -54,9 +54,15 @@ Never commit real secrets or private JWK material.
 
 ## Database and seed lifecycle
 
+Fresh Railway databases use the clean migration stream in
+`drizzle-production/`. This baseline is generated from the canonical
+`drizzle/schema.ts` and deliberately does not rewrite the legacy Manus
+migration history in `drizzle/`.
+
 The pre-deploy sequence is:
 
-1. `pnpm db:migrate` applies journaled Drizzle migrations.
+1. `pnpm db:migrate:production` applies the production baseline and subsequent
+   production migrations.
 2. `pnpm bootstrap:railway` runs only when `BOOTSTRAP_DEMO_DATA=true`.
 3. Bootstrap stages write versioned markers to `audit_events`, so later
    deployments do not automatically revoke and recreate seeded VC/VP records.
@@ -68,6 +74,11 @@ To intentionally rebuild demo VC/VP data, use the authenticated system-admin
 reseed flow or bump the bootstrap version in
 `server/scripts/bootstrapRailway.ts` after reviewing the impact. Public reseed
 is disabled in production.
+
+For a schema change, update `drizzle/schema.ts`, run
+`pnpm db:generate:production`, review the generated SQL, and commit the new
+production migration. The legacy stream remains available only for existing
+Manus databases during the cutover period.
 
 ## Storage lifecycle
 

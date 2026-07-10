@@ -71,6 +71,11 @@ When modifying `drizzle/schema.ts`:
 5. Update `docs/ARCHITECTURE.md` Section 5 (Schema) and Section 6 (Migration Order)
 6. If adding new enum values, update **all tables** that share the same enum
 
+For Railway production, also run `pnpm db:generate:production` and review the
+new SQL under `drizzle-production/`. Do not edit the production baseline after
+it has been deployed. The original `drizzle/` history remains the Manus legacy
+stream during cutover; new Railway databases must use the production stream.
+
 ### Tables Sharing Credential Type Enum
 
 These tables must stay in sync when adding new credential types:

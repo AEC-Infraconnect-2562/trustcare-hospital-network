@@ -438,6 +438,13 @@ Service readiness release note: migration `0013_service_readiness_wallet_request
 
 Migrations must be applied sequentially. Each migration builds on the previous state.
 
+Railway fresh installs use the independent journal in `drizzle-production/`,
+whose first migration is a complete baseline generated from the canonical
+`drizzle/schema.ts`. This avoids replaying the accumulated Manus/TiDB history
+against MySQL 8 while preserving that legacy history for existing databases.
+All post-cutover schema changes must append a production migration and must not
+modify the deployed baseline.
+
 | #   | Tag                                      | Description                                    | Key Changes                                                                                                                                                                                                               |
 | --- | ---------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0   | `0000_massive_shadow_king`               | Initial schema                                 | users, hospitals, departments, credential_templates, issued_credentials, wallet_cards, presentation_history, consent_policies, consent_records, referrals, fhir_field_mappings, terminology_mappings                      |

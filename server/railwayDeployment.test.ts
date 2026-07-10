@@ -15,9 +15,18 @@ describe("Railway deployment contract", () => {
   it("contains valid config-as-code commands", () => {
     const config = JSON.parse(fs.readFileSync(path.resolve("railway.json"), "utf8"));
     expect(config.build.builder).toBe("RAILPACK");
-    expect(config.deploy.preDeployCommand).toContain("corepack pnpm@10.4.1 db:migrate");
-    expect(config.deploy.preDeployCommand).toContain("corepack pnpm@10.4.1 bootstrap:railway");
+    expect(config.deploy.preDeployCommand).toHaveLength(1);
+    expect(config.deploy.preDeployCommand[0]).toContain("corepack pnpm@10.4.1 db:migrate:production");
+    expect(config.deploy.preDeployCommand[0]).toContain("corepack pnpm@10.4.1 bootstrap:railway");
     expect(config.deploy.healthcheckPath).toBe("/api/health");
+  });
+
+  it("keeps a clean production migration stream for fresh MySQL installs", () => {
+    const journalPath = path.resolve("drizzle-production/meta/_journal.json");
+    expect(fs.existsSync(journalPath)).toBe(true);
+    const journal = JSON.parse(fs.readFileSync(journalPath, "utf8"));
+    expect(journal.dialect).toBe("mysql");
+    expect(journal.entries).toHaveLength(1);
   });
 
   it("supports did:web on a Railway-generated domain", () => {
