@@ -62,6 +62,13 @@ export async function getDb() {
   return _db;
 }
 
+export async function closeDb(): Promise<void> {
+  if (!_db) return;
+  const client = (_db as unknown as { $client?: { end?: () => Promise<void> } }).$client;
+  if (client?.end) await client.end();
+  _db = null;
+}
+
 // ============================================================
 // USER HELPERS
 // ============================================================

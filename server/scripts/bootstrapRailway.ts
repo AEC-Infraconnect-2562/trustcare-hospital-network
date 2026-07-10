@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { auditEvents } from "../../drizzle/schema";
 import { ENV } from "../_core/env";
-import { getDb } from "../db";
+import { closeDb, getDb } from "../db";
 import { auditTrustcareVcVpSeedDatabase, reseedTrustcareVcVpDatabase } from "../portability/reseed";
 import { seedDatabase } from "../seed";
 import { seedPrepareServiceContracts } from "../seedPrepareService";
@@ -64,7 +64,15 @@ async function main() {
   console.log(`[Bootstrap] seed audit passed: ${JSON.stringify(audit.actual)}`);
 }
 
-main().catch((error) => {
-  console.error("[Bootstrap] failed", error);
-  process.exitCode = 1;
-});
+async function run() {
+  try {
+    await main();
+  } catch (error) {
+    console.error("[Bootstrap] failed", error);
+    process.exitCode = 1;
+  } finally {
+    await closeDb();
+  }
+}
+
+void run();
