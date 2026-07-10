@@ -44,6 +44,7 @@ import {
   issueSyncReceiptVc,
   localIssuerJwks,
   manifestFileDigest,
+  networkDidWeb,
   patientDidKey,
   purposeForContext,
   productionReadinessChecks,
@@ -66,6 +67,7 @@ import { sha256 } from "./portability/utils";
 import { resolveShlManifestAccessPacket, ShlAccessError } from "./shlAccess";
 import { buildShlDocumentBundle } from "./shlDocumentManifest";
 import { storagePut } from "./storage";
+import { ENV } from "./_core/env";
 import {
   buildClaimPackageCredential,
   buildClaimWorkbench,
@@ -201,7 +203,12 @@ export const appRouter = router({
   // SEED
   // ============================================================
   seed: router({
-    run: publicProcedure.mutation(async () => {
+    run: publicProcedure.mutation(async ({ ctx }) => {
+      if (ENV.isProduction && !ENV.allowPublicDemoSeed) {
+        if (!ctx.user || ctx.user.systemRole !== "system_admin") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Demo reseed is disabled in production" });
+        }
+      }
       const { seedDatabase } = await import("./seed");
       await seedDatabase();
       // After seeding base users/hospitals, also seed VC/VP documents
@@ -357,7 +364,7 @@ export const appRouter = router({
       email: z.string().optional(),
       fhirEndpoint: z.string().optional(),
     })).mutation(async ({ input }) => {
-      const did = `did:web:trustcare.network:hospital:${input.code}`;
+      const did = hospitalDidWeb(input.code);
       const id = await db.createHospital({ ...input, did, status: "active" });
       await db.createAuditEvent({
         action: "hospital.created",
@@ -3174,7 +3181,7 @@ export const appRouter = router({
         purpose: "cross_border",
         scope: { type: "referral_packet" },
         manifestHash: nanoid(32),
-        shlUrl: `https://shl.trustcare.network/${nanoid(16)}`,
+        shlUrl: `${ENV.publicUrl}/shl-viewer/${nanoid(16)}`,
         qrPayload: `shlink:/${nanoid(64)}`,
       };
       const shlId = await db.createSmartHealthLink(shlData);
@@ -5250,7 +5257,7 @@ function defaultIssuerProfile() {
   return {
     id: "trustcare-network",
     name: "Trustcare Hospital Network",
-    did: "did:web:trustcare.network",
+    did: networkDidWeb(),
     country: "TH",
     trustDomain: "trustcare-network",
   };

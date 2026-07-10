@@ -12,7 +12,9 @@
     "test": "vitest run server",
     "test:e2e": "vitest run e2e",
     "ci": "pnpm check && pnpm test && pnpm test:e2e && pnpm build",
-    "db:push": "drizzle-kit generate && drizzle-kit migrate"
+    "db:push": "drizzle-kit generate && drizzle-kit migrate",
+    "db:migrate": "drizzle-kit migrate",
+    "bootstrap:railway": "tsx server/scripts/bootstrapRailway.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",

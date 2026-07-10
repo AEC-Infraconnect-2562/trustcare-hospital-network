@@ -39,6 +39,9 @@ const SYSTEM_FEATURES = [
   { icon: Microscope, title: "24 Document Types", titleTh: "24 ประเภทเอกสาร", desc: "ครอบคลุมตั้งแต่ใบรับรองแพทย์ถึง Claim Package" },
 ];
 
+const ENABLE_DEMO_SEED_UI =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEMO_SEED_UI === "true";
+
 export default function Home() {
   const { user, loading } = useAuth();
   const [, setLocation] = useLocation();
@@ -126,15 +129,17 @@ export default function Home() {
               <span className="hidden sm:inline text-xs text-muted-foreground ml-2">VC/VP Issuance Platform</span>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSeed}
-            disabled={seedMutation.isPending}
-          >
-            <Database className="h-4 w-4 mr-2" />
-            {seedMutation.isPending ? "กำลัง Seed..." : "Seed Demo Data"}
-          </Button>
+          {ENABLE_DEMO_SEED_UI && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSeed}
+              disabled={seedMutation.isPending}
+            >
+              <Database className="h-4 w-4 mr-2" />
+              {seedMutation.isPending ? "กำลัง Seed..." : "Seed Demo Data"}
+            </Button>
+          )}
         </div>
       </header>
 
@@ -200,10 +205,12 @@ export default function Home() {
               <Database className="h-16 w-16 mx-auto text-muted-foreground/30 mb-4" />
               <h3 className="text-lg font-medium mb-2">ยังไม่มี Test Users</h3>
               <p className="text-muted-foreground mb-6 text-sm">กดปุ่ม "Seed Demo Data" ด้านบนเพื่อสร้างข้อมูลทดสอบ</p>
-              <Button onClick={handleSeed} disabled={seedMutation.isPending}>
-                <Database className="h-4 w-4 mr-2" />
-                {seedMutation.isPending ? "กำลัง Seed..." : "Seed Demo Data"}
-              </Button>
+              {ENABLE_DEMO_SEED_UI && (
+                <Button onClick={handleSeed} disabled={seedMutation.isPending}>
+                  <Database className="h-4 w-4 mr-2" />
+                  {seedMutation.isPending ? "กำลัง Seed..." : "Seed Demo Data"}
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-6">

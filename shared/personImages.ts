@@ -1,15 +1,15 @@
 export const PERSON_IMAGE_CACHE_VERSION = "20260703";
 
 export const PERSON_IMAGE_URLS = {
-  patientMale: "/manus-storage/patient_somsak_a2e00e97.jpg",
-  patientFemale: "/manus-storage/patient_malee_74d2ef04.jpg",
-  doctorMale: "/manus-storage/doctor_thanawat_f91f7278.jpg",
-  doctorFemale: "/manus-storage/doctor_napa_abd67502.jpg",
-  nurseFemale: "/manus-storage/nurse_pimjai_ace1fd06.jpg",
-  nurseMale: "/manus-storage/nurse_anucha_e814499a.jpg",
-  pharmacistMale: "/manus-storage/engineer_piya_eb6aeff4.jpg",
-  radiologist: "/manus-storage/doctor_kriangkrai_b6bcdefb.jpg",
-  medTech: "/manus-storage/doctor_prasit_2ed84c26.jpg",
+  patientMale: "/seed-avatars/patient_somsak_a2e00e97.jpg",
+  patientFemale: "/seed-avatars/patient_malee_74d2ef04.jpg",
+  doctorMale: "/seed-avatars/doctor_thanawat_f91f7278.jpg",
+  doctorFemale: "/seed-avatars/doctor_napa_abd67502.jpg",
+  nurseFemale: "/seed-avatars/nurse_pimjai_ace1fd06.jpg",
+  nurseMale: "/seed-avatars/nurse_anucha_e814499a.jpg",
+  pharmacistMale: "/seed-avatars/engineer_piya_eb6aeff4.jpg",
+  radiologist: "/seed-avatars/doctor_kriangkrai_b6bcdefb.jpg",
+  medTech: "/seed-avatars/doctor_prasit_2ed84c26.jpg",
 } as const;
 
 export type PersonGender = "male" | "female";

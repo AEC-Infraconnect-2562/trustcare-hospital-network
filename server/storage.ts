@@ -1,8 +1,53 @@
-// Preconfigured storage helpers for Manus WebDev templates
-// Uploads via Forge Server presigned URL to S3 (PUT direct).
-// Downloads return /api/storage-proxy/{key} paths served via our Express proxy.
-
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ENV } from "./_core/env";
+
+type StorageBackend = "s3" | "forge";
+
+let s3Client: S3Client | null = null;
+
+function hasS3Config(): boolean {
+  return Boolean(
+    ENV.storageBucket &&
+    ENV.storageAccessKeyId &&
+    ENV.storageSecretAccessKey &&
+    ENV.storageEndpoint,
+  );
+}
+
+function getStorageBackend(): StorageBackend {
+  if (ENV.storageBackend === "s3" || (ENV.storageBackend === "auto" && hasS3Config())) {
+    if (!hasS3Config()) {
+      throw new Error(
+        "S3 storage config missing: set BUCKET, ACCESS_KEY_ID, SECRET_ACCESS_KEY, ENDPOINT, and REGION",
+      );
+    }
+    return "s3";
+  }
+
+  if (ENV.forgeApiUrl && ENV.forgeApiKey) return "forge";
+
+  throw new Error(
+    "Storage is not configured. Set Railway/S3 credentials or Manus Forge storage credentials.",
+  );
+}
+
+function getS3Client(): S3Client {
+  if (!hasS3Config()) {
+    throw new Error("S3 storage is not configured");
+  }
+  if (!s3Client) {
+    s3Client = new S3Client({
+      endpoint: ENV.storageEndpoint,
+      region: ENV.storageRegion,
+      credentials: {
+        accessKeyId: ENV.storageAccessKeyId,
+        secretAccessKey: ENV.storageSecretAccessKey,
+      },
+    });
+  }
+  return s3Client;
+}
 
 function getForgeConfig() {
   const forgeUrl = ENV.forgeApiUrl;
@@ -33,8 +78,21 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
   const key = appendHashSuffix(normalizeKey(relKey));
+  const backend = getStorageBackend();
+
+  if (backend === "s3") {
+    const body = typeof data === "string" ? Buffer.from(data) : data;
+    await getS3Client().send(new PutObjectCommand({
+      Bucket: ENV.storageBucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }));
+    return { key, url: `/api/storage-proxy/${key}` };
+  }
+
+  const { forgeUrl, forgeKey } = getForgeConfig();
 
   // 1. Get presigned PUT URL from Forge
   const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
@@ -77,8 +135,18 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
 }
 
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
   const key = normalizeKey(relKey);
+  const backend = getStorageBackend();
+
+  if (backend === "s3") {
+    return getSignedUrl(
+      getS3Client(),
+      new GetObjectCommand({ Bucket: ENV.storageBucket, Key: key }),
+      { expiresIn: 300 },
+    );
+  }
+
+  const { forgeUrl, forgeKey } = getForgeConfig();
 
   const getUrl = new URL("v1/storage/presign/get", forgeUrl + "/");
   getUrl.searchParams.set("path", key);
@@ -94,4 +162,12 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
 
   const { url } = (await resp.json()) as { url: string };
   return url;
+}
+
+export function storageBackendStatus() {
+  try {
+    return { configured: true, backend: getStorageBackend() } as const;
+  } catch {
+    return { configured: false, backend: null } as const;
+  }
 }

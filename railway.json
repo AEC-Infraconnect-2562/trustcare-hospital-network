@@ -1,0 +1,18 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "corepack pnpm@10.4.1 build"
+  },
+  "deploy": {
+    "preDeployCommand": [
+      "corepack pnpm@10.4.1 db:migrate",
+      "corepack pnpm@10.4.1 bootstrap:railway"
+    ],
+    "startCommand": "corepack pnpm@10.4.1 start",
+    "healthcheckPath": "/api/health",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}

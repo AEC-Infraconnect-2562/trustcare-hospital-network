@@ -13,6 +13,18 @@ import { createWellKnownRouter } from "../wellKnownRoutes";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { sql } from "drizzle-orm";
+import { ENV } from "./env";
+import { storageBackendStatus } from "../storage";
+
+function validateRuntimeConfig() {
+  if (!ENV.isProduction) return;
+  if (!ENV.databaseUrl) throw new Error("DATABASE_URL is required in production");
+  if (!ENV.cookieSecret || ENV.cookieSecret.length < 32) {
+    throw new Error("JWT_SECRET must be at least 32 characters in production");
+  }
+  if (!ENV.appId) throw new Error("VITE_APP_ID is required in production");
+}
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -34,8 +46,10 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  validateRuntimeConfig();
   const app = express();
   const server = createServer(app);
+  app.set("trust proxy", 1);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -109,6 +123,30 @@ async function startServer() {
   registerShlRoutes(app);
   registerUploadRoutes(app);
 
+  app.get("/api/health", async (_req, res) => {
+    const storage = storageBackendStatus();
+    try {
+      const { getDb } = await import("../db");
+      const db = await getDb();
+      if (!db) throw new Error("Database is not configured");
+      await db.execute(sql`select 1`);
+      const healthy = storage.configured;
+      res.status(healthy ? 200 : 503).json({
+        status: healthy ? "ok" : "degraded",
+        database: "ok",
+        storage,
+        version: process.env.RAILWAY_GIT_COMMIT_SHA ?? "local",
+      });
+    } catch (error) {
+      res.status(503).json({
+        status: "unavailable",
+        database: "error",
+        storage,
+        error: error instanceof Error ? error.message : "Health check failed",
+      });
+    }
+  });
+
   // Demo Login Route (bypasses OAuth for testing)
   app.post("/api/auth/demo-login", async (req, res) => {
     try {
@@ -145,6 +183,9 @@ async function startServer() {
 
   // Seed Route
   app.post("/api/seed", async (_req, res) => {
+    if (ENV.isProduction && !ENV.allowPublicDemoSeed) {
+      return res.status(403).json({ error: "Demo reseed is disabled in production" });
+    }
     try {
       const { seedDatabase } = await import("../seed");
       await seedDatabase();
@@ -206,7 +247,7 @@ async function startServer() {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
-  server.listen(port, () => {
+  server.listen(port, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${port}/`);
   });
 }

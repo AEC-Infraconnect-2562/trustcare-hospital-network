@@ -418,14 +418,17 @@ Never hardcode secrets. Use `webdev_request_secrets` for new environment variabl
 
 ## Deployment
 
-- **Hosting:** Manus Autoscale (serverless, Node.js runtime)
+- **Hosting:** Railway (primary standalone deployment) or Manus WebDev (legacy sandbox)
 - **Build:** `pnpm build` produces `dist/` (Vite frontend + compiled server)
 - **Port:** Dynamic (never hardcode)
-- **Database:** TiDB-compatible MySQL
-- **Storage:** S3-compatible object storage
+- **Database:** MySQL/TiDB-compatible; Railway uses a private MySQL service
+- **Storage:** S3-compatible object storage; Railway uses a private Bucket
 - **No Docker** — runs directly on Node.js
 - **Request timeout:** 180s
 - **Memory:** 512 MiB RAM
+
+Read `docs/RAILWAY_DEPLOYMENT.md` before changing deployment, migrations,
+bootstrap seed behavior, public URLs, DID domains, or storage adapters.
 
 ---
 

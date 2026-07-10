@@ -1,7 +1,7 @@
 # TrustCare Hospital Network — Architecture Documentation
 
-**Version:** 5.30 (Wallet Sync API, VP Context Mapping, Wallet Dedup, DID Shortcuts)
-**Last updated:** 2026-07-06
+**Version:** 5.31 (Standalone Railway Deployment)
+**Last updated:** 2026-07-10
 **Maintainers:** AEC-Infraconnect-2562
 
 ---
@@ -69,8 +69,8 @@ TrustCare Hospital Network is a **Verifiable Credential (VC) and Verifiable Pres
 | ORM       | Drizzle ORM 0.44                    | Type-safe database queries  |
 | Database  | MySQL (TiDB-compatible)             | Persistent storage          |
 | Crypto    | jose (JWT), ES256 (P-256 ECDSA)     | VC/VP signing and verification |
-| Auth      | Manus OAuth + Demo Login            | Session management          |
-| Storage   | S3-compatible                       | File/credential storage     |
+| Auth      | Demo Login + pluggable OAuth/IAM    | Session management          |
+| Storage   | S3-compatible (Railway/Manus)       | File/credential storage     |
 | Testing   | Vitest 2                            | Unit + E2E testing          |
 | Build     | Vite 7                              | Frontend bundling           |
 
@@ -2812,3 +2812,30 @@ All DID resolution endpoints are public (no authentication required) and only ex
 | `tao-consent.test.ts` | 10 | TAO trust registry + wallet categories |
 | Other test files | 328 | All other system features |
 | **Total** | **445** | **35 test files, 0 failures** |
+
+---
+
+## 53. Standalone Railway Deployment (v5.31)
+
+TrustCare no longer requires Manus runtime services to run the test portal.
+Railway deployment uses a Node web service, a private MySQL service, and a
+private S3-compatible Bucket.
+
+| Concern | Standalone implementation |
+|---|---|
+| Build/start | `railway.json`, Railpack, pnpm 10.4.1 |
+| Schema | Drizzle migrations in Railway pre-deploy |
+| Demo bootstrap | Versioned, resumable stages recorded in `audit_events` |
+| Health | `GET /api/health` checks MySQL and storage configuration |
+| Uploaded files | Railway Bucket through `server/storage.ts` |
+| Browser file access | Same-origin `/api/storage-proxy/*` |
+| Demo portraits | Version-controlled `/seed-avatars/*` assets |
+| Public URLs | `TRUSTCARE_PUBLIC_URL` |
+| DID Web domain | `TRUSTCARE_DID_DOMAIN` |
+| Seed security | Public production reseed disabled by default |
+
+The DID and public URL variables must be set before the initial demo bootstrap,
+because issuer DIDs, key IDs, SHL manifest URLs, viewer URLs, and service
+endpoints are persisted into VC/VP records. See
+`docs/RAILWAY_DEPLOYMENT.md` for the complete environment and validation
+contract.

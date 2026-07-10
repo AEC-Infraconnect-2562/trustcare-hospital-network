@@ -527,17 +527,16 @@ export function createWalletSyncRouter(): Router {
         return res.status(400).json({ error: "missing_did", message: "did field is required" });
       }
 
-      // Parse did:web:trustcare.network:hospital:<code>
-      const match = did.match(/^did:web:trustcare\.network:hospital:(\w+)$/);
-      if (!match) {
+      const match = did.match(/^did:web:[^:]+:hospital:([a-z0-9_-]+)$/i);
+      const code = match?.[1]?.toUpperCase();
+      if (!match || !code || did !== hospitalDidWeb(code)) {
         return res.status(404).json({
           error: "unsupported_did",
-          message: "Only did:web:trustcare.network:hospital:<code> DIDs are supported",
+          message: `Only ${hospitalDidWeb("<code>")} DIDs are supported`,
           did,
         });
       }
 
-      const code = match[1].toUpperCase();
       const publicJwk = getHospitalPublicJwk(code);
 
       res.json({

@@ -13,9 +13,10 @@ import type {
 import { addDays, isoNow, sha256, stableStringify, stripUndefined, urnUuid } from "./utils";
 import { getHospitalKeyPair, getAllHospitalPublicKeys } from "./did";
 import { getDocumentDefinition, WALLET_DOCUMENT_CATALOG, type WalletDocumentDefinition } from "./labels";
+import { ENV } from "../_core/env";
 
-const DEFAULT_AUDIENCE = "https://trustcare.network/verifier";
-const DEFAULT_STATUS_LIST = "https://trustcare.network/status/revocation-list";
+const DEFAULT_AUDIENCE = `${ENV.publicUrl}/verifier`;
+const DEFAULT_STATUS_LIST = `${ENV.publicUrl}/status/revocation-list`;
 const SCHEMA_VERSION = "2026.07.complete-seed.v1";
 const RENDERER_VERSION = "trustcare-wallet-document-renderer-2026.07";
 
