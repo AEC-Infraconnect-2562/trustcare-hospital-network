@@ -13,7 +13,7 @@ import { createHash, randomBytes } from "crypto";
 import { decodeJwt, decodeProtectedHeader, importJWK, jwtVerify, SignJWT } from "jose";
 import type { JsonRecord } from "./types";
 import { sha256, stableStringify } from "./utils";
-import { getHospitalKeyPair } from "./did";
+import { getHospitalKeyPair, networkDidWeb } from "./did";
 
 // ============================================================
 // TYPES
@@ -555,7 +555,7 @@ async function resolveVerificationKeyForSdJwt(
   options?: { trustedIssuers?: string[]; trustedIssuerJwks?: Record<string, JsonRecord[]> }
 ): Promise<any> {
   // Try hospital keys first
-  const hospitalMatch = issuer.match(/did:web:trustcare\.network:hospital:(\w+)/);
+  const hospitalMatch = issuer.match(/^did:web:[^:]+:hospital:([a-z0-9_-]+)$/i);
   if (hospitalMatch) {
     try {
       const hospitalKey = getHospitalKeyPair(hospitalMatch[1]);
@@ -564,7 +564,7 @@ async function resolveVerificationKeyForSdJwt(
   }
 
   // Try network-level key
-  if (issuer.startsWith("did:web:trustcare.network")) {
+  if (issuer === networkDidWeb()) {
     const publicJwk = parseJwk(process.env.TRUSTCARE_VC_SIGNING_PUBLIC_JWK);
     if (publicJwk) {
       return await importJWK({ ...publicJwk, alg }, alg);

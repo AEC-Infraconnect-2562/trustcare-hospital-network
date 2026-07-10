@@ -20,7 +20,7 @@ import {
 } from "../../drizzle/schema";
 import { getDb } from "../db";
 import { buildMedicalCertificateFhir, buildPrescriptionMedicationRequests } from "./clinicalDocuments";
-import { hospitalDidWeb, patientDidKey } from "./did";
+import { didWebDocument, hospitalDidWeb, networkDidWeb, patientDidKey } from "./did";
 import { canonicalizeHisPayload } from "./fhir";
 import { DOCUMENT_TYPE_LABELS, documentStorageMetadata, standardLabelCatalog, THAI_GOVERNMENT_DOCUMENT_FONT_POLICY } from "./labels";
 import { resolvePatientOpenId, DEMO_PATIENT_MAPPING } from "./seedData";
@@ -33,10 +33,11 @@ import { consentReceiptClaims, createPresentation, issueCredential, medicalCerti
 import { generateTrustcareDemoSeed, sourceTruthConnectors, TRUSTCARE_DEMO_HOSPITALS } from "./seedData";
 import { sha256 } from "./utils";
 import { defaultPatientImage, type PersonGender } from "../../shared/personImages";
+import { ENV } from "../_core/env";
 
 const SEED_PREFIX = "urn:trustcare:seed";
 const SEED_ISSUED_AT = new Date("2026-07-01T02:00:00.000Z");
-const DEFAULT_AUDIENCE = "https://trustcare.network/verifier";
+const DEFAULT_AUDIENCE = `${ENV.publicUrl}/verifier`;
 
 export async function reseedTrustcareVcVpDatabase(input: {
   actorId?: number;
@@ -322,14 +323,14 @@ async function seedSmartHealthLinkPackages(input: {
     const passcode = generateNumericPasscode();
     const passcodeHash = hashPasscode(passcode);
     const manifestToken = `${SEED_PREFIX}:shl:${sha256({ batchId: input.batchId, scenario: scenario.id, patient: patient.seedId }).slice(0, 24)}`;
-    const manifestUrl = `https://trustcare.network/api/shl/manifest/${encodeURIComponent(manifestToken)}`;
+    const manifestUrl = `${ENV.publicUrl}/api/shl/manifest/${encodeURIComponent(manifestToken)}`;
     const shlink = buildShlinkPayload({
       manifestUrl,
       key,
       expiresAt: new Date(SEED_ISSUED_AT.getTime() + 30 * 86_400_000),
       passcodeRequired: true,
       label: String(scenario.name ?? scenario.id),
-      viewerBaseUrl: "https://trustcare.network/shl-viewer",
+      viewerBaseUrl: `${ENV.publicUrl}/shl-viewer`,
     });
     const encrypted = await encryptShlFile({
       key,
@@ -529,13 +530,25 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
   const expectedSeed = generateTrustcareDemoSeed({ patientsPerHospital });
   const expectedHospitalCodes = (expectedSeed.hospitals as JsonRecord[]).map((hospital) => String(hospital.code));
   const expectedConnectorNames = sourceTruthConnectors().map((connector) => String(connector.name));
+  const expectedPatientOpenIds = Array.from(new Set(
+    (expectedSeed.patients as JsonRecord[]).map((patient) => resolvePatientOpenId(
+      String(patient.hospitalCode),
+      String(patient.seedId),
+    )),
+  ));
 
   const hospitalRows = await db.select().from(hospitals).where(inArray(hospitals.code, expectedHospitalCodes));
-  const seedPatientRows = await db.select().from(users).where(like(users.openId, "seed-patient-%"));
+  const seedPatientRows = await db.select().from(users).where(inArray(users.openId, expectedPatientOpenIds));
   const seedStaffRows = await db.select().from(users).where(sql`${users.openId} like 'seed-maker-%' or ${users.openId} like 'seed-checker-%' or ${users.openId} like 'seed-issuer-%'`);
   const sourceTruthRows = await db.select().from(integrationAdapters).where(inArray(integrationAdapters.name, expectedConnectorNames));
   const hospitalIds = hospitalRows.map((hospital) => hospital.id);
   const patientIds = seedPatientRows.map((patient) => patient.id);
+  const staffIdentitySubjects = hospitalIds.length > 0
+    ? await db.select({ id: users.id }).from(users).where(and(
+        sql`${users.systemRole} != 'patient'`,
+        inArray(users.hospitalId, hospitalIds),
+      ))
+    : [];
 
   const [templateCount] = hospitalIds.length > 0
     ? await db.select({ value: count() }).from(credentialTemplates).where(inArray(credentialTemplates.hospitalId, hospitalIds))
@@ -547,6 +560,8 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
     .where(and(like(issuedCredentials.credentialId, `${SEED_PREFIX}:vc:%`), eq(issuedCredentials.status, "active" as any)));
   const [presentationCount] = await db.select({ value: count() }).from(issuedPresentations)
     .where(and(like(issuedPresentations.presentationId, `${SEED_PREFIX}:vp:%`), eq(issuedPresentations.status, "active" as any)));
+  const [smartHealthLinkCount] = await db.select({ value: count() }).from(smartHealthLinks)
+    .where(and(like(smartHealthLinks.manifestToken, `${SEED_PREFIX}:shl:%`), eq(smartHealthLinks.status, "active" as any)));
   const [identifierCount] = patientIds.length > 0
     ? await db.select({ value: count() }).from(patientIdentifiers).where(inArray(patientIdentifiers.patientId, patientIds))
     : [{ value: 0 }];
@@ -567,15 +582,31 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
   const patientEntitlementViolations = seedPatientRows
     .filter((patient) => hasIssuerEntitlements(patient.credentialEntitlements))
     .map((patient) => ({ id: patient.id, openId: patient.openId }));
+  const credentialTypeCounts = Object.fromEntries(
+    credentialTypes.map((row) => [row.type, Number(row.value)]),
+  );
+  const generatedCredentialCount = Number(
+    latestBatch[0]?.generatedCredentialCount ?? (expectedSeed.counts as JsonRecord).documents,
+  );
+  const generatedPresentationCount = Number(
+    latestBatch[0]?.generatedPresentationCount ?? (expectedSeed.counts as JsonRecord).vpScenarios,
+  );
+  const expectedSmartHealthLinks = Number((expectedSeed.counts as JsonRecord).vpScenarios);
+  const expectedActiveSeedCredentials = generatedCredentialCount
+    + staffIdentitySubjects.length
+    + expectedSmartHealthLinks;
+  const expectedActiveSeedPresentations = generatedPresentationCount + expectedSmartHealthLinks;
 
   const checks = [
     checkCount("completed seed batch", 1, latestBatch[0]?.status === "completed" ? 1 : 0),
     checkCount("hospitals", Number((expectedSeed.counts as JsonRecord).hospitals), hospitalRows.length),
-    checkCount("seed patients", Number((expectedSeed.counts as JsonRecord).patients), seedPatientRows.length),
+    checkCount("seed patient records", expectedPatientOpenIds.length, seedPatientRows.length),
     checkCount("credential templates", Object.keys(DOCUMENT_TYPE_LABELS).length * expectedHospitalCodes.length, Number(templateCount?.value ?? 0)),
-    checkCount("active seed credentials", Number((expectedSeed.counts as JsonRecord).documents), Number(credentialCount?.value ?? 0)),
-    checkCount("wallet cards for seed credentials", Number((expectedSeed.counts as JsonRecord).documents), Number(walletCount?.value ?? 0)),
-    checkCount("active seed presentations", Number((expectedSeed.counts as JsonRecord).vpScenarios), Number(presentationCount?.value ?? 0)),
+    checkCount("active seed credentials", expectedActiveSeedCredentials, Number(credentialCount?.value ?? 0)),
+    checkCount("wallet cards for seed credentials", expectedActiveSeedCredentials, Number(walletCount?.value ?? 0)),
+    checkCount("staff identity credentials", staffIdentitySubjects.length, Number(credentialTypeCounts.staff_identity ?? 0)),
+    checkCount("active seed presentations", expectedActiveSeedPresentations, Number(presentationCount?.value ?? 0)),
+    checkCount("active Smart Health Links", expectedSmartHealthLinks, Number(smartHealthLinkCount?.value ?? 0)),
     checkCount("source of truth connectors", expectedConnectorNames.length, sourceTruthRows.length),
     checkCount("patient issuer-role violations", 0, patientIssuerRoleViolations.length),
     checkCount("patient entitlement violations", 0, patientEntitlementViolations.length),
@@ -591,7 +622,14 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
     ok: checks.every((check) => check.ok) && didChecks.hospitalDidWeb && didChecks.patientDidKeyIdentifiers,
     checkedAt: new Date().toISOString(),
     latestBatch: latestBatch[0] ?? null,
-    expected: expectedSeed.counts,
+    expected: {
+      ...expectedSeed.counts,
+      databasePatientRows: expectedPatientOpenIds.length,
+      activeSeedCredentials: expectedActiveSeedCredentials,
+      activeSeedPresentations: expectedActiveSeedPresentations,
+      staffIdentityCredentials: staffIdentitySubjects.length,
+      activeSmartHealthLinks: expectedSmartHealthLinks,
+    },
     actual: {
       hospitals: hospitalRows.length,
       seedPatients: seedPatientRows.length,
@@ -600,9 +638,10 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
       activeSeedCredentials: Number(credentialCount?.value ?? 0),
       walletCardsForSeedCredentials: Number(walletCount?.value ?? 0),
       activeSeedPresentations: Number(presentationCount?.value ?? 0),
+      activeSmartHealthLinks: Number(smartHealthLinkCount?.value ?? 0),
       patientIdentifiers: Number(identifierCount?.value ?? 0),
       sourceTruthConnectors: sourceTruthRows.length,
-      credentialTypes: Object.fromEntries(credentialTypes.map((row) => [row.type, Number(row.value)])),
+      credentialTypes: credentialTypeCounts,
     },
     checks,
     didChecks,
@@ -624,19 +663,26 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
 
 async function upsertHospital(hospital: JsonRecord): Promise<number> {
   const db = (await getDb())!;
+  const hospitalCode = String(hospital.code);
+  const did = hospitalDidWeb(hospitalCode);
+  const runtimeDidDocument = didWebDocument({
+    hospitalCode,
+    name: String(hospital.nameTh),
+    nameEn: String(hospital.nameEn),
+  });
   // Use SELECT-first pattern to avoid TiDB lock contention
   const [existing] = await db.select().from(hospitals).where(eq(hospitals.code, String(hospital.code))).limit(1);
   if (existing) {
     await db.update(hospitals).set({
       name: String(hospital.nameTh),
       nameEn: String(hospital.nameEn),
-      did: String(hospital.did),
+      did,
       address: String(hospital.addressTh ?? ""),
       phone: String(hospital.phone ?? ""),
       status: "active",
       settings: {
         branding: hospital.branding,
-        didDocument: hospital.didDocument,
+        didDocument: runtimeDidDocument,
         fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
       },
     } as any).where(eq(hospitals.id, existing.id));
@@ -645,19 +691,19 @@ async function upsertHospital(hospital: JsonRecord): Promise<number> {
   await db.insert(hospitals).values({
     name: String(hospital.nameTh),
     nameEn: String(hospital.nameEn),
-    code: String(hospital.code),
-    did: String(hospital.did),
+    code: hospitalCode,
+    did,
     address: String(hospital.addressTh ?? ""),
     phone: String(hospital.phone ?? ""),
     email: `contact.${String(hospital.code).toLowerCase()}@trustcare.example`,
     logoUrl: `trustcare://${String(hospital.code).toLowerCase()}/brand/logo.svg`,
-    issuerEndpoint: `https://trustcare.network/api/issuer/${String(hospital.code).toLowerCase()}`,
-    verifierEndpoint: `https://trustcare.network/api/verifier/${String(hospital.code).toLowerCase()}`,
-    fhirEndpoint: `https://trustcare.network/fhir/${String(hospital.code).toLowerCase()}`,
+    issuerEndpoint: `${ENV.publicUrl}/api/issuer/${String(hospital.code).toLowerCase()}`,
+    verifierEndpoint: `${ENV.publicUrl}/api/verifier/${String(hospital.code).toLowerCase()}`,
+    fhirEndpoint: `${ENV.publicUrl}/fhir/${String(hospital.code).toLowerCase()}`,
     status: "active",
     settings: {
       branding: hospital.branding,
-      didDocument: hospital.didDocument,
+      didDocument: runtimeDidDocument,
       fontPolicy: THAI_GOVERNMENT_DOCUMENT_FONT_POLICY,
     },
   } as any);
@@ -866,23 +912,29 @@ async function upsertCredentialTemplate(hospitalId: number, documentType: string
 
 async function upsertTrustRegistryIssuer(hospital: JsonRecord, hospitalId: number): Promise<void> {
   const db = (await getDb())!;
-  const did = String(hospital.did);
+  const hospitalCode = String(hospital.code);
+  const did = hospitalDidWeb(hospitalCode);
+  const runtimeDidDocument = didWebDocument({
+    hospitalCode,
+    name: String(hospital.nameTh),
+    nameEn: String(hospital.nameEn),
+  });
   const [existing] = await db.select().from(trustRegistry).where(eq(trustRegistry.did, did)).limit(1);
   const values = {
     entityType: "issuer",
     entityName: String(hospital.nameTh),
     entityNameEn: String(hospital.nameEn),
     did,
-    publicKeyJwk: hospital.didDocument?.verificationMethod?.[0]?.publicKeyJwk,
+    publicKeyJwk: runtimeDidDocument.verificationMethod?.[0]?.publicKeyJwk,
     country: "TH",
     jurisdiction: "Thailand",
     trustLevel: "verified",
     credentialTypes: Object.values(DOCUMENT_TYPE_LABELS).map((item) => item.vcType),
     contactEmail: `issuer.${String(hospital.code).toLowerCase()}@trustcare.example`,
-    contactUrl: `https://trustcare.network/hospital/${String(hospital.code).toLowerCase()}`,
+    contactUrl: `${ENV.publicUrl}/hospital/${String(hospital.code).toLowerCase()}`,
     verifiedAt: SEED_ISSUED_AT,
     isActive: true,
-    metadata: { hospitalId, source: "trustcare-seed-reseed", didDocument: hospital.didDocument },
+    metadata: { hospitalId, source: "trustcare-seed-reseed", didDocument: runtimeDidDocument },
   };
   if (existing) await db.update(trustRegistry).set(values as any).where(eq(trustRegistry.id, existing.id));
   else await db.insert(trustRegistry).values(values as any);
@@ -890,7 +942,7 @@ async function upsertTrustRegistryIssuer(hospital: JsonRecord, hospitalId: numbe
 
 async function upsertNetworkLevelIssuer(): Promise<void> {
   const db = (await getDb())!;
-  const networkDid = "did:web:trustcare.network";
+  const networkDid = networkDidWeb();
   const [existing] = await db.select().from(trustRegistry).where(eq(trustRegistry.did, networkDid)).limit(1);
   const values = {
     entityType: "issuer",
@@ -902,7 +954,7 @@ async function upsertNetworkLevelIssuer(): Promise<void> {
     trustLevel: "verified",
     credentialTypes: Object.values(DOCUMENT_TYPE_LABELS).map((item) => item.vcType),
     contactEmail: "trust@trustcare.example",
-    contactUrl: "https://trustcare.network",
+    contactUrl: ENV.publicUrl,
     verifiedAt: SEED_ISSUED_AT,
     isActive: true,
     metadata: { source: "trustcare-seed-reseed", level: "network" },
@@ -1207,7 +1259,7 @@ async function upsertWalletCard(input: { patientId: number; credentialRowId: num
     displayName: String(label.th),
     displayNameEn: String(label.en),
     issuerHospitalName: String(input.document.humanDocument?.renderData?.hospital?.nameTh ?? input.document.hospitalNameTh ?? input.document.hospitalCode),
-    issuerDid: String(input.document.issuerDid ?? ""),
+    issuerDid: hospitalDidWeb(String(input.document.hospitalCode)),
     documentCategory: storage.category,
     cardColor: hospitalColor(String(input.document.hospitalCode)),
     isPinned: ["patient_identity", "staff_identity", "patient_summary", "allergy_alert"].includes(String(input.document.credentialType)),
@@ -1221,7 +1273,7 @@ function issuerProfile(document: JsonRecord, hospitalId: number): IssuerProfile 
     id: String(hospitalId),
     name: String(document.humanDocument?.renderData?.hospital?.nameEn ?? `TrustCare ${document.hospitalCode}`),
     nameTh: String(document.humanDocument?.renderData?.hospital?.nameTh ?? document.hospitalNameTh ?? document.hospitalCode),
-    did: String(document.issuerDid),
+    did: hospitalDidWeb(String(document.hospitalCode)),
     hospitalCode: String(document.hospitalCode),
     country: "TH",
     trustDomain: "trustcare-network",

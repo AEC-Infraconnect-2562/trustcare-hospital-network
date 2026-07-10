@@ -71,6 +71,11 @@ When modifying `drizzle/schema.ts`:
 5. Update `docs/ARCHITECTURE.md` Section 5 (Schema) and Section 6 (Migration Order)
 6. If adding new enum values, update **all tables** that share the same enum
 
+For Railway production, also run `pnpm db:generate:production` and review the
+new SQL under `drizzle-production/`. Do not edit the production baseline after
+it has been deployed. The original `drizzle/` history remains the Manus legacy
+stream during cutover; new Railway databases must use the production stream.
+
 ### Tables Sharing Credential Type Enum
 
 These tables must stay in sync when adding new credential types:
@@ -418,14 +423,17 @@ Never hardcode secrets. Use `webdev_request_secrets` for new environment variabl
 
 ## Deployment
 
-- **Hosting:** Manus Autoscale (serverless, Node.js runtime)
+- **Hosting:** Railway (primary standalone deployment) or Manus WebDev (legacy sandbox)
 - **Build:** `pnpm build` produces `dist/` (Vite frontend + compiled server)
 - **Port:** Dynamic (never hardcode)
-- **Database:** TiDB-compatible MySQL
-- **Storage:** S3-compatible object storage
+- **Database:** MySQL/TiDB-compatible; Railway uses a private MySQL service
+- **Storage:** S3-compatible object storage; Railway uses a private Bucket
 - **No Docker** — runs directly on Node.js
 - **Request timeout:** 180s
 - **Memory:** 512 MiB RAM
+
+Read `docs/RAILWAY_DEPLOYMENT.md` before changing deployment, migrations,
+bootstrap seed behavior, public URLs, DID domains, or storage adapters.
 
 ---
 

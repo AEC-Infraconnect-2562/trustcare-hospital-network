@@ -8,11 +8,12 @@
  */
 import { Router } from "express";
 import { localIssuerJwks } from "./portability/vc";
-import { hospitalDidWeb, didWebDocument, getHospitalPublicJwk, getAllHospitalPublicKeys } from "./portability/did";
+import { hospitalDidWeb, networkDidWeb, didWebDocument, getHospitalPublicJwk } from "./portability/did";
 import { getDb } from "./db";
 import { hospitals, trustRegistry } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { TRUSTCARE_DEMO_HOSPITALS } from "./portability/seedData";
+import { ENV } from "./_core/env";
 
 const CACHE_MAX_AGE = 3600; // 1 hour
 
@@ -26,7 +27,7 @@ export function createWellKnownRouter(): Router {
    */
   router.get("/.well-known/jwks.json", async (_req, res) => {
     try {
-      const networkJwks = await localIssuerJwks("did:web:trustcare.network");
+      const networkJwks = await localIssuerJwks(networkDidWeb());
       const db = await getDb();
 
       // Collect public keys from trust registry entries (partner hospitals)
@@ -80,7 +81,7 @@ export function createWellKnownRouter(): Router {
       res.set("Content-Type", "application/json");
       res.json({
         keys: dedupedKeys,
-        issuer: "did:web:trustcare.network",
+        issuer: networkDidWeb(),
         updated: new Date().toISOString(),
       });
     } catch (err: any) {
@@ -96,11 +97,11 @@ export function createWellKnownRouter(): Router {
    */
   router.get("/.well-known/did.json", async (_req, res) => {
     try {
-      const networkJwks = await localIssuerJwks("did:web:trustcare.network");
-      const did = "did:web:trustcare.network";
+      const did = networkDidWeb();
+      const networkJwks = await localIssuerJwks(did);
       const keyId = process.env.TRUSTCARE_VC_KEY_ID || `${did}#vc-signing-key-1`;
 
-      const publicKey = (networkJwks.keys as any[])?.[0] || null;
+      const publicKey = (networkJwks.keys as any[])?.find(key => String(key.kid ?? "").startsWith(`${did}#`)) || null;
 
       const didDocument: any = {
         "@context": [
@@ -109,7 +110,7 @@ export function createWellKnownRouter(): Router {
           "https://w3id.org/security/suites/jws-2020/v1",
         ],
         id: did,
-        alsoKnownAs: ["https://trustcarehealth.live"],
+        alsoKnownAs: [ENV.publicUrl],
         verificationMethod: publicKey
           ? [
               {
@@ -127,17 +128,17 @@ export function createWellKnownRouter(): Router {
           {
             id: `${did}#trustcare-portability`,
             type: "TrustCarePortabilityEndpoint",
-            serviceEndpoint: "https://trustcarehealth.live/api/portability",
+            serviceEndpoint: `${ENV.publicUrl}/api/portability`,
           },
           {
             id: `${did}#jwks`,
             type: "JsonWebKeySet",
-            serviceEndpoint: "https://trustcarehealth.live/.well-known/jwks.json",
+            serviceEndpoint: `${ENV.publicUrl}/.well-known/jwks.json`,
           },
           {
             id: `${did}#external-wallet-api`,
             type: "ExternalWalletAPI",
-            serviceEndpoint: "https://trustcarehealth.live/api/v1",
+            serviceEndpoint: `${ENV.publicUrl}/api/v1`,
           },
         ],
         trustcare: {
@@ -323,12 +324,12 @@ export function createWellKnownRouter(): Router {
               "https://www.w3.org/2018/credentials/v1",
               "https://identity.foundation/.well-known/did-configuration/v1",
             ],
-            issuer: "did:web:trustcare.network",
+            issuer: networkDidWeb(),
             issuanceDate: "2026-07-01T00:00:00Z",
             type: ["VerifiableCredential", "DomainLinkageCredential"],
             credentialSubject: {
-              id: "did:web:trustcare.network",
-              origin: "https://trustcarehealth.live",
+              id: networkDidWeb(),
+              origin: ENV.publicUrl,
             },
           },
         ],

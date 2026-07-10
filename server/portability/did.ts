@@ -1,5 +1,6 @@
 import type { JsonRecord } from "./types";
 import { sha256 } from "./utils";
+import { ENV } from "../_core/env";
 
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -93,12 +94,21 @@ const HOSPITAL_KEYS: Record<string, HospitalKeyPair> = {
 
 /** Get the key pair for a hospital code. Falls back to TCC if unknown. */
 export function getHospitalKeyPair(hospitalCode: string): HospitalKeyPair {
-  return HOSPITAL_KEYS[hospitalCode.toUpperCase()] ?? HOSPITAL_KEYS.TCC;
+  const stored = HOSPITAL_KEYS[hospitalCode.toUpperCase()] ?? HOSPITAL_KEYS.TCC;
+  const did = hospitalDidWeb(stored.hospitalCode);
+  const kid = `${did}#vc-signing-key`;
+  return {
+    ...stored,
+    did,
+    kid,
+    publicJwk: { ...stored.publicJwk, kid },
+    privateJwk: { ...stored.privateJwk, kid },
+  };
 }
 
 /** Get all hospital key pairs for JWKS endpoint */
 export function getAllHospitalPublicKeys(): JsonRecord[] {
-  return Object.values(HOSPITAL_KEYS).map(k => k.publicJwk);
+  return Object.keys(HOSPITAL_KEYS).map(code => getHospitalKeyPair(code).publicJwk);
 }
 
 /** Get public JWK for a specific hospital */
@@ -106,7 +116,11 @@ export function getHospitalPublicJwk(hospitalCode: string): JsonRecord {
   return getHospitalKeyPair(hospitalCode).publicJwk;
 }
 
-export function hospitalDidWeb(hospitalCode: string, domain = "trustcare.network"): string {
+export function networkDidWeb(domain = ENV.didDomain): string {
+  return `did:web:${domain}`;
+}
+
+export function hospitalDidWeb(hospitalCode: string, domain = ENV.didDomain): string {
   return `did:web:${domain}:hospital:${hospitalCode.toLowerCase()}`;
 }
 
@@ -126,13 +140,14 @@ export function didWebDocument(input: {
   publicJwk?: JsonRecord;
   domain?: string;
 }): JsonRecord {
-  const did = hospitalDidWeb(input.hospitalCode, input.domain);
+  const domain = input.domain ?? ENV.didDomain;
+  const did = hospitalDidWeb(input.hospitalCode, domain);
   const keyId = `${did}#vc-signing-key`;
   const hospitalKey = getHospitalKeyPair(input.hospitalCode);
   return {
     "@context": ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/jwk/v1"],
     id: did,
-    alsoKnownAs: [`https://${input.domain ?? "trustcare.network"}/hospital/${input.hospitalCode.toLowerCase()}`],
+    alsoKnownAs: [`${ENV.publicUrl}/hospital/${input.hospitalCode.toLowerCase()}`],
     verificationMethod: [
       {
         id: keyId,
@@ -147,7 +162,7 @@ export function didWebDocument(input: {
       {
         id: `${did}#trustcare-portability`,
         type: "TrustCarePortabilityEndpoint",
-        serviceEndpoint: `https://${input.domain ?? "trustcare.network"}/api/portability/${input.hospitalCode.toLowerCase()}`,
+        serviceEndpoint: `${ENV.publicUrl}/api/portability/${input.hospitalCode.toLowerCase()}`,
       },
     ],
     trustcare: {

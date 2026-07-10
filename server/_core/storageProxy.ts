@@ -1,5 +1,5 @@
 import type { Express, Response } from "express";
-import { ENV } from "./env";
+import { storageGetSignedUrl } from "../storage";
 
 /**
  * Storage proxy that streams files through the server instead of redirecting.
@@ -33,40 +33,11 @@ export function registerStorageProxy(app: Express) {
 
 /** Stream a storage file by key through our server */
 async function streamStorageFile(key: string, res: Response): Promise<void> {
-  if (!ENV.forgeApiUrl || !ENV.forgeApiKey) {
-    res.status(500).send("Storage proxy not configured");
-    return;
-  }
-
   try {
-    // Step 1: Get the presigned URL from forge
-    const forgeUrl = new URL(
-      "v1/storage/presign/get",
-      ENV.forgeApiUrl.replace(/\/+$/, "") + "/",
-    );
-    forgeUrl.searchParams.set("path", key);
-
-    const forgeResp = await fetch(forgeUrl, {
-      headers: { Authorization: `Bearer ${ENV.forgeApiKey}` },
-    });
-
-    if (!forgeResp.ok) {
-      const body = await forgeResp.text().catch(() => "");
-      console.error(`[StorageProxy] forge error: ${forgeResp.status} ${body}`);
-      res.status(502).send("Storage backend error");
-      return;
-    }
-
-    const { url } = (await forgeResp.json()) as { url: string };
-    if (!url) {
-      res.status(502).send("Empty signed URL from backend");
-      return;
-    }
-
-    // Step 2: Fetch the actual file from CloudFront and stream it through
+    const url = await storageGetSignedUrl(key);
     const fileResp = await fetch(url);
     if (!fileResp.ok) {
-      console.error(`[StorageProxy] CloudFront error: ${fileResp.status}`);
+      console.error(`[StorageProxy] object storage error: ${fileResp.status}`);
       res.status(502).send("File fetch error");
       return;
     }

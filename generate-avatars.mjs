@@ -1,6 +1,6 @@
 /**
  * Generate realistic avatar URLs for all demo users and seed patients.
- * Uses AI-generated realistic photos stored in /manus-storage/.
+ * Uses AI-generated realistic photos shipped in /seed-avatars/.
  * Avatar selection is based on role and gender.
  */
 import { getDb } from "./server/db.ts";
@@ -8,14 +8,14 @@ import { sql } from "drizzle-orm";
 
 // Realistic avatar photos (400x400 JPEG, ~18KB each)
 const AVATAR_PHOTOS = {
-  male: "/manus-storage/patient_male_realistic_opt_e9b1630b.jpg",
-  female: "/manus-storage/patient_female_realistic_opt_d0edb245.jpg",
-  doctorMale: "/manus-storage/doctor_male_realistic_opt_b09f1058.jpg",
-  doctorFemale: "/manus-storage/doctor_female_realistic_opt_56d94f1d.jpg",
-  nurse: "/manus-storage/nurse_female_realistic_opt_d0e35459.jpg",
-  pharmacist: "/manus-storage/pharmacist_male_realistic_opt_2b3b0f56.jpg",
-  radiologist: "/manus-storage/radiologist_realistic_bd97425d.jpg",
-  medTech: "/manus-storage/med_tech_realistic_78575c20.jpg",
+  male: "/seed-avatars/patient_somsak_a2e00e97.jpg",
+  female: "/seed-avatars/patient_malee_74d2ef04.jpg",
+  doctorMale: "/seed-avatars/doctor_thanawat_f91f7278.jpg",
+  doctorFemale: "/seed-avatars/doctor_napa_abd67502.jpg",
+  nurse: "/seed-avatars/nurse_pimjai_ace1fd06.jpg",
+  pharmacist: "/seed-avatars/engineer_piya_eb6aeff4.jpg",
+  radiologist: "/seed-avatars/doctor_kriangkrai_b6bcdefb.jpg",
+  medTech: "/seed-avatars/doctor_prasit_2ed84c26.jpg",
 };
 
 // Map of demo users with their gender hints based on Thai prefixes
