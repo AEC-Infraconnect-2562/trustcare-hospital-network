@@ -6,8 +6,7 @@
   },
   "deploy": {
     "preDeployCommand": [
-      "corepack pnpm@10.4.1 db:migrate",
-      "corepack pnpm@10.4.1 bootstrap:railway"
+      "corepack pnpm@10.4.1 db:migrate && corepack pnpm@10.4.1 bootstrap:railway"
     ],
     "startCommand": "corepack pnpm@10.4.1 start",
     "healthcheckPath": "/api/health",
