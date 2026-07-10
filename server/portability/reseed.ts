@@ -530,13 +530,25 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
   const expectedSeed = generateTrustcareDemoSeed({ patientsPerHospital });
   const expectedHospitalCodes = (expectedSeed.hospitals as JsonRecord[]).map((hospital) => String(hospital.code));
   const expectedConnectorNames = sourceTruthConnectors().map((connector) => String(connector.name));
+  const expectedPatientOpenIds = Array.from(new Set(
+    (expectedSeed.patients as JsonRecord[]).map((patient) => resolvePatientOpenId(
+      String(patient.hospitalCode),
+      String(patient.seedId),
+    )),
+  ));
 
   const hospitalRows = await db.select().from(hospitals).where(inArray(hospitals.code, expectedHospitalCodes));
-  const seedPatientRows = await db.select().from(users).where(like(users.openId, "seed-patient-%"));
+  const seedPatientRows = await db.select().from(users).where(inArray(users.openId, expectedPatientOpenIds));
   const seedStaffRows = await db.select().from(users).where(sql`${users.openId} like 'seed-maker-%' or ${users.openId} like 'seed-checker-%' or ${users.openId} like 'seed-issuer-%'`);
   const sourceTruthRows = await db.select().from(integrationAdapters).where(inArray(integrationAdapters.name, expectedConnectorNames));
   const hospitalIds = hospitalRows.map((hospital) => hospital.id);
   const patientIds = seedPatientRows.map((patient) => patient.id);
+  const staffIdentitySubjects = hospitalIds.length > 0
+    ? await db.select({ id: users.id }).from(users).where(and(
+        sql`${users.systemRole} != 'patient'`,
+        inArray(users.hospitalId, hospitalIds),
+      ))
+    : [];
 
   const [templateCount] = hospitalIds.length > 0
     ? await db.select({ value: count() }).from(credentialTemplates).where(inArray(credentialTemplates.hospitalId, hospitalIds))
@@ -548,6 +560,8 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
     .where(and(like(issuedCredentials.credentialId, `${SEED_PREFIX}:vc:%`), eq(issuedCredentials.status, "active" as any)));
   const [presentationCount] = await db.select({ value: count() }).from(issuedPresentations)
     .where(and(like(issuedPresentations.presentationId, `${SEED_PREFIX}:vp:%`), eq(issuedPresentations.status, "active" as any)));
+  const [smartHealthLinkCount] = await db.select({ value: count() }).from(smartHealthLinks)
+    .where(and(like(smartHealthLinks.manifestToken, `${SEED_PREFIX}:shl:%`), eq(smartHealthLinks.status, "active" as any)));
   const [identifierCount] = patientIds.length > 0
     ? await db.select({ value: count() }).from(patientIdentifiers).where(inArray(patientIdentifiers.patientId, patientIds))
     : [{ value: 0 }];
@@ -568,15 +582,31 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
   const patientEntitlementViolations = seedPatientRows
     .filter((patient) => hasIssuerEntitlements(patient.credentialEntitlements))
     .map((patient) => ({ id: patient.id, openId: patient.openId }));
+  const credentialTypeCounts = Object.fromEntries(
+    credentialTypes.map((row) => [row.type, Number(row.value)]),
+  );
+  const generatedCredentialCount = Number(
+    latestBatch[0]?.generatedCredentialCount ?? (expectedSeed.counts as JsonRecord).documents,
+  );
+  const generatedPresentationCount = Number(
+    latestBatch[0]?.generatedPresentationCount ?? (expectedSeed.counts as JsonRecord).vpScenarios,
+  );
+  const expectedSmartHealthLinks = Number((expectedSeed.counts as JsonRecord).vpScenarios);
+  const expectedActiveSeedCredentials = generatedCredentialCount
+    + staffIdentitySubjects.length
+    + expectedSmartHealthLinks;
+  const expectedActiveSeedPresentations = generatedPresentationCount + expectedSmartHealthLinks;
 
   const checks = [
     checkCount("completed seed batch", 1, latestBatch[0]?.status === "completed" ? 1 : 0),
     checkCount("hospitals", Number((expectedSeed.counts as JsonRecord).hospitals), hospitalRows.length),
-    checkCount("seed patients", Number((expectedSeed.counts as JsonRecord).patients), seedPatientRows.length),
+    checkCount("seed patient records", expectedPatientOpenIds.length, seedPatientRows.length),
     checkCount("credential templates", Object.keys(DOCUMENT_TYPE_LABELS).length * expectedHospitalCodes.length, Number(templateCount?.value ?? 0)),
-    checkCount("active seed credentials", Number((expectedSeed.counts as JsonRecord).documents), Number(credentialCount?.value ?? 0)),
-    checkCount("wallet cards for seed credentials", Number((expectedSeed.counts as JsonRecord).documents), Number(walletCount?.value ?? 0)),
-    checkCount("active seed presentations", Number((expectedSeed.counts as JsonRecord).vpScenarios), Number(presentationCount?.value ?? 0)),
+    checkCount("active seed credentials", expectedActiveSeedCredentials, Number(credentialCount?.value ?? 0)),
+    checkCount("wallet cards for seed credentials", expectedActiveSeedCredentials, Number(walletCount?.value ?? 0)),
+    checkCount("staff identity credentials", staffIdentitySubjects.length, Number(credentialTypeCounts.staff_identity ?? 0)),
+    checkCount("active seed presentations", expectedActiveSeedPresentations, Number(presentationCount?.value ?? 0)),
+    checkCount("active Smart Health Links", expectedSmartHealthLinks, Number(smartHealthLinkCount?.value ?? 0)),
     checkCount("source of truth connectors", expectedConnectorNames.length, sourceTruthRows.length),
     checkCount("patient issuer-role violations", 0, patientIssuerRoleViolations.length),
     checkCount("patient entitlement violations", 0, patientEntitlementViolations.length),
@@ -592,7 +622,14 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
     ok: checks.every((check) => check.ok) && didChecks.hospitalDidWeb && didChecks.patientDidKeyIdentifiers,
     checkedAt: new Date().toISOString(),
     latestBatch: latestBatch[0] ?? null,
-    expected: expectedSeed.counts,
+    expected: {
+      ...expectedSeed.counts,
+      databasePatientRows: expectedPatientOpenIds.length,
+      activeSeedCredentials: expectedActiveSeedCredentials,
+      activeSeedPresentations: expectedActiveSeedPresentations,
+      staffIdentityCredentials: staffIdentitySubjects.length,
+      activeSmartHealthLinks: expectedSmartHealthLinks,
+    },
     actual: {
       hospitals: hospitalRows.length,
       seedPatients: seedPatientRows.length,
@@ -601,9 +638,10 @@ export async function auditTrustcareVcVpSeedDatabase(input: {
       activeSeedCredentials: Number(credentialCount?.value ?? 0),
       walletCardsForSeedCredentials: Number(walletCount?.value ?? 0),
       activeSeedPresentations: Number(presentationCount?.value ?? 0),
+      activeSmartHealthLinks: Number(smartHealthLinkCount?.value ?? 0),
       patientIdentifiers: Number(identifierCount?.value ?? 0),
       sourceTruthConnectors: sourceTruthRows.length,
-      credentialTypes: Object.fromEntries(credentialTypes.map((row) => [row.type, Number(row.value)])),
+      credentialTypes: credentialTypeCounts,
     },
     checks,
     didChecks,
