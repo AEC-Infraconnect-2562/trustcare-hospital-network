@@ -24,6 +24,8 @@ import { issueSdJwt, createSelectivePresentation, verifySdJwtPresentation, getDi
 import { issuedCredentials, issuedPresentations, walletCards, hospitals } from "../drizzle/schema";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { getDb } from "./db";
+import { verifyWalletAccessToken } from "./walletOidc";
+import { walletHolderBindings } from "../drizzle/schema";
 
 // ============================================================
 // TYPES
@@ -105,7 +107,7 @@ interface WalletSyncResponse {
  * Supports:
  * 1. Bearer token from external wallet session (ews_ prefix)
  * 2. Portal session cookie (via tRPC-style auth)
- * 3. Explicit patientId in request body
+ * 3. OIDC Wallet access token (Keycloak)
  */
 async function resolvePatientFromRequest(req: Request): Promise<{ patientId: number | null; error?: string }> {
   const authHeader = req.headers.authorization;
@@ -137,7 +139,13 @@ async function resolvePatientFromRequest(req: Request): Promise<{ patientId: num
           if (user) return { patientId: user.id };
         }
       } catch {
-        // Fall through to cookie auth
+        // Continue with OIDC validation below.
+      }
+      try {
+        const identity = await verifyWalletAccessToken(token);
+        if (identity) return { patientId: identity.patientId };
+      } catch {
+        // Fall through to cookie auth so a portal session remains supported.
       }
     }
   }
@@ -185,7 +193,15 @@ export function createWalletSyncRouter(): Router {
 
       // Resolve patient
       const { patientId: resolvedPatientId, error: authError } = await resolvePatientFromRequest(req);
-      const patientId = body.patientId || resolvedPatientId;
+      if (body.patientId && resolvedPatientId && body.patientId !== resolvedPatientId) {
+        return res.status(403).json({
+          error: "patient_identity_mismatch",
+          message: "patientId must match the authenticated Wallet identity",
+        });
+      }
+      // Never use an unauthenticated patientId from the request body. This is
+      // the boundary that prevents a Wallet from pulling another patient's VC.
+      const patientId = resolvedPatientId;
 
       if (!patientId) {
         return res.status(401).json({
@@ -227,6 +243,12 @@ export function createWalletSyncRouter(): Router {
         const hospital = await db.getHospitalById(hid);
         if (hospital) hospitalMap.set(hid, hospital);
       }
+
+      const [activeBinding] = await database.select({ holderDid: walletHolderBindings.holderDid })
+        .from(walletHolderBindings)
+        .where(and(eq(walletHolderBindings.patientId, patientId), eq(walletHolderBindings.status, "active")))
+        .orderBy(desc(walletHolderBindings.boundAt))
+        .limit(1);
 
       // Build wallet-compatible credential array
       const syncCredentials: WalletSyncCredential[] = cards.map((card: any) => {
@@ -276,7 +298,7 @@ export function createWalletSyncRouter(): Router {
           credentialType: cred?.type || card.cardType,
           issuerHospitalName: card.issuerHospitalName || hospital?.name || null,
           issuerDid,
-          holderDid: null,
+          holderDid: activeBinding?.holderDid || null,
           patientId,
           sourceSystem: "trustcare_portal",
           issuedAt: cred?.issuedAt?.toISOString() || null,
@@ -334,7 +356,7 @@ export function createWalletSyncRouter(): Router {
             credentialType: cred.type,
             issuerHospitalName: hospital?.name || null,
             issuerDid: credIssuerDid,
-            holderDid: null,
+            holderDid: activeBinding?.holderDid || null,
             patientId,
             sourceSystem: "trustcare_portal",
             issuedAt: cred.issuedAt?.toISOString() || null,
@@ -704,7 +726,10 @@ export function createWalletSyncRouter(): Router {
     try {
       const { patientId: resolvedPatientId, error: authError } = await resolvePatientFromRequest(req);
       const { credentialId, patientId: bodyPatientId } = req.body || {};
-      const effectivePatientId = resolvedPatientId || (typeof bodyPatientId === "number" ? bodyPatientId : null);
+      if (bodyPatientId && resolvedPatientId && bodyPatientId !== resolvedPatientId) {
+        return res.status(403).json({ error: "patient_identity_mismatch", message: "patientId must match the authenticated Wallet identity" });
+      }
+      const effectivePatientId = resolvedPatientId;
 
       if (!effectivePatientId) {
         return res.status(401).json({

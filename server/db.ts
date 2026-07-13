@@ -44,6 +44,8 @@ import {
   externalWalletApiKeys, InsertExternalWalletApiKey,
   externalWalletSessions, InsertExternalWalletSession,
   externalWalletAuditLogs, InsertExternalWalletAuditLog,
+  walletHolderBindings, InsertWalletHolderBinding,
+  walletBindingChallenges, InsertWalletBindingChallenge,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { isIssuerPrivilegeRole, isPatientRole } from "@shared/rolePolicy";

@@ -1627,3 +1627,42 @@ export const externalWalletAuditLogs = mysqlTable("external_wallet_audit_logs", 
 ]));
 export type ExternalWalletAuditLog = typeof externalWalletAuditLogs.$inferSelect;
 export type InsertExternalWalletAuditLog = typeof externalWalletAuditLogs.$inferInsert;
+
+// Holder binding is a persisted trust boundary between the Wallet key and the
+// patient identity. The private key never enters Portal or this database.
+export const walletHolderBindings = mysqlTable("wallet_holder_bindings", {
+  id: int("id").autoincrement().primaryKey(),
+  bindingId: varchar("bindingId", { length: 128 }).notNull().unique(),
+  patientId: int("patientId").notNull(),
+  holderDid: varchar("holderDid", { length: 512 }).notNull(),
+  publicKeyJwk: json("publicKeyJwk").notNull(),
+  status: mysqlEnum("status", ["active", "revoked"]).default("active").notNull(),
+  boundAt: timestamp("boundAt").defaultNow().notNull(),
+  lastVerifiedAt: timestamp("lastVerifiedAt"),
+  metadata: json("metadata"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("idx_whb_patient").on(table.patientId),
+  index("idx_whb_holder").on(table.holderDid),
+  index("idx_whb_status").on(table.status),
+]));
+export type WalletHolderBinding = typeof walletHolderBindings.$inferSelect;
+export type InsertWalletHolderBinding = typeof walletHolderBindings.$inferInsert;
+
+export const walletBindingChallenges = mysqlTable("wallet_binding_challenges", {
+  id: int("id").autoincrement().primaryKey(),
+  challengeId: varchar("challengeId", { length: 128 }).notNull().unique(),
+  patientId: int("patientId").notNull(),
+  holderDid: varchar("holderDid", { length: 512 }).notNull(),
+  nonce: varchar("nonce", { length: 128 }).notNull(),
+  publicKeyJwk: json("publicKeyJwk").notNull(),
+  status: mysqlEnum("status", ["issued", "completed", "expired", "cancelled"]).default("issued").notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ([
+  index("idx_wbc_patient").on(table.patientId),
+  index("idx_wbc_expires").on(table.expiresAt),
+]));
+export type WalletBindingChallenge = typeof walletBindingChallenges.$inferSelect;
+export type InsertWalletBindingChallenge = typeof walletBindingChallenges.$inferInsert;
