@@ -2812,3 +2812,60 @@ All DID resolution endpoints are public (no authentication required) and only ex
 | `tao-consent.test.ts` | 10 | TAO trust registry + wallet categories |
 | Other test files | 328 | All other system features |
 | **Total** | **445** | **35 test files, 0 failures** |
+
+---
+
+## 53. Wallet OIDC Provisioning and Holder Binding
+
+### 53.1 Runtime contract
+
+The Portal publishes `GET /api/wallet/provisioning/configuration` as the single discovery document for a Wallet application. The contract is runtime-derived from `TRUSTCARE_WALLET_OIDC_ISSUER`, `TRUSTCARE_WALLET_OIDC_AUDIENCE`, `TRUSTCARE_WALLET_OIDC_REQUIRED_ROLE`, and `TRUSTCARE_WALLET_OIDC_PATIENT_REF_CLAIM`. When the issuer is missing, the contract returns `issuer: null`; a Wallet must stop with a configuration error rather than use a fallback issuer.
+
+The sandbox endpoints are advertised only when `TRUSTCARE_KEYCLOAK_TEST_LOGIN_ENABLED=true` and the issuer is configured. They are intended for synthetic patient identities seeded by `server/seed.ts`, not for production account creation.
+
+### 53.2 Session to sync flow
+
+```text
+configuration discovery
+        |
+        v
+Keycloak sandbox/OIDC access token
+        |
+        v
+Portal verifies issuer + audience + wallet_access role + patient claim
+        |
+        v
+did:key holder challenge signed by Wallet private key
+        |
+        v
+Persistent holder binding (public key only)
+        |
+        v
+POST /api/wallet/sync -> issued VC/SD-JWT + presentation metadata
+```
+
+The Portal resolves the patient exclusively from the verified token. A body-supplied patient identifier cannot change the authenticated subject. The holder private key remains in the Wallet; `wallet_holder_bindings` stores the public JWK and binding audit metadata, while `wallet_binding_challenges` provides a single-use, five-minute challenge record.
+
+### 53.3 Wallet-facing modules
+
+| Module | Responsibility |
+|---|---|
+| `server/walletOidc.ts` | Keycloak JWKS validation, role enforcement, patient claim resolution, sandbox token exchange |
+| `server/walletProvisioningApi.ts` | Configuration, sandbox identity/login, identity/provisioning state, holder challenge completion, v2 discovery |
+| `server/walletSyncApi.ts` | Credential pull, verification, selective disclosure, OIDC-aware patient resolution |
+| `drizzle/schema.ts` | Persistent holder bindings and challenges |
+| `drizzle/0023_wallet_holder_binding.sql` | Database migration for the binding trust boundary |
+
+### 53.4 Required deployment variables
+
+```text
+TRUSTCARE_WALLET_OIDC_ISSUER=https://<keycloak-host>/realms/trustcare-wallet
+TRUSTCARE_WALLET_OIDC_AUDIENCE=trustcare-wallet-api
+TRUSTCARE_WALLET_OIDC_REQUIRED_ROLE=wallet_access
+TRUSTCARE_WALLET_OIDC_PATIENT_REF_CLAIM=trustcare_patient_ref
+TRUSTCARE_WALLET_OIDC_CLIENT_ID=trustcare-wallet-web
+TRUSTCARE_KEYCLOAK_TEST_LOGIN_ENABLED=true   # sandbox only
+TRUSTCARE_KEYCLOAK_TEST_USER_PASSWORD=<secret reference>
+```
+
+The secret value must be injected through Railway/secret management and never committed, returned by an API, or placed in seed data.

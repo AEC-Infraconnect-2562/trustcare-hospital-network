@@ -47,6 +47,7 @@ async function startServer() {
     /^http:\/\/127\.0\.0\.1(:\d+)?$/,
   ];
   const WALLET_CORS_PATHS = [
+    "/api/wallet/",
     "/api/auth/demo-login",
     "/api/wallet/sync",
     "/api/wallet/sync/status",
@@ -181,6 +182,8 @@ async function startServer() {
   app.use("/api/v1", createExternalWalletApiRouter());
 
   // Wallet Sync API (credential pull for external wallets)
+  const { createWalletProvisioningRouter } = await import("../walletProvisioningApi");
+  app.use(createWalletProvisioningRouter());
   const { createWalletSyncRouter } = await import("../walletSyncApi");
   app.use(createWalletSyncRouter());
 

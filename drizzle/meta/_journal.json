@@ -162,6 +162,13 @@
       "when": 1783350216581,
       "tag": "0022_tiresome_skreet",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1783352000000,
+      "tag": "0023_wallet_holder_binding",
+      "breakpoints": true
     }
   ]
 }

@@ -63,7 +63,7 @@ Pull all credentials for a patient in wallet-compatible format. Supports increme
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `patientId` | number | No | Patient ID (resolved from auth if not provided) |
+| `patientId` | number | No | Optional consistency check only; it must match the authenticated patient and is never used to select another patient |
 | `since` | string (ISO 8601) | No | Only return credentials issued after this timestamp |
 | `includePresentations` | boolean | No | Include VP records in response (default: false) |
 | `limit` | number | No | Max credentials to return (default: 500, max: 1000) |
@@ -85,7 +85,7 @@ Pull all credentials for a patient in wallet-compatible format. Supports increme
       "credentialType": "prescription",
       "issuerHospitalName": "TrustCare Central Hospital",
       "issuerDid": "did:web:trustcare.network:hospital:tcc",
-      "holderDid": null,
+      "holderDid": "did:key:z...",
       "patientId": 123,
       "sourceSystem": "trustcare_portal",
       "issuedAt": "2026-07-01T10:00:00.000Z",
@@ -601,3 +601,53 @@ The wallet display uses a deduplication algorithm to show only the most relevant
 - Sorted by date descending (newest superseded first)
 
 This ensures patients see only their most current credential per type per issuer, while maintaining full history in the Superseded tab.
+
+---
+
+## Wallet Provisioning and OIDC Holder Binding
+
+The Wallet must discover the Portal contract at:
+
+`GET /api/wallet/provisioning/configuration`
+
+The response is public metadata only. It advertises the configured Keycloak issuer, audience, required role, sandbox login endpoints, holder binding endpoints, and sync endpoint. An empty OIDC issuer must be treated as a deployment configuration error; Wallet clients must not invent an issuer or silently fall back to a different identity system.
+
+### Sandbox login
+
+Sandbox login is available only when `TRUSTCARE_KEYCLOAK_TEST_LOGIN_ENABLED=true`, a Wallet OIDC issuer is configured, and a test password is present on the server. The identities endpoint returns patient-only synthetic identities and never returns a password:
+
+```http
+GET /api/wallet/test-identities
+POST /api/wallet/test-login
+Content-Type: application/json
+
+{"identityId":"demo-patient-001"}
+```
+
+The login response contains `accessToken`, `tokenType`, `expiresIn`, and the selected synthetic identity. Wallets must keep the access token in their normal session store and must use `Authorization: Bearer <accessToken>` for subsequent calls.
+
+### Holder binding
+
+The private holder key is generated and retained by the Wallet. Portal receives only the public JWK. The Wallet first requests a challenge:
+
+```http
+POST /api/wallet/keys/challenges
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{"holderDid":"did:key:z...","publicKeyJwk":{"kty":"OKP","crv":"Ed25519","x":"...","alg":"EdDSA"}}
+```
+
+The Wallet signs a JWT with `iss=holderDid`, `aud=challengeId`, and payload claims `challengeId`, `nonce`, and `holderDid`, then submits it to:
+
+`POST /api/wallet/keys/challenges/{challengeId}/complete`
+
+Portal verifies the signature with the stored public JWK, persists the active binding, and never stores the private key. Only after this step should the Wallet proceed to credential request/submission flows. `/api/wallet/identity` and `/api/wallet/provisioning` expose the current binding state.
+
+### OIDC security boundary
+
+`POST /api/wallet/sync` resolves the patient from the verified OIDC token. A request-body `patientId` is never accepted as an identity selector and, if supplied, must match the authenticated patient. The same rule applies to on-demand SD-JWT issuance. Required OIDC role claims are checked from Keycloak `realm_access.roles` and the configured client resource roles.
+
+### Wallet discovery
+
+`GET /api/wallet/v2` returns the versioned exchange endpoints and protocol metadata. Wallet clients should discover endpoints from this response or the provisioning configuration rather than hardcoding Railway hostnames.
