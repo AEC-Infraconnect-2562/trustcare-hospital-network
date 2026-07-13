@@ -14,6 +14,10 @@
 | `feature/*` | Manual feature development | `main` via PR |
 | `fix/*` | Bug fixes | `main` via PR |
 
+## Agent Collaboration
+
+Codex and Manus contributors must read the root [`AGENTS.md`](../AGENTS.md) and [`docs/CODEX_MANUS_COLLABORATION_RULES.md`](./CODEX_MANUS_COLLABORATION_RULES.md) before opening or reviewing AI-assisted PRs. Dependent changes should use stacked draft PRs and must be merged by Manus in dependency order.
+
 ---
 
 ## Quick Start
